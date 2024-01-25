@@ -1,1 +1,3 @@
 # dotfiles
+
+![[]](/assets/nvim.png)
