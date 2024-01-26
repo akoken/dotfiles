@@ -1,0 +1,95 @@
+[core]
+  excludesfile = ~/.gitignore
+  editor = nvim
+  ignorecase = false
+[color]
+  status = auto
+  diff = auto
+  branch = auto
+  interactive = auto
+  grep = auto
+  ui = auto
+[user]
+	name = Abdurrahman Alp Köken
+	email = <email>
+[commit]
+	template = ~/.gitmessage.txt
+[pull]
+	rebase = true
+[rebase]
+	autoStash = true
+[push]
+	autoSetupRemote = true
+[alias]
+
+# Show the working tree status
+s = status
+
+# status of commit
+st = status -sb
+
+# add, commit, stage your changes
+acm = !git add . && git commit -m
+
+# add, commit, stage, and push changes to origin
+acmp = "!f() { git acm \"$@\" && git p; }; f"
+
+# commit with message
+cm = commit -m
+
+# get branch
+bl = branch --format='%(HEAD) %(color:yellow)%(refname:short)%(color:reset) - %(contents:subject) %(color:green)(%(committerdate:relative)) [%(authorname)]' --sort=-committerdate
+
+# delete a branch only if it has been merged
+bd = branch -d
+
+# force delete a branch
+bDf = branch -D
+
+# checkout existing branch
+co = checkout
+
+# checkout a new not yet existing branch
+cob = checkout -b
+
+# checkout existing branch
+sw = switch
+
+# checkout a new not yet existing branch
+swc = switch -c
+
+# push changes to a remote
+p = push
+
+# push changes to a remote force with lease
+pf = push --force-with-lease
+
+# fetch from repo and prune any remote-tracking refs that no longer exist on remote
+f = fetch -p
+
+# discard changes
+res = "!f(){ git reset --hard; git clean -df; if [ -d ".git/rebase-apply" ] || [ -d ".git/rebase-merge" ]; then git rebase --abort; fi; }; f"
+
+# pretty log
+plog = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
+
+clsm = !git branch --merged | %{$_.trim()}  | ?{$_ -notmatch 'master' -and $_ -notmatch 'develop'} | %{git branch -d $_.trim()}
+  lol = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+
+[hub]
+  protocol = https
+[github]
+	user = akoken
+[diff]
+  tool = nvimdiff
+[difftool "nvimdiff"]
+	cmd = nvim -d \"$LOCAL\" \"$REMOTE\"
+	path = 
+[mergetool "nvimdiff"]
+	cmd = nvim -d \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+	trustExitCode = true
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	required = true
+	process = git-lfs filter-process
