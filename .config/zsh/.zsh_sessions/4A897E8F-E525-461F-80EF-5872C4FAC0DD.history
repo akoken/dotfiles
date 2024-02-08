@@ -1,4 +1,0 @@
-lt -lah ~/.config
-ls -lah ~/.config
-v ~/.zshenv
-which starship
