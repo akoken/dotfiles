@@ -16,8 +16,9 @@ alias ......="cd ../../../../.."
 alias cl='clear'
 
 export "PATH=$HOME/bin:$PATH"
+export "PATH=/opt/homebrew/bin:$PATH"
+export EDITOR=/opt/homebrew/bin/nvim
 
 eval "$(starship init zsh)"
 export STARSHIP_CONFIG=~/.config/starship/starship.toml
 
-export EDITOR=/opt/homebrew/bin/nvim
