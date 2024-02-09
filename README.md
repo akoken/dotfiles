@@ -16,6 +16,18 @@
 
 ![[]](/assets/nvim.png)
 
+# Shell setup
+
+- [Warp Terminal](https://warp.dev)
+- [Zsh](https://zsh.org/)
+- [Starship](https://starship.rs)
+- [Nerd fonts](https://nerdfonts.com)
+- [z for fish](https://github.com/jethrokuan/z) - Directory jumping
+- [Eza](https://github.com/eza-community/eza) - `ls` replacement
+- [bat](https://github.com/sharkdp/bat) - `cat` replacement
+- [ghq](https://github.com/x-motemen/ghq) - Local Git repository organizer
+- [fzf](https://github.com/PatrickF1/fzf.fish) - Interactive filtering
+
 # Tmux
 
 ### Requirements
