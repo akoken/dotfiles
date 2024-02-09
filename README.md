@@ -21,8 +21,7 @@
 - [Warp Terminal](https://warp.dev)
 - [Zsh](https://zsh.org/)
 - [Starship](https://starship.rs)
-- [Nerd fonts](https://nerdfonts.com)
-- [z for fish](https://github.com/jethrokuan/z) - Directory jumping
+- [Nerd fonts](https://nerdfonts.com)(I use CaskaydiaCove NF)
 - [Eza](https://github.com/eza-community/eza) - `ls` replacement
 - [bat](https://github.com/sharkdp/bat) - `cat` replacement
 - [ghq](https://github.com/x-motemen/ghq) - Local Git repository organizer
