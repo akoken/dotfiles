@@ -5,9 +5,9 @@ return {
     "nvim-treesitter/nvim-treesitter",
     opts = {
       ensure_installed = {
-        "astro",
         "cmake",
         "cpp",
+        "c_sharp",
         "css",
         "fish",
         "gitignore",
@@ -19,7 +19,14 @@ return {
         "rust",
         "scss",
         "sql",
-        "svelte",
+        "vim",
+        "lua",
+        "bash",
+        "yaml",
+        "markdown",
+        "markdown_inline",
+        "json",
+        "dockerfile",
       },
 
       -- matchup = {
