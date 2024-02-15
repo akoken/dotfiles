@@ -136,12 +136,6 @@ return {
         on_attach = on_attach,
       })
 
-      -- configure rust language server
-      lspconfig["rust_analyzer"].setup({
-        capabilities = capabilities,
-        on_attach = on_attach,
-      })
-
       -- configure docker server
       lspconfig["dockerls"].setup({
         capabilities = capabilities,
