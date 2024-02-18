@@ -5,7 +5,7 @@ alias gg="git-graph"
 alias v="nvim"
 alias la=tree
 alias cat=bat
-
+alias g=git
 # Dirs
 alias ..="cd .."
 alias ...="cd ../.."
