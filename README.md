@@ -1,6 +1,6 @@
 # dotfiles
 
-# Neovim
+# Neovim Setup
 
 ### Requirements
 
@@ -12,11 +12,11 @@
 - for [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) **_(optional)_**
   - **live grep**: [ripgrep](https://github.com/BurntSushi/ripgrep)
   - **find files**: [fd](https://github.com/sharkdp/fd)
-- [Solarized Osaka](https://github.com/craftzdog/solarized-osaka.nvim)
 
-![[]](/assets/nvim.png)
+### Preview
+![alt text](/assets/nvim.png)
 
-# Shell setup
+# Shell Setup
 
 - [Warp Terminal](https://warp.dev)
 - [Zsh](https://zsh.org/)
@@ -27,7 +27,7 @@
 - [ghq](https://github.com/x-motemen/ghq) - Local Git repository organizer
 - [fzf](https://github.com/PatrickF1/fzf.fish) - Interactive filtering
 
-# Tmux
+# Tmux Setup
 
 ### Requirements
 
@@ -49,3 +49,6 @@ Then install the plugins with the following command:
 ```bash
 CTRL + I
 ```
+
+### Preview
+![alt text](/assets/tmux.png)
