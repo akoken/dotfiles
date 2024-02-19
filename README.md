@@ -1,4 +1,6 @@
-# dotfiles
+# My Dotfiles
+
+> Still a WIP! Use at your own risk.
 
 # Neovim Setup
 
