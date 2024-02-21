@@ -210,4 +210,15 @@ return {
       require("telescope").load_extension("file_browser")
     end,
   },
+
+  -- find and replace
+  {
+    "nvim-pack/nvim-spectre",
+    event = "BufRead",
+  },
+
+  -- editor config support
+  {
+    "editorconfig/editorconfig-vim",
+  },
 }
