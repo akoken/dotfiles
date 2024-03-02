@@ -1,6 +1,6 @@
 [core]
-  excludesfile = ~/.gitignore
-  editor = nvim
+	excludesfile = ~/.gitignore
+	editor = nvim
   ignorecase = false
 [color]
   status = auto
@@ -11,15 +11,36 @@
   ui = auto
 [user]
 	name = Abdurrahman Alp Köken
-	email = <email>
+	email = abdurrahman@akoken.com
 [commit]
 	template = ~/.gitmessage.txt
 [pull]
 	rebase = true
 [rebase]
-	autoStash = true
+  autoStash = true
+[fetch]
+	prune = true
 [push]
-	autoSetupRemote = true
+  autoSetupRemote = true
+[hub]
+  protocol = https
+[github]
+	user = akoken
+[diff]
+  tool = nvimdiff
+[difftool "nvimdiff"]
+	cmd = nvim -d \"$LOCAL\" \"$REMOTE\"
+	path = 
+[mergetool "nvimdiff"]
+	cmd = nvim -d \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+	trustExitCode = true
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	required = true
+	process = git-lfs filter-process
+[rerere]
+	enabled = true
 [alias]
 
 # Show the working tree status
@@ -68,28 +89,12 @@ pf = push --force-with-lease
 f = fetch -p
 
 # discard changes
-res = "!f(){ git reset --hard; git clean -df; if [ -d ".git/rebase-apply" ] || [ -d ".git/rebase-merge" ]; then git rebase --abort; fi; }; f"
+res = "!f(){ git reset --hard; git clean -fdx; if [ -d ".git/rebase-apply" ] || [ -d ".git/rebase-merge" ]; then git rebase --abort; fi; }; f"
 
 # pretty log
 plog = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
 
 clsm = !git branch --merged | %{$_.trim()}  | ?{$_ -notmatch 'master' -and $_ -notmatch 'develop'} | %{git branch -d $_.trim()}
-  lol = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
 
-[hub]
-  protocol = https
-[github]
-	user = akoken
-[diff]
-  tool = nvimdiff
-[difftool "nvimdiff"]
-	cmd = nvim -d \"$LOCAL\" \"$REMOTE\"
-	path = 
-[mergetool "nvimdiff"]
-	cmd = nvim -d \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
-	trustExitCode = true
-[filter "lfs"]
-	clean = git-lfs clean -- %f
-	smudge = git-lfs smudge -- %f
-	required = true
-	process = git-lfs filter-process
+glog = !git log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+
