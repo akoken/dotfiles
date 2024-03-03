@@ -18,7 +18,7 @@ return {
       start_in_insert = true,
       terminal_mappings = true,
       -- direction = 'float',
-      shell = "pwsh.exe -NoLogo -NoProfile",
+      -- shell = "pwsh.exe -NoLogo -NoProfile",
       auto_scroll = true,
       -- persist_mode = true,
       persist_size = true,
