@@ -2,6 +2,16 @@
 
 > Still a WIP! Use at your own risk.
 
+# Homebrew
+
+```bash
+# Export packages
+brew leaves > leaves.txt
+
+# Install packages
+xargs brew install < leaves.txt
+```
+
 # Neovim Setup
 
 ### Requirements
@@ -16,6 +26,7 @@
   - **find files**: [fd](https://github.com/sharkdp/fd)
 
 ### Preview
+
 ![alt text](/assets/nvim.png)
 
 # Shell Setup
@@ -53,4 +64,6 @@ CTRL + I
 ```
 
 ### Preview
+
 ![alt text](/assets/tmux.png)
+
