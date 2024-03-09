@@ -1,7 +1,7 @@
 #!/bin/bash
 
-ALERT_IF_IN_NEXT_MINUTES=10
-ALERT_POPUP_BEFORE_SECONDS=10
+ALERT_IF_IN_NEXT_MINUTES=15
+ALERT_POPUP_BEFORE_SECONDS=60
 NERD_FONT_FREE="󱁕 "
 NERD_FONT_MEETING="󰤙"
 
@@ -18,7 +18,6 @@ get_attendees() {
 			--separateByDate \
 			--excludeEndDates \
 			--bullet "" \
-			--excludeCals "training,abdurrahman@akoken.com" \
 			eventsToday
 	)
 }
@@ -42,7 +41,6 @@ get_next_meeting() {
 		--excludeAllDayEvents \
 		--separateByDate \
 		--bullet "" \
-		--excludeCals "training,abdurrahman@akoken.com" \
 		eventsToday)
 }
 
@@ -59,7 +57,6 @@ get_next_next_meeting() {
 			--excludeAllDayEvents \
 			--separateByDate \
 			--bullet "" \
-			--excludeCals "training,abdurrahman@akoken.com" \
 			eventsFrom:"${end_timestamp}" to:"${tonight}"
 	)
 }
@@ -96,13 +93,12 @@ display_popup() {
 		--includeOnlyEventsFromNowOn \
 		--limitItems 1 \
 		--excludeAllDayEvents \
-		--excludeCals "training" \
 		eventsToday
 }
 
 print_tmux_status() {
 	if [[ $minutes_till_meeting -lt $ALERT_IF_IN_NEXT_MINUTES &&
-		$minutes_till_meeting -gt -60 ]]; then
+		$minutes_till_meeting -gt -5 ]]; then
 		echo "$NERD_FONT_MEETING \
 			$time $title ($minutes_till_meeting minutes)"
 	else
