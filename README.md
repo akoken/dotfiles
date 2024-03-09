@@ -39,6 +39,7 @@ xargs brew install < leaves.txt
 - [bat](https://github.com/sharkdp/bat) - `cat` replacement
 - [ghq](https://github.com/x-motemen/ghq) - Local Git repository organizer
 - [fzf](https://github.com/PatrickF1/fzf.fish) - Interactive filtering
+- [icalBuddy](https://formulae.brew.sh/formula/ical-buddy#default) for MacOS calendar
 
 # Tmux Setup
 
