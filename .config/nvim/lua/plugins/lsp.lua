@@ -31,7 +31,6 @@ return {
         ensure_installed = {
           "csharp_ls",
           "rust_analyzer",
-          "dockerls",
           "bashls",
           "tsserver",
           "html",
@@ -132,12 +131,6 @@ return {
 
       -- configure csharp language server
       lspconfig["csharp_ls"].setup({
-        capabilities = capabilities,
-        on_attach = on_attach,
-      })
-
-      -- configure docker server
-      lspconfig["dockerls"].setup({
         capabilities = capabilities,
         on_attach = on_attach,
       })
