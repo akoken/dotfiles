@@ -6,8 +6,14 @@ fd
 fzf
 git
 gnu-sed
+gpgme
+htop
+ical-buddy
 jq
 kind
+libmicrohttpd
+libpsl
+lzlib
 neovim
 node
 pnpm
@@ -19,3 +25,4 @@ tcpdump
 tmux
 zoxide
 zsh-async
+zstd
