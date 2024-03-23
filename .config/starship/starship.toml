@@ -8,6 +8,7 @@ $git_branch\
 $git_status\
 [→](fg:#FCA17D bg:#86BBD8)\
 $c\
+$dotnet\
 $elixir\
 $elm\
 $golang\
@@ -32,7 +33,7 @@ $time\
 show_always = true
 style_user = "bg:#9A348E"
 style_root = "bg:#9A348E"
-format = '[$user ]($style)'
+format = '[  $user ]($style)'
  
 [directory]
 style = "bg:#DA627D"
@@ -57,11 +58,16 @@ truncation_symbol = "…/"
 symbol = "© "
 style = "bg:#86BBD8"
 format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
+
+[dotnet]
+symbol = ""
+style = "bg:#86BBD8"
+format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
  
 [docker_context]
 symbol = "🐳 "
 style = "bg:#06969A"
-format = '[[ $symbol $context ](bg:#06969A)]($style) $path'
+format = '[[ $symbol $context ](bg:#06969A)]($style)'
  
 [elixir]
 symbol = "💧 "
@@ -74,16 +80,27 @@ style = "bg:#86BBD8"
 format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
  
 [git_branch]
-symbol = "☊"
+symbol = ""
 style = "bg:#FCA17D"
 format = '[[ $symbol $branch ](bg:#FCA17D)]($style)'
  
 [git_status]
-style = "bg:#FCA17D"
 format = '[[($all_status$ahead_behind )](bg:#FCA17D)]($style)'
+style = "bg:#FCA17D"
+conflicted = "🏳"
+up_to_date = ""
+untracked = " "
+ahead = "⇡${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+behind = "⇣${count}"
+stashed = " "
+modified = "! "
+staged = '[[+\($count\)](bg:#FCA17D)]($style) '
+renamed = "襁 "
+deleted = " "
  
 [golang]
-symbol = "🐹 "
+symbol = " "
 style = "bg:#86BBD8"
 format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
  
@@ -103,7 +120,7 @@ style = "bg:#86BBD8"
 format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
  
 [nodejs]
-symbol = "🔷 "
+symbol = "󰎙 "
 style = "bg:#86BBD8"
 format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
  
@@ -116,9 +133,18 @@ format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
 symbol = "🦀"
 style = "bg:#86BBD8"
 format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
+
+[helm]
+symbol = " "
+style = "bg:#86BBD8"
+format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
+
+[kubernetes]
+format = 'via [󱃾 $context\($namespace\)](bold purple) '
+disabled = false
  
 [time]
 disabled = false
 time_format = "%R" # Hour:Minute Format
 style = "bg:#33658A"
-format = '[[ 🤍 $time ](bg:#33658A)]($style)'
+format = '[[ 󰀠 $time ](bg:#33658A)]($style)'
