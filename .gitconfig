@@ -1,7 +1,23 @@
 [core]
-	excludesfile = ~/.gitignore
-	editor = nvim
+  excludesfile = ~/.gitignore
+  editor = nvim
   ignorecase = false
+  pager = delta
+  # Make `git rebase` safer on macOS.
+  # More info: <http://www.git-tower.com/blog/make-git-rebase-safe-on-osx/>
+  trustctime = false
+
+  # Speed up commands involving untracked files such as `git status`.
+  # https://git-scm.com/docs/git-update-index#_untracked_cache
+  untrackedCache = true
+
+[init]
+  defaultBranch = main
+
+[include]
+  path = ~/.config/delta/delta-themes.gitconfig
+
+
 [color]
   status = auto
   diff = auto
@@ -9,38 +25,67 @@
   interactive = auto
   grep = auto
   ui = auto
+
 [user]
-	name = Abdurrahman Alp Köken
-	email = abdurrahman@akoken.com
+  name = Abdurrahman Alp Köken
+  email = abdurrahman@akoken.com
+
 [commit]
-	template = ~/.gitmessage.txt
+  template = ~/.gitmessage.txt
+
 [pull]
-	rebase = true
+  rebase = true
+
 [rebase]
   autoStash = true
+
 [fetch]
-	prune = true
+  prune = true
+
 [push]
   autoSetupRemote = true
+
 [hub]
   protocol = https
+
 [github]
-	user = akoken
+  user = akoken
+
 [diff]
-  tool = nvimdiff
-[difftool "nvimdiff"]
-	cmd = nvim -d \"$LOCAL\" \"$REMOTE\"
-	path = 
+  colorMoved = default
+  navigate = true  # use n and N to move between diff sections
+  renames = copies # Detect copies as well as renames.
+
+[delta]
+  dark = true
+  true-color = always
+  side-by-side = true
+  line-numbers = true
+  features = gruvbox-dark
+
+[delta "decorations"]
+  commit-decoration-style = bold yellow box ul
+  file-style = bold yellow ul
+
+[interactive]
+  diffFilter = delta --color-only
+
+[merge]
+    conflictstyle = zdiff3
+
 [mergetool "nvimdiff"]
-	cmd = nvim -d \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
-	trustExitCode = true
+  cmd = nvim -d \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+  trustExitCode = true
+
 [filter "lfs"]
-	clean = git-lfs clean -- %f
-	smudge = git-lfs smudge -- %f
-	required = true
-	process = git-lfs filter-process
+  clean = git-lfs clean -- %f
+  smudge = git-lfs smudge -- %f
+  required = true
+  process = git-lfs filter-process
+
 [rerere]
-	enabled = true
+  enabled = true
+
 [alias]
 
 # Show the working tree status
