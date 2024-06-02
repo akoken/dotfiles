@@ -48,7 +48,7 @@ xargs brew install < leaves.txt
 - [fzf](https://github.com/junegunn/fzf) (specifically [fzf-tmux](https://github.com/junegunn/fzf#fzf-tmux-script))
 - [bat](https://github.com/sharkdp/bat)
 - [icalBuddy](https://formulae.brew.sh/formula/ical-buddy#default) for MacOS calendar
-- Optional: [zoxide](https://github.com/ajeetdsouza/zoxide)
+- Optional: [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
 
 ### Installation
 
