@@ -23,6 +23,7 @@ return {
 
     -- Add your own debuggers here
     'leoluz/nvim-dap-go',
+    'Cliffback/netcoredbg-macOS-arm64.nvim',
   },
   config = function()
     local dap = require 'dap'
@@ -87,5 +88,6 @@ return {
 
     -- Install golang specific config
     require('dap-go').setup()
+    require('netcoredbg-macOS-arm64').setup(require 'dap')
   end,
 }
