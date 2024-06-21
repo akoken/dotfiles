@@ -33,6 +33,7 @@ local wezterm = require("wezterm")
 local act = wezterm.action
 
 local config = {
+
 	background = {
 		w.get_wallpaper(wallpapers_glob),
 		b.get_background(dark_opacity, light_opacity),
