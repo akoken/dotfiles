@@ -86,8 +86,14 @@ zstyle ':completion:*' menu no
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
 zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'
 
+# Vim mode
+echo -ne '\e[5 q' # Use beam shape cursor on startup.
+
+preexec() { echo -ne '\e[5 q' ;} # Use beam shape cursor for each new prompt.
+
 # Shell integrations
 eval "$(fzf --zsh)"
-eval "$(starship init zsh)"
-export STARSHIP_CONFIG=~/.config/starship/starship.toml
+eval "$(oh-my-posh init zsh --config $HOME/.config/oh-my-posh/zen.toml)"
+#eval "$(starship init zsh)"
+#export STARSHIP_CONFIG=~/.config/starship/starship.toml
 eval "$(zoxide init --cmd cd zsh)"
