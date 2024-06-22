@@ -19,7 +19,7 @@ xargs brew install < leaves.txt
 - Neovim >= **0.9.0** (needs to be built with **LuaJIT**)
 - Git >= **2.19.0** (for partial clones support)
 - [LazyVim](https://www.lazyvim.org/)
-- [Nerd Font](https://www.nerdfonts.com/)(I use [Monaspace Neon](https://monaspace.githubnext.com) and CaskaydiaCove NF as fallback)
+- [Nerd Font](https://www.nerdfonts.com/)(I use [Monaspace Neon](https://monaspace.githubnext.com) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
 - a **C** compiler for `nvim-treesitter`. See [here](https://github.com/nvim-treesitter/nvim-treesitter#requirements)
 - for [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) **_(optional)_**
   - **live grep**: [ripgrep](https://github.com/BurntSushi/ripgrep)
@@ -34,7 +34,7 @@ xargs brew install < leaves.txt
 - [WezTerm](https://wezfurlong.org/wezterm/installation.html)
 - [Zsh](https://zsh.org/)
 - [Oh My Posh](https://ohmyposh.dev)
-- [Nerd fonts](https://nerdfonts.com)(I use [Monaspace Neon](https://monaspace.githubnext.com) and CaskaydiaCove NF as fallback)
+- [Nerd fonts](https://nerdfonts.com)(I use [Monaspace Neon](https://monaspace.githubnext.com) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
 - [Eza](https://github.com/eza-community/eza) - `ls` replacement
 - [bat](https://github.com/sharkdp/bat) - `cat` replacement
 - [ghq](https://github.com/x-motemen/ghq) - Local Git repository organizer
