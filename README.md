@@ -33,7 +33,7 @@ xargs brew install < leaves.txt
 
 - [WezTerm](https://wezfurlong.org/wezterm/installation.html)
 - [Zsh](https://zsh.org/)
-- [Starship](https://starship.rs)
+- [Oh My Posh](https://ohmyposh.dev)
 - [Nerd fonts](https://nerdfonts.com)(I use Monaspace Neon and CaskaydiaCove NF as fallback)
 - [Eza](https://github.com/eza-community/eza) - `ls` replacement
 - [bat](https://github.com/sharkdp/bat) - `cat` replacement
