@@ -9,9 +9,12 @@ fzf
 git
 git-delta
 gnu-sed
+go
 helm
 htop
+httpstat
 ical-buddy
+jandedobbeleer/oh-my-posh/oh-my-posh
 jq
 kind
 neovim
@@ -19,10 +22,10 @@ node
 pnpm
 powerlevel10k
 ripgrep
-spicetify-cli
 starship
 stow
 tcpdump
 tmux
 wget
+wireshark
 zoxide
