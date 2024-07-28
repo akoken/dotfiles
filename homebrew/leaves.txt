@@ -18,6 +18,7 @@ jandedobbeleer/oh-my-posh/oh-my-posh
 jq
 kind
 neovim
+nmap
 node
 pnpm
 powerlevel10k
