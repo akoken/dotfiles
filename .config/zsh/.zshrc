@@ -10,7 +10,7 @@ alias lt="eza --tree --level=2 --long --icons --git"
 alias gg="git-graph"
 alias v="nvim"
 alias la=tree
-alias cat=bat
+alias cat=bat --theme="gruvbox-dark"
 alias g=git
 
 alias tc='f() { tmux new -A -s $1 };f'
