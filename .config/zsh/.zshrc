@@ -10,8 +10,9 @@ alias lt="eza --tree --level=2 --long --icons --git"
 alias gg="git-graph"
 alias v="nvim"
 alias la=tree
-alias cat=bat --theme="gruvbox-dark"
+alias cat=bat --theme="Catppuccin Mocha"
 alias g=git
+alias nf=neofetch
 
 alias tc='f() { tmux new -A -s $1 };f'
 alias tl='f() { tmux list-sessions };f'
