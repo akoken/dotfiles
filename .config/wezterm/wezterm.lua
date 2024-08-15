@@ -11,20 +11,10 @@
 local dark_opacity = 0.85
 local light_opacity = 0.9
 
-local fonts = {
-	-- "CaskaydiaCove Nerd Font Mono",
-	--"Monaspace Argon",
-	-- "Monaspace Krypton",
-	"Monaspace Neon",
-	-- "Monaspace Radon",
-	-- "Monaspace Xenon",
-}
-
 local wallpapers_glob = "/Users/akoken/Documents/Wallpapers/active/**"
 
 local b = require("utils/background")
 local cs = require("utils/color_scheme")
-local f = require("utils/font")
 local h = require("utils/helpers")
 local k = require("utils/keys")
 local w = require("utils/wallpaper")
@@ -33,15 +23,13 @@ local wezterm = require("wezterm")
 local act = wezterm.action
 
 local config = {
-
 	background = {
 		w.get_wallpaper(wallpapers_glob),
 		b.get_background(dark_opacity, light_opacity),
 	},
 
-	font_size = 20,
-
 	line_height = 1.1,
+	font_size = 20,
 	font = wezterm.font_with_fallback({
 		"Monaspace Neon",
 		"CaskaydiaCove Nerd Font Mono",
@@ -59,7 +47,6 @@ local config = {
 	set_environment_variables = {
 		BAT_THEME = h.is_dark() and "Catppuccin Mocha" or "Catppuccin Latte",
 		LC_ALL = "en_US.UTF-8",
-		-- TODO: audit what other variables are needed
 	},
 
 	-- general options
@@ -77,12 +64,7 @@ local config = {
 		k.cmd_key("[", act.SendKey({ mods = "CTRL", key = "o" })),
 		k.cmd_key("]", act.SendKey({ mods = "CTRL", key = "i" })),
 		k.cmd_key("f", k.multiple_actions(":Grep")),
-		-- k.cmd_key("H", act.SendKey({ mods = "CTRL", key = "h" })),
 		k.cmd_key("i", k.multiple_actions(":SmartGoTo")),
-		-- k.cmd_key("J", act.SendKey({ mods = "CTRL", key = "j" })),
-		-- k.cmd_key("K", act.SendKey({ mods = "CTRL", key = "k" })),
-		-- k.cmd_key("K", act.SendKey({ mods = "CTRL", key = "k" })),
-		-- k.cmd_key("L", act.SendKey({ mods = "CTRL", key = "l" })),
 		k.cmd_key("O", k.multiple_actions(":GoToSymbol")),
 		k.cmd_key("P", k.multiple_actions(":GoToCommand")),
 		k.cmd_key("p", k.multiple_actions(":GoToFile")),
@@ -167,16 +149,6 @@ local config = {
 			}),
 		},
 
-		-- FIX: disable binding
-		-- {
-		-- 	mods = "CMD",
-		-- 	key = "`",
-		-- 	action = act.Multiple({
-		-- 		act.SendKey({ mods = "CTRL", key = "b" }),
-		-- 		act.SendKey({ key = "n" }),
-		-- 	}),
-		-- },
-
 		{
 			mods = "CMD",
 			key = "~",
@@ -185,12 +157,27 @@ local config = {
 				act.SendKey({ key = "p" }),
 			}),
 		},
+
+		-- Sends ESC + b and ESC + f sequence, which is used
+		-- for telling your shell to jump back/forward.
+		{
+			-- When the left arrow is pressed
+			key = "LeftArrow",
+			-- With the "Option" key modifier held down
+			mods = "OPT",
+			-- Perform this action, in this case - sending ESC + B
+			-- to the terminal
+			action = wezterm.action.SendString("\x1bb"),
+		},
+		{
+			key = "RightArrow",
+			mods = "OPT",
+			action = wezterm.action.SendString("\x1bf"),
+		},
 	},
 }
 
 wezterm.on("user-var-changed", function(window, pane, name, value)
-	-- local appearance = window:get_appearance()
-	-- local is_dark = appearance:find("Dark")
 	local overrides = window:get_config_overrides() or {}
 	wezterm.log_info("name", name)
 	wezterm.log_info("value", value)
