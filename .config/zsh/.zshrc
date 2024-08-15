@@ -4,6 +4,9 @@ else
     print "404: ~/.config/zsh/docker not found."
 fi
 
+bindkey "^[[D" beginning-of-line
+bindkey "^[[C" end-of-line
+
 # Aliases
 alias ls="eza -l --icons --git -a"
 alias lt="eza --tree --level=2 --long --icons --git"
