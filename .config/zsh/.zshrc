@@ -16,6 +16,8 @@ alias la=tree
 alias cat=bat --theme="Catppuccin Mocha"
 alias g=git
 alias nf=neofetch
+alias sf="fzf --preview='bat --color=always {}'"
+alias sft="fzf-tmux --preview='bat --color=always {}'"
 
 alias tc='f() { tmux new -A -s $1 };f'
 alias tl='f() { tmux list-sessions };f'
