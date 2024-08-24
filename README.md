@@ -19,7 +19,7 @@ xargs brew install < leaves.txt
 - Neovim >= **0.9.0** (needs to be built with **LuaJIT**)
 - Git >= **2.19.0** (for partial clones support)
 - [LazyVim](https://www.lazyvim.org/)
-- [Nerd Font](https://www.nerdfonts.com/)(I use [Monaspace Neon](https://monaspace.githubnext.com) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
+- [Nerd Font](https://www.nerdfonts.com/)(I use [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
 - a **C** compiler for `nvim-treesitter`. See [here](https://github.com/nvim-treesitter/nvim-treesitter#requirements)
 - for [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) **_(optional)_**
   - **live grep**: [ripgrep](https://github.com/BurntSushi/ripgrep)
@@ -34,7 +34,8 @@ xargs brew install < leaves.txt
 - [WezTerm](https://wezfurlong.org/wezterm/installation.html)
 - [Zsh](https://zsh.org/)
 - [Oh My Posh](https://ohmyposh.dev)
-- [Nerd fonts](https://nerdfonts.com)(I use [Monaspace Neon](https://monaspace.githubnext.com) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
+- [Nerd fonts](https://nerdfonts.com)(I use [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
+- [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
 - [Eza](https://github.com/eza-community/eza) - `ls` replacement
 - [bat](https://github.com/sharkdp/bat) - `cat` replacement
 - [ghq](https://github.com/x-motemen/ghq) - Local Git repository organizer
@@ -48,7 +49,6 @@ xargs brew install < leaves.txt
 - [fzf](https://github.com/junegunn/fzf) (specifically [fzf-tmux](https://github.com/junegunn/fzf#fzf-tmux-script))
 - [bat](https://github.com/sharkdp/bat)
 - [icalBuddy](https://formulae.brew.sh/formula/ical-buddy#default) for MacOS calendar
-- Optional: [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
 
 ### Installation
 
@@ -61,7 +61,7 @@ git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 Then install the plugins with the following command:
 
 ```bash
-CTRL + I
+CTRL^ + I
 ```
 
 ### Preview
