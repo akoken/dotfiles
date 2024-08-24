@@ -9,7 +9,7 @@ fzf
 git
 git-delta
 gnu-sed
-go
+go@1.22
 helm
 htop
 httpstat
@@ -17,11 +17,13 @@ ical-buddy
 jandedobbeleer/oh-my-posh/oh-my-posh
 jq
 kind
+neofetch
 neovim
 nmap
 node
 pnpm
 powerlevel10k
+ringohub/redis-cli/redis-cli
 ripgrep
 starship
 stow
