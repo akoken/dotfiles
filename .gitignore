@@ -357,3 +357,10 @@ MigrationBackup/
 
 # Others
 .\\packages/
+
+# Tmux Plugins
+**/tmux/plugins
+
+# Zsh Extensions
+**/zsh/.zcompdump
+
