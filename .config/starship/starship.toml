@@ -81,7 +81,7 @@ format = '[[ $symbol ($version) ](bg:#86BBD8)]($style)'
  
 [git_branch]
 symbol = ""
-style = "bg:#FCA17D"
+style = "bg:#FFFFFF"
 format = '[[ $symbol $branch ](bg:#FCA17D)]($style)'
  
 [git_status]
