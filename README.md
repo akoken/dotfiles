@@ -31,6 +31,14 @@ xargs brew install < leaves.txt
 
 # Shell Setup
 
+Create symlink dotfiles:
+
+```bash
+git clone https://github.com/akoken/dotfiles.git
+
+stow --adopt -d <path-to-cloned-dotfiles>/dotfiles -t ~/ .
+```
+
 - [WezTerm](https://wezfurlong.org/wezterm/installation.html)
 - [Zsh](https://zsh.org/)
 - [Oh My Posh](https://ohmyposh.dev)
