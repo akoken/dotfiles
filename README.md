@@ -36,7 +36,7 @@ Create symlink dotfiles:
 ```bash
 git clone https://github.com/akoken/dotfiles.git
 
-stow --adopt -d <path-to-cloned-dotfiles>/dotfiles -t ~/ .
+stow -d "../dotfiles" -t ~/ .
 ```
 
 - [WezTerm](https://wezfurlong.org/wezterm/installation.html)
