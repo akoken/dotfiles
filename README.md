@@ -31,7 +31,7 @@ xargs brew install < leaves.txt
 
 # Shell Setup
 
-Create symlink dotfiles:
+Create symlinks for dotfiles:
 
 ```bash
 git clone https://github.com/akoken/dotfiles.git
