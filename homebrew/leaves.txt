@@ -28,6 +28,7 @@ ripgrep
 starship
 stow
 tcpdump
+testssl
 tmux
 wget
 wireshark
