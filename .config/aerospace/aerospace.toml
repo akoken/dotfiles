@@ -102,22 +102,26 @@ alt-shift-l = 'move right'
 
 
 # See: https://nikitabobko.github.io/AeroSpace/commands#workspace
-alt-b = 'workspace B'
-alt-e = 'workspace E'
-alt-m = 'workspace M'
-alt-n = 'workspace N'
-alt-p = 'workspace P'
-alt-t = 'workspace T'
-alt-v = 'workspace V'
+alt-b = 'workspace B' # Browsers
+alt-e = 'workspace E' # Entertainment
+alt-c = 'workspace C' # Chat apps
+alt-d = 'workspace D' # Development
+alt-m = 'workspace M' # Mail
+alt-n = 'workspace N' # Notes
+alt-p = 'workspace P' # Productivity
+alt-t = 'workspace T' # Terminal
+alt-z = 'workspace Z' # Screen-sharing/Zoom
 
 # See: https://nikitabobko.github.io/AeroSpace/commands#move-node-to-workspace
 alt-shift-b = 'move-node-to-workspace B'
 alt-shift-e = 'move-node-to-workspace E'
+alt-shift-c = 'move-node-to-workspace C'
+alt-shift-d = 'move-node-to-workspace D'
 alt-shift-m = 'move-node-to-workspace M'
 alt-shift-n = 'move-node-to-workspace N'
 alt-shift-p = 'move-node-to-workspace P'
 alt-shift-t = 'move-node-to-workspace T'
-alt-shift-v = 'move-node-to-workspace V'
+alt-shift-z = 'move-node-to-workspace Z'
 
 alt-shift-f = 'fullscreen'
 
@@ -160,14 +164,72 @@ alt-shift-j = ['join-with down', 'mode main']
 alt-shift-k = ['join-with up', 'mode main']
 alt-shift-l = ['join-with right', 'mode main']
 
-[[on-window-detected]]
-if.app-id = 'com.github.wez.wezterm'
-run = "move-node-to-workspace T"
+# Event listeners
 
 [[on-window-detected]]
-if.app-id = 'com.google.Chrome'
+if.app-id = 'com.github.wez.wezterm'
+run = 'move-node-to-workspace T'
+
+[[on-window-detected]]
+if.app-id = 'com.apple.Safari'
 run = ['move-node-to-workspace B']
+
+[[on-window-detected]]
+if.app-id = 'org.mozilla.com.zen.browser'
+run = ['move-node-to-workspace E']
 
 [[on-window-detected]]
 if.app-id = 'com.apple.Music'
 run = ['move-node-to-workspace B']
+
+## Chat apps
+
+[[on-window-detected]]
+if.app-id = 'com.apple.MobileSMS'
+run = 'move-node-to-workspace P'
+
+[[on-window-detected]]
+if.app-id = 'com.hnc.Discord'
+run = 'move-node-to-workspace P'
+
+[[on-window-detected]]
+if.app-id = 'com.tinyspeck.slackmacgap'
+run = 'move-node-to-workspace P'
+
+## Development
+
+[[on-window-detected]]
+if.app-id = 'com.jetbrains.rustrover'
+run = 'move-node-to-workspace D'
+
+[[on-window-detected]]
+if.app-id = 'com.jetbrains.rider'
+run = 'move-node-to-workspace D'
+
+[[on-window-detected]]
+if.app-id = 'com.microsoft.VSCode'
+run = 'move-node-to-workspace D'
+
+## Floaters
+
+[[on-window-detected]]
+if.app-id = 'com.apple.finder'
+run = 'layout floating'
+
+[[on-window-detected]]
+if.app-id = 'com.1password.1password'
+run = 'layout floating'
+
+[[on-window-detected]]
+if.app-id = 'com.apple.FaceTime'
+run = 'layout floating'
+
+[[on-window-detected]]
+if.app-id = 'com.apple.ScreenContinuity'
+run = 'layout floating'
+
+## Productivity
+
+[[on-window-detected]]
+if.app-id = 'md.obsidian'
+run = 'move-node-to-workspace P'
