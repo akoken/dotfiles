@@ -26,23 +26,23 @@
   ui = auto
 
 [color "branch"]
-    current = green bold
-    local = green
-    remote = red bold
+  current = green bold
+  local = green
+  remote = red bold
 
 [color "diff"]
-    meta = yellow bold
-    frag = magenta bold
-    old = red bold
-    new = green bold
+  meta = yellow bold
+  frag = magenta bold
+  old = red bold
+  new = green bold
 
 [color "status"]
-    added = green bold
-    changed = yellow bold
-    untracked = red
+  added = green bold
+  changed = yellow bold
+  untracked = red
 
 [color "sh"]
-    branch = yellow
+  branch = yellow
 
 [user]
   name = Abdurrahman Alp Köken
@@ -63,6 +63,9 @@
 [push]
   autoSetupRemote = true
   default = current
+
+[rerere]
+  enabled = true
 
 [hub]
   protocol = https
@@ -85,12 +88,14 @@
 [delta "decorations"]
   commit-decoration-style = bold yellow box ul
   file-style = bold yellow ul
+  file-decoration-style = none
+  hunk-header-decoration-style = yellow box
 
 [interactive]
   diffFilter = delta --color-only
 
 [merge]
-    conflictstyle = zdiff3
+  conflictstyle = zdiff3
 
 [mergetool "nvimdiff"]
   cmd = nvim -d \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
@@ -101,9 +106,6 @@
   smudge = git-lfs smudge -- %f
   required = true
   process = git-lfs filter-process
-
-[rerere]
-  enabled = true
 
 [alias]
 
