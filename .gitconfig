@@ -17,7 +17,6 @@
 [include]
   path = ~/.config/delta/delta-themes.gitconfig
 
-
 [color]
   status = auto
   diff = auto
@@ -25,6 +24,25 @@
   interactive = auto
   grep = auto
   ui = auto
+
+[color "branch"]
+    current = green bold
+    local = green
+    remote = red bold
+
+[color "diff"]
+    meta = yellow bold
+    frag = magenta bold
+    old = red bold
+    new = green bold
+
+[color "status"]
+    added = green bold
+    changed = yellow bold
+    untracked = red
+
+[color "sh"]
+    branch = yellow
 
 [user]
   name = Abdurrahman Alp Köken
