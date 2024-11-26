@@ -109,7 +109,10 @@
 
 [alias]
 
-# Show the working tree status
+# list all aliases
+la = "!git config -l | grep alias | cut -c 7-"
+
+# show the working tree status
 s = status
 
 # status of commit
@@ -154,6 +157,12 @@ pf = push --force-with-lease
 # fetch from repo and prune any remote-tracking refs that no longer exist on remote
 f = fetch -p
 
+# undo latest commit
+undo = reset --mixed HEAD~1
+
+# show all deleted files in the repo
+deleted = "!git log --diff-filter=D --summary | grep delete"
+
 # discard changes
 res = "!f(){ git reset --hard; git clean -fdx; if [ -d ".git/rebase-apply" ] || [ -d ".git/rebase-merge" ]; then git rebase --abort; fi; }; f"
 
@@ -169,7 +178,8 @@ wtr = worktree remove
 # pretty log
 plog = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
 
-clsm = !git branch --merged | %{$_.trim()}  | ?{$_ -notmatch 'main' -and $_ -notmatch 'develop'} | %{git branch -d $_.trim()}
+# delete merged branches
+dmb = !git branch --merged | %{$_.trim()}  | ?{$_ -notmatch 'main' -and $_ -notmatch 'develop'} | %{git branch -d $_.trim()}
 
 glog = !git log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
 
