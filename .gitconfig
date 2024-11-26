@@ -62,6 +62,7 @@
 
 [push]
   autoSetupRemote = true
+  default = current
 
 [hub]
   protocol = https
