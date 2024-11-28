@@ -10,11 +10,11 @@ COLOR_YELLOW="\033[1;33m"
 COLOR_NONE="\033[0m"
 
 linkables=(
-   "zsh/.zshrc"
-   "zsh/.zshenv"
-   "zsh/.zprofile"
-   "zsh/.zsh_aliases"
-   "zsh/.zsh_functions"
+   #"zsh/.zshrc"
+   #"zsh/.zshenv"
+   #"zsh/.zprofile"
+   #"zsh/.zsh_aliases"
+   #"zsh/.zsh_functions"
   # "zsh/.zsh_prompt"
 )
 
@@ -239,7 +239,7 @@ setup_macos() {
     defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 
     echo "show hidden files by default"
-    defaults write com.apple.Finder AppleShowAllFiles -bool false
+    defaults write com.apple.Finder AppleShowAllFiles -bool true
 
     echo "only use UTF-8 in Terminal.app"
     defaults write com.apple.terminal StringEncodings -array 4
@@ -321,7 +321,7 @@ all)
   setup_macos
   ;;
 *)
-  echo -e $"\nUsage: $(basename "$0") {backup|link|git|homebrew|shell|terminfo|macos|all}\n"
+  echo -e $"\nUsage: $(basename "$0") {backup|link|git|homebrew|shell|macos|all}\n"
   exit 1
   ;;
 esac
