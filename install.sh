@@ -10,6 +10,9 @@ COLOR_YELLOW="\033[1;33m"
 COLOR_NONE="\033[0m"
 
 linkables=(
+  "git/.gitconfig"
+  "git/.gitignore"
+  "git/gitmessage.txt"
    #"zsh/.zshrc"
    #"zsh/.zshenv"
    #"zsh/.zprofile"
