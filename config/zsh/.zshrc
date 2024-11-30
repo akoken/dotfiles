@@ -126,8 +126,7 @@ eval "$(oh-my-posh init zsh --config $DOTFILES/config/oh-my-posh/zen.toml)"
 
 # prefer zoxide over z.sh
 if [[ -x "$(command -v zoxide)" ]]; then
-    eval "$(zoxide init zsh --hook pwd)"
-    #eval "$(zoxide init --cmd cd zsh)"
+    eval "$(zoxide init --cmd cd zsh)"
 else
   # source z.sh if it exists
   zpath="$(brew --prefix)/etc/profile.d/z.sh"
