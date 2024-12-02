@@ -1,5 +1,6 @@
 # My Dotfiles
 Welcome to my dotfiles repository! This contains the configuration files I use for my daily development workflow.
+
 > [!Note]
 >
 > This project is still a work in progress! Use at your own risk.
