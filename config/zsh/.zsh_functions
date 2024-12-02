@@ -1,3 +1,34 @@
+
+#!/usr/bin/env zsh
+#
+g() {
+  if [[ $# > 0 ]]; then
+      # if there are arguments, send them to git
+      git $@
+  else
+      # otherwise, run git status
+      git s
+  fi
+}
+
+last_modified() {
+  ls -lt $1 | head -n 2 | tail -n 1 | awk '{print $6, $7, $8}'
+}
+
+md() {
+  mkdir -p $1
+  cd $1
+}
+
+prepend_path() {
+  [[ ! -d "$1" ]] && return
+
+  path=(
+      $1
+      $path
+  )
+}
+
 docker() {
     case "$1" in
         "open")

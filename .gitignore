@@ -6,4 +6,7 @@
 
 # Zsh Extensions
 **/zsh/.zcompdump
+**/zsh/.zsh_history
+**/zsh/.zsh_sessions
 
+**/nvim/lazy-lock.json

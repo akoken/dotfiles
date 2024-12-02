@@ -10,11 +10,14 @@ COLOR_YELLOW="\033[1;33m"
 COLOR_NONE="\033[0m"
 
 linkables=(
-  # "zsh/.zshrc"
-  # "zsh/.zshenv"
-  # "zsh/.zprofile"
-  # "zsh/.zsh_aliases"
-  # "zsh/.zsh_functions"
+  "git/.gitconfig"
+  "git/.gitignore"
+  "git/gitmessage.txt"
+   #"zsh/.zshrc"
+   #"zsh/.zshenv"
+   #"zsh/.zprofile"
+   #"zsh/.zsh_aliases"
+   #"zsh/.zsh_functions"
   # "zsh/.zsh_prompt"
 )
 
@@ -216,12 +219,6 @@ setup_homebrew() {
   "$(brew --prefix)"/opt/fzf/install --key-bindings --completion --no-update-rc --no-bash --no-fish
 }
 
-fetch_catppuccin_theme() {
-  for palette in frappe latte macchiato mocha; do
-    curl -o "$DOTFILES/config/kitty/themes/catppuccin-$palette.conf" "https://raw.githubusercontent.com/catppuccin/kitty/main/$palette.conf"
-  done
-}
-
 setup_shell() {
   title "Configuring shell"
 
@@ -232,19 +229,9 @@ setup_shell() {
   fi
 
   if [[ "$SHELL" != "$zsh_path" ]]; then
-    chsh -s "$zsh_path"
+    sudo chsh -s $(which zsh) $(whoami)
     info "default shell changed to $zsh_path"
   fi
-}
-
-function setup_terminfo() {
-  title "Configuring terminfo"
-
-  info "adding tmux.terminfo"
-  tic -x "$DOTFILES/resources/tmux.terminfo"
-
-  info "adding xterm-256color-italic.terminfo"
-  tic -x "$DOTFILES/resources/xterm-256color-italic.terminfo"
 }
 
 setup_macos() {
@@ -255,7 +242,7 @@ setup_macos() {
     defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 
     echo "show hidden files by default"
-    defaults write com.apple.Finder AppleShowAllFiles -bool false
+    defaults write com.apple.Finder AppleShowAllFiles -bool true
 
     echo "only use UTF-8 in Terminal.app"
     defaults write com.apple.terminal StringEncodings -array 4
@@ -326,25 +313,18 @@ homebrew)
 shell)
   setup_shell
   ;;
-terminfo)
-  setup_terminfo
-  ;;
 macos)
   setup_macos
   ;;
-catppuccin)
-  fetch_catppuccin_theme
-  ;;
 all)
   setup_symlinks
-  setup_terminfo
   setup_homebrew
   setup_shell
   setup_git
   setup_macos
   ;;
 *)
-  echo -e $"\nUsage: $(basename "$0") {backup|link|git|homebrew|shell|terminfo|macos|all}\n"
+  echo -e $"\nUsage: $(basename "$0") {backup|link|git|homebrew|shell|macos|all}\n"
   exit 1
   ;;
 esac
