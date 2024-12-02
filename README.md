@@ -128,10 +128,6 @@ symlinked into the `~/.config/nvim` directory.
 On the first run, all required plugins should automatically installed by
 [lazy.nvim](https://github.com/folke/lazy.nvim), a plugin manager for neovim.
 
-All plugins are listed in [plugins.lua](./config/nvim/lua/plugins.lua). When a
-plugin is added, it will automatically be installed by lazy.nvim. To interface
-with lazy.nvim, simply run `:Lazy` from within vim.
-
 > [!Note]
 >
 > Plugins can be synced in a headless way from the command line using the `vimu`
