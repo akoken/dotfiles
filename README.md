@@ -58,19 +58,7 @@ Once Homebrew is installed, it runs brew bundle to install the packages listed i
 ./install.sh shell
 ```
 
-The `shell` command sets up the recommended shell configuration for the dotfiles
-setup. Specifically, it sets the shell to [zsh](https://www.zsh.org/) using the
-`chsh` command.
-
-### `terminfo`
-
-```bash
-./install.sh terminfo
-```
-
-This command uses `tic` to set up the terminfo, specifically to allow for
-_italics_ within the terminal. If you don't care about that, you can ignore this
-command.
+This command sets up your shell configuration. It specifically configures the shell to Zsh using the `chsh` command.
 
 ### `macos`
 
@@ -78,19 +66,16 @@ command.
 ./install.sh macos
 ```
 
-The `macos` command sets up macOS-specific configurations using the
-`defaults write` commands to change default values for macOS.
+This command applies macOS-specific settings using defaults write commands. It modifies various system preferences, including:
 
-- Finder: show all filename extensions
-- show hidden files by default
-- only use UTF-8 in Terminal.app
-- expand save dialog by default
-- Enable full keyboard access for all controls (e.g. enable Tab in modal
-  dialogs)
-- Enable subpixel font rendering on non-Apple LCDs
-- Show Path bar in Finder
-- Show Status bar in Finder
-- Enable Safari’s debug menu
+* Show all filename extensions in Finder
+* Show hidden files by default
+* Set UTF-8 encoding in Terminal.app
+* Expand save dialogs by default
+* Enable full keyboard access for all controls
+* Enable subpixel font rendering on non-Apple LCDs
+* Show the Path and Status bars in Finder
+* Enable Safari’s debug menu
 
 ### `all`
 
@@ -98,8 +83,7 @@ The `macos` command sets up macOS-specific configurations using the
 ./install.sh all
 ```
 
-This command runs all of the installation tasks described above, in full, with
-the exception of the `backup` script. You must run that one manually.
+This runs all the installation tasks mentioned above (except for backup, which must be run manually).
 
 ## ZSH Configuration
 
