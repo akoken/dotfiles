@@ -40,11 +40,7 @@ This command creates a backup of your current dotfiles (if any) in ~/.dotfiles-b
 ./install.sh link
 ```
 
-The `link` command will create
-[symbolic links](https://en.wikipedia.org/wiki/Symbolic_link) from the dotfiles
-directory into the `$HOME` directory, allowing for all of the configuration to
-_act_ as if it were there without being there, making it easier to maintain the
-dotfiles in isolation.
+This command creates symbolic links from the dotfiles directory to your home directory (`$HOME`). This allows you to keep the configurations in version control while using them in your actual environment.
 
 ### `homebrew`
 
@@ -52,15 +48,9 @@ dotfiles in isolation.
 ./install.sh homebrew
 ```
 
-The `homebrew` command sets up [homebrew](https://brew.sh/) by downloading and
-running the homebrew installers script. Homebrew is a macOS package manager, but
-it also work on linux via Linuxbrew. If the script detects that you're
-installing the dotfiles on linux, it will use that instead. For consistency
-between operating systems, linuxbrew is set up but you may want to consider an
-alternate package manager for your particular system.
+This command installs `Homebrew` (macOS/Linux package manager) by downloading and running the Homebrew installer script. If the script detects you're on Linux, it will use Linuxbrew instead.
 
-Once homebrew is installed, it executes the `brew bundle` command which will
-install the packages listed in the [Brewfile](./Brewfile).
+Once Homebrew is installed, it runs brew bundle to install the packages listed in the [Brewfile](./Brewfile).
 
 ### `shell`
 
