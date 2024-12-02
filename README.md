@@ -164,23 +164,19 @@ CTRL^ + I
 
 ## Docker Setup
 
-A Dockerfile exists in the repository as a testing ground for linux support. To
-set up the image, make sure you have Docker installed and then run the following
-command.
+A Dockerfile is provided to help test the dotfiles setup in a Linux environment. To build the Docker image:
 
 ```bash
 docker build -t dotfiles --force-rm  .
 ```
 
-This should create a `dotfiles` image which will set up the base environment
-with the dotfiles repo cloned. To run, execute the following command.
+This creates a dotfiles image with the repository cloned. To run the container:
 
 ```bash
 docker run -it --rm dotfiles
 ```
 
-This will open a bash shell in the container which can then be used to manually
-test the dotfiles installation process with linux.
+This opens a Bash shell in the container, allowing you to test the dotfiles installation process.
 
 ## Preferred Apps and Tools
 
@@ -188,11 +184,11 @@ I almost exclusively work on macOS, so this list will be specific to that
 operating system, but several of these reccomendations are also available,
 cross-platform.
 
-- [WezTerm](https://wezfurlong.org/wezterm/index.html) - A GPU-based terminal emulator
-- [Aerospace](https://github.com/nikitabobko/AeroSpace) - An i3-like tiling window manager for macOS.
-- [Raycast](https://raycast.com)
+- [WezTerm](https://wezfurlong.org/wezterm/index.html) - GPU-accelerated terminal emulator
+- [Aerospace](https://github.com/nikitabobko/AeroSpace) - i3-like tiling window manager for macOS
+- [Raycast](https://raycast.com) - MacOS productivity app
 - [Zsh](https://zsh.org/)
-- [Oh My Posh](https://ohmyposh.dev)
+- [Oh My Posh](https://ohmyposh.dev) - Cross-platform prompt theme engine
 - [Nerd fonts](https://nerdfonts.com)(I use [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
 - [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
 - [Eza](https://github.com/eza-community/eza) - `ls` replacement
