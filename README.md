@@ -99,13 +99,7 @@ following operations.
 
 ## Neovim Setup
 
-> [!Note]
->
-> This is no longer a vim setup. The configuration has been moved to be
-> Neovim-specific and (mostly) written in [Lua](https://www.lua.org/). `vim` is
-> also set up as an alias to `nvim` to help with muscle memory.
-
-The simplest way to install Neovim is to install it from homebrew.
+To install Neovim, use Homebrew:
 
 ```bash
 brew install neovim
