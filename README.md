@@ -1,55 +1,174 @@
 # My Dotfiles
-
+Welcome to my dotfiles. Here you will find my configuration files which I use for my development workflow in daily basis.
+> [!Note]
+>
 > Still a WIP! Use at your own risk.
-
-# Homebrew
-
-```bash
-# Export packages
-brew leaves > leaves.txt
-
-# Install packages
-xargs brew install < leaves.txt
-```
-
-# Neovim Setup
-
-### Requirements
-
-- Neovim >= **0.9.0** (needs to be built with **LuaJIT**)
-- Git >= **2.19.0** (for partial clones support)
-- [LazyVim](https://www.lazyvim.org/)
-- [Nerd Font](https://www.nerdfonts.com/)(I use [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
-- a **C** compiler for `nvim-treesitter`. See [here](https://github.com/nvim-treesitter/nvim-treesitter#requirements)
-- for [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) **_(optional)_**
-  - **live grep**: [ripgrep](https://github.com/BurntSushi/ripgrep)
-  - **find files**: [fd](https://github.com/sharkdp/fd)
-
-### Preview
 
 ![alt text](/assets/nvim.png)
 
-# Shell Setup
+# Setup
 
-Create symlinks for dotfiles:
+> [!Note]
+>
+> You need to install the XCode CLI tools for MacOS configuration.
 
 ```bash
-git clone https://github.com/akoken/dotfiles.git
+xcode-select --install
+```
+After cloning the repo, you can setup using one of the following command:
 
-stow -d "../dotfiles" -t ~/ .
+```bash
+./install .sh help
+Usage: install.sh {backup|link|homebrew|shell|macos|all}
 ```
 
-- [WezTerm](https://wezfurlong.org/wezterm/installation.html)
-- [Zsh](https://zsh.org/)
-- [Oh My Posh](https://ohmyposh.dev)
-- [Nerd fonts](https://nerdfonts.com)(I use [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
-- [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
-- [Eza](https://github.com/eza-community/eza) - `ls` replacement
-- [bat](https://github.com/sharkdp/bat) - `cat` replacement
-- [ghq](https://github.com/x-motemen/ghq) - Local Git repository organizer
-- [fzf](https://github.com/PatrickF1/fzf.fish) - Interactive filtering
+### `backup`
 
-# Tmux Setup
+```bash
+./install.sh backup
+```
+
+Create a backup of the current dotfiles (if any) into `~/.dotfiles-backup/`.
+This will scan for the existence of every file that is to be symlinked and will
+move them over to the backup directory. It will also do the same for vim setups,
+moving some files in the
+[XDG base directory](http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html),
+(`~/.config`).
+
+- `~/.config/nvim/` - The home of [neovim](https://neovim.io/) configuration
+- `~/.vim/` - The home of vim configuration
+- `~/.vimrc` - The main init file for vim
+
+### `link`
+
+```bash
+./install.sh link
+```
+
+The `link` command will create
+[symbolic links](https://en.wikipedia.org/wiki/Symbolic_link) from the dotfiles
+directory into the `$HOME` directory, allowing for all of the configuration to
+_act_ as if it were there without being there, making it easier to maintain the
+dotfiles in isolation.
+
+### `homebrew`
+
+```bash
+./install.sh homebrew
+```
+
+The `homebrew` command sets up [homebrew](https://brew.sh/) by downloading and
+running the homebrew installers script. Homebrew is a macOS package manager, but
+it also work on linux via Linuxbrew. If the script detects that you're
+installing the dotfiles on linux, it will use that instead. For consistency
+between operating systems, linuxbrew is set up but you may want to consider an
+alternate package manager for your particular system.
+
+Once homebrew is installed, it executes the `brew bundle` command which will
+install the packages listed in the [Brewfile](./Brewfile).
+
+### `shell`
+
+```bash
+./install.sh shell
+```
+
+The `shell` command sets up the recommended shell configuration for the dotfiles
+setup. Specifically, it sets the shell to [zsh](https://www.zsh.org/) using the
+`chsh` command.
+
+### `terminfo`
+
+```bash
+./install.sh terminfo
+```
+
+This command uses `tic` to set up the terminfo, specifically to allow for
+_italics_ within the terminal. If you don't care about that, you can ignore this
+command.
+
+### `macos`
+
+```bash
+./install.sh macos
+```
+
+The `macos` command sets up macOS-specific configurations using the
+`defaults write` commands to change default values for macOS.
+
+- Finder: show all filename extensions
+- show hidden files by default
+- only use UTF-8 in Terminal.app
+- expand save dialog by default
+- Enable full keyboard access for all controls (e.g. enable Tab in modal
+  dialogs)
+- Enable subpixel font rendering on non-Apple LCDs
+- Show Path bar in Finder
+- Show Status bar in Finder
+- Enable Safari’s debug menu
+
+### `all`
+
+```bash
+./install.sh all
+```
+
+This command runs all of the installation tasks described above, in full, with
+the exception of the `backup` script. You must run that one manually.
+
+## ZSH Configuration
+
+The prompt for ZSH is configured in the `cnofig/zsh/zshrc` file and performs the
+following operations.
+
+- Sets `EDITOR` to `nvim`
+- Recursively searches the `$DOTFILES/zsh` directory for any `.zsh` files and
+  sources them
+- Sources a `~/.localrc`, if available for configuration that is
+  machine-specific and/or should not ever be checked into git
+- Adds `~/bin` and `$DOTFILES/bin` to the `PATH`
+
+## Neovim Setup
+
+> [!Note]
+>
+> This is no longer a vim setup. The configuration has been moved to be
+> Neovim-specific and (mostly) written in [Lua](https://www.lua.org/). `vim` is
+> also set up as an alias to `nvim` to help with muscle memory.
+
+The simplest way to install Neovim is to install it from homebrew.
+
+```bash
+brew install neovim
+```
+
+However, it was likely installed already if you ran the `./install.sh brew`
+command provided in the dotfiles.
+
+All of the configuration for Neovim starts at `config/nvim/init.lua`, which is
+symlinked into the `~/.config/nvim` directory.
+
+> [!Warning]
+>
+> The first time you run `nvim` with this configuration, it will likely have a
+> lot of errors. This is because it is dependent on a number of plugins being
+> installed.
+
+### Installing plugins
+
+On the first run, all required plugins should automatically installed by
+[lazy.nvim](https://github.com/folke/lazy.nvim), a plugin manager for neovim.
+
+All plugins are listed in [plugins.lua](./config/nvim/lua/plugins.lua). When a
+plugin is added, it will automatically be installed by lazy.nvim. To interface
+with lazy.nvim, simply run `:Lazy` from within vim.
+
+> [!Note]
+>
+> Plugins can be synced in a headless way from the command line using the `vimu`
+> alias.
+
+## Tmux Setup
 
 ### Requirements
 
@@ -72,7 +191,42 @@ Then install the plugins with the following command:
 CTRL^ + I
 ```
 
-### Preview
-
 ![alt text](/assets/tmux.png)
 
+## Docker Setup
+
+A Dockerfile exists in the repository as a testing ground for linux support. To
+set up the image, make sure you have Docker installed and then run the following
+command.
+
+```bash
+docker build -t dotfiles --force-rm  .
+```
+
+This should create a `dotfiles` image which will set up the base environment
+with the dotfiles repo cloned. To run, execute the following command.
+
+```bash
+docker run -it --rm dotfiles
+```
+
+This will open a bash shell in the container which can then be used to manually
+test the dotfiles installation process with linux.
+
+## Preferred Apps and Tools
+
+I almost exclusively work on macOS, so this list will be specific to that
+operating system, but several of these reccomendations are also available,
+cross-platform.
+
+- [WezTerm](https://wezfurlong.org/wezterm/index.html) - A GPU-based terminal emulator
+- [Aerospace](https://github.com/nikitabobko/AeroSpace) - An i3-like tiling window manager for macOS.
+- [Raycast](https://raycast.com)
+- [Zsh](https://zsh.org/)
+- [Oh My Posh](https://ohmyposh.dev)
+- [Nerd fonts](https://nerdfonts.com)(I use [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
+- [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
+- [Eza](https://github.com/eza-community/eza) - `ls` replacement
+- [bat](https://github.com/sharkdp/bat) - `cat` replacement
+- [fzf](https://github.com/PatrickF1/fzf.fish) - Interactive filtering
+- [icalBuddy](https://formulae.brew.sh/formula/ical-buddy#default) for MacOS calendar
