@@ -1,26 +1,26 @@
 # My Dotfiles
-Welcome to my dotfiles. Here you will find my configuration files which I use for my development workflow in daily basis.
+Welcome to my dotfiles repository! This contains the configuration files I use for my daily development workflow.
 > [!Note]
 >
-> Still a WIP! Use at your own risk.
-
+> This project is still a work in progress! Use at your own risk.
 ![alt text](/assets/nvim.png)
 
 # Setup
 
 > [!Note]
 >
-> You need to install the XCode CLI tools for MacOS configuration.
+> You need to install the XCode CLI tools for macOS configuration.
 
 ```bash
 xcode-select --install
 ```
-After cloning the repo, you can setup using one of the following command:
+After cloning the repository, you can set up the dotfiles using the install.sh script. Run the script with one of the following commands:
 
 ```bash
 ./install .sh help
 Usage: install.sh {backup|link|homebrew|shell|macos|all}
 ```
+## Available Setup Options
 
 ### `backup`
 
@@ -28,12 +28,7 @@ Usage: install.sh {backup|link|homebrew|shell|macos|all}
 ./install.sh backup
 ```
 
-Create a backup of the current dotfiles (if any) into `~/.dotfiles-backup/`.
-This will scan for the existence of every file that is to be symlinked and will
-move them over to the backup directory. It will also do the same for vim setups,
-moving some files in the
-[XDG base directory](http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html),
-(`~/.config`).
+This command creates a backup of your current dotfiles (if any) in ~/.dotfiles-backup/. It scans for files that will be symlinked and moves them to the backup directory. It also handles vim/neovim setups, moving related files into the [XDG base directory](http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html), e.g., ~/.config.
 
 - `~/.config/nvim/` - The home of [neovim](https://neovim.io/) configuration
 - `~/.vim/` - The home of vim configuration
