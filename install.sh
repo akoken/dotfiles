@@ -114,7 +114,7 @@ setup_symlinks() {
       info "~${target#"$HOME"} already exists... Skipping."
     else
       info "Creating symlink for $file"
-      ln -s "$DOTFILES/$file" "$target"
+      ln -s "$DOTFILES/config/$file" "$target"
     fi
   done
 
