@@ -122,7 +122,7 @@ done
 
 # Shell integrations
 eval "$(fzf --zsh)"
-eval "$(oh-my-posh init zsh --config $DOTFILES/config/oh-my-posh/zen.toml)"
+eval "$(oh-my-posh init zsh --config $HOME/.config/oh-my-posh/zen.toml)"
 
 # prefer zoxide over z.sh
 if [[ -x "$(command -v zoxide)" ]]; then
