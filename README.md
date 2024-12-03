@@ -5,7 +5,7 @@ Welcome to my dotfiles repository! This contains the configuration files I use f
 >
 > This project is still a work in progress! Use at your own risk.
 
-![alt text](/assets/nvim.png)
+![alt text](/assets/preview.png)
 
 # Setup
 
