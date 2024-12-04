@@ -19,7 +19,7 @@ xcode-select --install
 After cloning the repository, you can set up the dotfiles using the install.sh script. Run the script with one of the following commands:
 
 ```bash
-./install .sh help
+./install.sh help
 Usage: install.sh {backup|link|homebrew|shell|macos|all}
 ```
 ## Available Setup Options
