@@ -176,8 +176,17 @@ wtl = worktree list
 # remove worktree
 wtr = worktree remove
 
+# enable automatic maintenance
+ms = maintenance start
+
+# run cleanup tasks immediately
+mr = maintenance run
+
 # pretty log
 plog = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
+
+# merge diff log
+mlog = !git log --remerge-diff --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
 
 # delete merged branches
 dmb = !git branch --merged | %{$_.trim()}  | ?{$_ -notmatch 'main' -and $_ -notmatch 'develop'} | %{git branch -d $_.trim()}
