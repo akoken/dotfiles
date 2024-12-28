@@ -130,7 +130,6 @@ setup_symlinks() {
     mkdir -p "$data_home"
   fi
 
-#  config_files=$(find "$DOTFILES/config" -maxdepth 1 2>/dev/null)
   config_files=$(find "$DOTFILES/config" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
   for config in $config_files; do
     target="$config_home/$(basename "$config")"
@@ -156,20 +155,20 @@ setup_symlinks() {
 
   # Create symlink for /bin folder
   echo -e
-  info "Creating symlink for /bin folder"
+  info "Creating symlink for /bin folder..."
   # Check if source directory exists
   if [ ! -d "$source_path" ]; then
-      info "Source directory $source_path does not exist!"
+      info "Source directory does not exist: $source_path"
       exit 1
   fi
 
   # Check if target already exists
   if [ -L "$target_path" ]; then
-      info "Symlink already exists... Skipping."
+      info "Symlink already exists at $target_path - Skipping."
       exit 0
   elif [ -e "$target_path" ]; then
       # If target exists but is not a symlink
-      echo "Error: $target_path already exists and is not a symlink! Skipping."
+      echo "Target path exists but is not a symlink: $target_path"
       exit 1
   fi
 
@@ -177,10 +176,10 @@ setup_symlinks() {
   ln -s "$source_path" "$target_path"
 
   if [ $? -eq 0 ]; then
-      echo "Symlink created successfully."
+    echo "Successfully created symlink: $target_path -> $source_path"
   else
-      echo "Error: Failed to create symlink."
-      exit 1
+    echo "Failed to create symlink: $target_path -> $source_path"
+    exit 1
   fi
 
 }
