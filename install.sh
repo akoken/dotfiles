@@ -148,6 +148,40 @@ setup_symlinks() {
   else
     info "~/.zshenv already exists... Skipping."
   fi
+
+  # Define source and target paths
+  source_path="$DOTFILES/bin"
+  target_path="$HOME/bin"
+
+  # Create symlink for /bin folder
+  echo -e
+  info "Creating symlink for /bin folder"
+  # Check if source directory exists
+  if [ ! -d "$source_path" ]; then
+      info "Source directory $source_path does not exist!"
+      exit 1
+  fi
+
+  # Check if target already exists
+  if [ -L "$target_path" ]; then
+      info "Symlink already exists... Skipping."
+      exit 0
+  elif [ -e "$target_path" ]; then
+      # If target exists but is not a symlink
+      echo "Error: $target_path already exists and is not a symlink! Skipping."
+      exit 1
+  fi
+
+  # Create symlink
+  ln -s "$source_path" "$target_path"
+
+  if [ $? -eq 0 ]; then
+      echo "Symlink created successfully."
+  else
+      echo "Error: Failed to create symlink."
+      exit 1
+  fi
+
 }
 
 copy() {
