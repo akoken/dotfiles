@@ -130,7 +130,8 @@ setup_symlinks() {
     mkdir -p "$data_home"
   fi
 
-  config_files=$(find "$DOTFILES/config" -maxdepth 1 2>/dev/null)
+#  config_files=$(find "$DOTFILES/config" -maxdepth 1 2>/dev/null)
+  config_files=$(find "$DOTFILES/config" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
   for config in $config_files; do
     target="$config_home/$(basename "$config")"
     if [ -e "$target" ]; then
