@@ -1,0 +1,38 @@
+# Fonts
+font-family = "Liga SFMono Nerd Font"
+font-family = "CaskaydiaCove Nerd Font Mono"
+font-size = 20
+cursor-color = #FFA500
+font-feature = +liga
+adjust-underline-position = 4
+
+# Mouse
+mouse-hide-while-typing = true
+
+# Theme
+theme = dark:vesper,light:catppuccin-latte
+cursor-invert-fg-bg = true
+
+# Keybindings
+keybind = ctrl+shift+x=toggle_quick_terminal
+
+# Window style
+macos-titlebar-style = hidden
+bold-is-bright = true
+background-opacity = 0.9
+background-blur-radius = 20
+window-decoration = false
+window-theme = auto
+window-padding-color = background
+window-padding-x = 2
+window-padding-y = 0
+window-padding-balance = false
+cursor-style = bar
+
+# Other
+copy-on-select = clipboard
+clipboard-read = allow
+clipboard-write = allow
+clipboard-trim-trailing-spaces = true
+quick-terminal-position = top
+shell-integration-features = cursor,sudo,no-title
