@@ -28,11 +28,16 @@ window-padding-x = 2
 window-padding-y = 0
 window-padding-balance = false
 cursor-style = bar
+working-directory = home
+window-inherit-working-directory = false
 
 # Other
+quick-terminal-position = top
+shell-integration = zsh
+shell-integration-features = cursor,sudo,no-title
+
+# Cursor
 copy-on-select = clipboard
 clipboard-read = allow
 clipboard-write = allow
 clipboard-trim-trailing-spaces = true
-quick-terminal-position = top
-shell-integration-features = cursor,sudo,no-title
