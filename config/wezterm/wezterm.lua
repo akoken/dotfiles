@@ -74,6 +74,11 @@ local config = {
 			mods = "OPT",
 			action = wezterm.action.SendString("\x1bf"),
 		},
+		{
+			key = "A",
+			mods = "CTRL|SHIFT",
+			action = wezterm.action.QuickSelect,
+		},
 	},
 }
 
