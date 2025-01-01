@@ -35,6 +35,9 @@ window-inherit-working-directory = false
 quick-terminal-position = top
 shell-integration = zsh
 shell-integration-features = cursor,sudo,no-title
+macos-icon = custom-style
+macos-icon-ghost-color = BCBEC4
+macos-icon-screen-color = 1E1F22
 
 # Cursor
 copy-on-select = clipboard
