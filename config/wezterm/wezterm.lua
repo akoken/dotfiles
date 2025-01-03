@@ -55,6 +55,7 @@ local config = {
 	window_close_confirmation = "NeverPrompt",
 	window_decorations = "RESIZE",
 	default_cursor_style = "SteadyBar",
+	max_fps = 120,
 
 	-- keys
 	keys = {
