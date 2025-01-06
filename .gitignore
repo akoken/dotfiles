@@ -9,5 +9,5 @@
 **/zsh/.zsh_history
 **/zsh/.zsh_sessions
 
-**/nvim/lazy-lock.json
+config/nvim/lazy-lock.json
 .bak
