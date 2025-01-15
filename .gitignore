@@ -6,6 +6,7 @@
 
 # Zsh Extensions
 **/zsh/.zcompdump
+**/zsh/.zcompcache
 **/zsh/.zsh_history
 **/zsh/.zsh_sessions
 
