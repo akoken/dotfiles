@@ -14,6 +14,8 @@ alias grep='grep --color=auto'
 alias df='df -h' # disk free, in Gigabytes, not bytes
 alias du='du -h -c' # calculate disk usage for a folder
 alias cl='clear'
+alias bo='brew outdated'
+alias bu='brew upgrade'
 
 alias lpath='echo $PATH | tr ":" "\n"' # list the PATH separated by new lines
 
