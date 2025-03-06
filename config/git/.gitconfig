@@ -1,6 +1,6 @@
 [core]
   excludesfile = ~/.gitignore
-  editor = nvim
+  editor = nvim -f
   ignorecase = false
   pager = delta
   # Make `git rebase` safer on macOS.
