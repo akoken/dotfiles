@@ -14,8 +14,17 @@
 [init]
   defaultBranch = main
 
+[branch]
+  sort = -committerdate
+
+[tag]
+  sort = version:refname
+
 [include]
   path = ~/.config/delta/delta-themes.gitconfig
+
+[column]
+  ui = auto
 
 [color]
   status = auto
@@ -50,6 +59,7 @@
 
 [commit]
   template = ~/.gitmessage.txt
+  verbose = true
 
 [pull]
   rebase = true
@@ -60,24 +70,34 @@
 
 [fetch]
   prune = true
+  pruneTags = true
+  all = true
 
 [push]
   autoSetupRemote = true
-  default = current
+  default = simple
+  autoSetupRemote = true
+  followTags = true
 
 [rerere]
   enabled = true
+  autoupdate = true
 
 [hub]
   protocol = https
+
+[help]
+  autocorrect = prompt
 
 [github]
   user = akoken
 
 [diff]
-  colorMoved = default
   navigate = true  # use n and N to move between diff sections
   renames = copies # Detect copies as well as renames.
+  algorithm = histogram
+  colorMoved = plain
+  mnemonicPrefix = true
 
 [delta]
   dark = true
