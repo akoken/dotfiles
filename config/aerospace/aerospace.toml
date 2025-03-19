@@ -244,4 +244,4 @@ run = 'move-node-to-workspace M'
 
 [[on-window-detected]]
 if.app-id = 'md.obsidian'
-run = 'move-node-to-workspace P'
+run = 'move-node-to-workspace N'
