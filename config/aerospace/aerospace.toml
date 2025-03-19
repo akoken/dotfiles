@@ -171,11 +171,15 @@ if.app-id = 'com.github.wez.wezterm'
 run = 'move-node-to-workspace T'
 
 [[on-window-detected]]
+if.app-id = 'com.mitchellh.ghostty'
+run = 'move-node-to-workspace T'
+
+[[on-window-detected]]
 if.app-id = 'com.apple.Safari'
 run = ['move-node-to-workspace B']
 
 [[on-window-detected]]
-if.app-id = 'org.mozilla.com.zen.browser'
+if.app-id = 'app.zen-browser.zen'
 run = ['move-node-to-workspace E']
 
 [[on-window-detected]]
@@ -208,6 +212,10 @@ run = 'move-node-to-workspace D'
 
 [[on-window-detected]]
 if.app-id = 'com.microsoft.VSCode'
+run = 'move-node-to-workspace D'
+
+[[on-window-detected]]
+if.app-id = 'com.todesktop.230313mzl4w4u92'
 run = 'move-node-to-workspace D'
 
 ## Floaters
