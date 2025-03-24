@@ -202,6 +202,15 @@ ms = maintenance start
 # run cleanup tasks immediately
 mr = maintenance run
 
+# show diff
+d = diff
+
+# show diff staged
+ds = diff --staged
+
+#show word diff
+dw = diff --word-diff
+
 # pretty log
 plog = !git log --pretty=format:\"%C(magenta)%h%Creset -%C(red)%d%Creset %s %C(dim green)(%cr) [%an]\" --abbrev-commit -30
 
