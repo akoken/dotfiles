@@ -14,7 +14,21 @@ return {
         }
       end,
       formatters_by_ft = {
+        css = { 'prettierd' },
+        html = { 'prettierd' },
+        javascript = { 'prettierd' },
+        json = { 'prettierd' },
+        jsonc = { 'prettierd' },
         lua = { 'stylua' },
+        sh = { 'shfmt', 'shellharden' },
+        bash = { 'shfmt', 'shellharden' },
+        markdown = { 'cbfmt', 'prettierd', 'markdownlint' },
+        go = { 'goimports', 'gofumpt' }, -- gofmt, gomodifytags
+        templ = {
+          'gofumpt',
+          'templ',
+          'injected',
+        },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
         --
