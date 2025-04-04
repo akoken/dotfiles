@@ -8,7 +8,7 @@ vim.g.loaded_netrwPlugin = 1
 vim.opt.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.opt.relativenumber = true
+vim.opt.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.opt.mouse = 'a'
@@ -48,6 +48,10 @@ vim.opt.splitbelow = true
 -- Sets how neovim will display certain whitespace characters in the editor.
 --  See `:help 'list'`
 --  and `:help 'listchars'`
+vim.opt.tabstop = 4 -- Width of tab character
+vim.opt.softtabstop = 4 -- Fine tunes amount of whitespace to add
+vim.opt.shiftwidth = 4 -- Width for autoindents
+vim.opt.expandtab = false -- Use tabs, not spaces (set to true for spaces)
 vim.opt.list = true
 vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
 
