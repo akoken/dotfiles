@@ -23,6 +23,7 @@ return {
         sh = { 'shfmt', 'shellharden' },
         bash = { 'shfmt', 'shellharden' },
         markdown = { 'cbfmt', 'prettierd', 'markdownlint' },
+        rust = { 'rustfmt' },
         go = { 'goimports', 'gofumpt' }, -- gofmt, gomodifytags
         templ = {
           'gofumpt',
