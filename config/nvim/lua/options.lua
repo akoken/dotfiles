@@ -52,8 +52,8 @@ vim.opt.tabstop = 4 -- Width of tab character
 vim.opt.softtabstop = 4 -- Fine tunes amount of whitespace to add
 vim.opt.shiftwidth = 4 -- Width for autoindents
 vim.opt.expandtab = false -- Use tabs, not spaces (set to true for spaces)
-vim.opt.list = true
-vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
+--vim.opt.list = true
+--vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
 
 -- Preview substitutions live, as you type!
 vim.opt.inccommand = 'split'
