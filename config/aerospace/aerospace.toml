@@ -183,6 +183,10 @@ if.app-id = 'app.zen-browser.zen'
 run = ['move-node-to-workspace E']
 
 [[on-window-detected]]
+if.app-id = 'app.brave.Browser'
+run = ['move-node-to-workspace C']
+
+[[on-window-detected]]
 if.app-id = 'com.apple.Music'
 run = ['move-node-to-workspace B']
 
