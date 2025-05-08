@@ -49,4 +49,25 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   end,
 })
 
+-- copy everything between { and } including the brackets
+-- p puts text after the cursor,
+-- P puts text before the cursor.
+vim.keymap.set('n', 'YY', 'va{Vy')
+
+-- Select all
+vim.keymap.set('n', '<C-a>', 'ggVG')
+
+-- copy everything between { and } including the brackets
+-- p puts text after the cursor,
+-- P puts text before the cursor.
+vim.keymap.set('n', 'YY', 'va{Vy')
+
+-- Move selected line / block of text in visual mode
+vim.keymap.set('v', 'J', ":m '>+1<CR>gv=gv")
+vim.keymap.set('v', 'K', ":m '<-2<CR>gv=gv")
+
+-- better indenting
+vim.keymap.set('v', '<', '<gv')
+vim.keymap.set('v', '>', '>gv')
+
 -- vim: ts=2 sts=2 sw=2 et
