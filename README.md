@@ -89,7 +89,7 @@ This runs all the installation tasks mentioned above (except for backup, which m
 
 ## ZSH Configuration
 
-The prompt for ZSH is configured in the `cnofig/zsh/zshrc` file and performs the
+The prompt for ZSH is configured in the `config/zsh/zshrc` file and performs the
 following operations.
 
 - Sets `EDITOR` to `nvim`
