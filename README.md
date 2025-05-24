@@ -177,9 +177,9 @@ operating system, but several of these reccomendations are also available,
 cross-platform.
 
 - [WezTerm](https://wezfurlong.org/wezterm/index.html) - GPU-accelerated terminal emulator
-- [Aerospace](https://github.com/nikitabobko/AeroSpace) - i3-like tiling window manager for macOS
+- [Aerospace](https://github.com/nikitabobko/AeroSpace) - Tiling window manager for macOS
 - [Raycast](https://raycast.com) - MacOS productivity app
-- [Zsh](https://zsh.org/)
+- [Zsh](https://zsh.org/) - Shell
 - [Oh My Posh](https://ohmyposh.dev) - Cross-platform prompt theme engine
 - [Nerd fonts](https://nerdfonts.com)(I use [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) and [CaskaydiaCove NF](https://www.nerdfonts.com/font-downloads) as fallback)
 - [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
