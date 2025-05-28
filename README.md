@@ -126,7 +126,7 @@ On the first run, all required plugins should automatically installed by
 
 > [!Note]
 >
-> Plugins can be synced in a headless way from the command line using the `vimu`
+> Plugins can be synced in a headless way from the command line using the `vu`
 > alias.
 
 ## Tmux Setup
