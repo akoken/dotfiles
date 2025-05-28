@@ -52,5 +52,7 @@ alias tls='f() { tmux list-sessions };f'
 alias ta='f() { tmux attach -t "$1" };f'
 alias tk='f() { tmux kill-session -t $1 };f'
 
-# use nvim, but don't make me think about it
-alias v="nvim"
+if [[ -n "$(command -v nvim)" ]]; then
+    alias v="nvim"
+    alias vu="nvim --headless \"+Lazy! sync\" +qa"
+fi
