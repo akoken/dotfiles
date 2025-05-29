@@ -48,6 +48,7 @@ local config = {
 	},
 
 	-- general options
+	front_end = "WebGpu",
 	adjust_window_size_when_changing_font_size = false,
 	debug_key_events = false,
 	enable_tab_bar = false,
@@ -56,6 +57,7 @@ local config = {
 	window_decorations = "RESIZE",
 	default_cursor_style = "SteadyBar",
 	max_fps = 120,
+	animation_fps = 120,
 
 	-- keys
 	keys = {
