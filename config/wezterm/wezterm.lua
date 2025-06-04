@@ -28,6 +28,7 @@ local config = {
 	line_height = 1.1,
 	font_size = 20,
 	font = wezterm.font_with_fallback({
+		"Cartograph CF",
 		"Liga SFMono Nerd Font",
 		"Monaspace Neon",
 		"CaskaydiaCove Nerd Font Mono",
