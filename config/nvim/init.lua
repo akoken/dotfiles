@@ -107,3 +107,6 @@ require 'lazy-plugins'
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
+
+-- Custom Macros --
+vim.fn.setreg('l', 'yofmt.Prinfln(fmt.Sprint""P<80>kb^[Pa:^[la,^[p')
