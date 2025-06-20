@@ -109,4 +109,11 @@ require 'lazy-plugins'
 -- vim: ts=2 sts=2 sw=2 et
 
 -- Custom Macros --
-vim.fn.setreg('l', 'yofmt.Prinfln(fmt.Sprint""P<80>kb^[Pa:^[la,^[p')
+vim.api.nvim_create_augroup('GoPrint', { clear = true })
+vim.api.nvim_create_autocmd('FileType', {
+  group = 'GoPrint',
+  pattern = 'go',
+  callback = function()
+    vim.fn.setreg('l', 'yofmt.Prinfln(fmt.Sprint""P<80>kb^[Pa:^[la,^[p')
+  end,
+})
