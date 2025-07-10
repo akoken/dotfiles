@@ -131,7 +131,7 @@ return {
       --  So, we create new capabilities with nvim cmp, and then broadcast that to the servers.
       local original_capabilities = vim.lsp.protocol.make_client_capabilities()
       local capabilities = require('blink.cmp').get_lsp_capabilities(original_capabilities)
-
+      local pid = vim.fn.getpid()
       local util = require 'lspconfig/util'
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
@@ -267,7 +267,12 @@ return {
             },
           },
         },
-        omnisharp = {},
+        omnisharp = {
+          cmd = { 'omnisharp', '--languageserver', '--hostPID', tostring(pid) },
+          on_attach = vim.lsp.on_attach,
+          on_init = vim.lsp.on_init,
+          capabilities = vim.lsp.capabilities,
+        },
       }
 
       -- Ensure the servers and tools above are installed
