@@ -8,7 +8,7 @@
 -- A GPU-accelerated cross-platform terminal emulator
 -- https://wezfurlong.org/wezterm/
 
-local dark_opacity = 0.85
+local dark_opacity = 0.9
 local light_opacity = 0.9
 
 local wallpapers_glob = "/Users/akoken/Documents/Wallpapers/active/**"
