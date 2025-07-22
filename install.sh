@@ -293,26 +293,36 @@ setup_macos() {
     echo "Enable subpixel font rendering on non-Apple LCDs"
     defaults write NSGlobalDomain AppleFontSmoothing -int 2
 
-    #echo "Use current directory as default search scope in Finder"
-    #defaults write com.apple.finder FXDefaultSearchScope -string "SCcf"
-
     echo "Show Path bar in Finder"
     defaults write com.apple.finder ShowPathbar -bool true
 
     echo "Show Status bar in Finder"
     defaults write com.apple.finder ShowStatusBar -bool true
 
-    #echo "Disable press-and-hold for keys in favor of key repeat"
-    #defaults write NSGlobalDomain ApplePressAndHoldEnabled -bool false
+    echo "the default Finder view to list view"
+    defaults write com.apple.finder FXPreferredViewStyle -string "Nlsv"
+    
+    echo "default list view settings for new folders"
+    defaults write com.apple.finder FK_StandardViewSettings -dict-add ListViewSettings '{ "columns" = ( { "ascending" = 1; "identifier" = "name"; "visible" = 1; "width" = 300; }, { "ascending" = 0; "identifier" = "dateModified"; "visible" = 1; "width" = 181; }, { "ascending" = 0; "identifier" = "size"; "visible" = 1; "width" = 97; } ); "iconSize" = 16; "showIconPreview" = 0; "sortColumn" = "name"; "textSize" = 12; "useRelativeDates" = 1; }'
+    
+    echo "existing folder view settings to force use of default settings"
+    defaults delete com.apple.finder FXInfoPanesExpanded 2>/dev/null || true
+    defaults delete com.apple.finder FXDesktopVolumePositions 2>/dev/null || true
+    
+    echo "Set list view for all view types"
+    defaults write com.apple.finder FK_StandardViewSettings -dict-add ExtendedListViewSettings '{ "columns" = ( { "ascending" = 1; "identifier" = "name"; "visible" = 1; "width" = 300; }, { "ascending" = 0; "identifier" = "dateModified"; "visible" = 1; "width" = 181; }, { "ascending" = 0; "identifier" = "size"; "visible" = 1; "width" = 97; } ); "iconSize" = 16; "showIconPreview" = 0; "sortColumn" = "name"; "textSize" = 12; "useRelativeDates" = 1; }'
+    
+    echo "default search scope to the current folder"
+    defaults write com.apple.finder FXDefaultSearchScope -string "SCcf"
 
-    #echo "Set a blazingly fast keyboard repeat rate"
-    #defaults write NSGlobalDomain KeyRepeat -int 1
+    echo "trash items older than 30 days"
+    defaults write com.apple.finder "FXRemoveOldTrashItems" -bool "true"
 
-    #echo "Set a shorter Delay until key repeat"
-    #defaults write NSGlobalDomain InitialKeyRepeat -int 15
+    echo "Remove .DS_Store files to reset folder view settings"
+    find ~ -name ".DS_Store" -type f -delete 2>/dev/null || true
 
-    #echo "Enable tap to click (Trackpad)"
-    #defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool true
+    echo "Show all filename extensions"
+    defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 
     echo "Enable Safari’s debug menu"
     defaults write com.apple.Safari IncludeInternalDebugMenu -bool true
