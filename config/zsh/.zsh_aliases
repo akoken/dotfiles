@@ -43,6 +43,7 @@ alias gg="git-graph"
 
 alias cat=bat --theme="Catppuccin Mocha"
 alias nf=neofetch
+alias curl="/opt/homebrew/opt/curl/bin/curl"
 alias sf="fzf --preview='bat --color=always {}'"
 alias sft="fzf-tmux --preview='bat --color=always {}'"
 
