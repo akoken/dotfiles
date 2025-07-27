@@ -70,4 +70,9 @@ vim.keymap.set('v', 'K', ":m '<-2<CR>gv=gv")
 vim.keymap.set('v', '<', '<gv')
 vim.keymap.set('v', '>', '>gv')
 
+-- use gh to move to the beginning of the line in normal mode
+-- use gl to move to the end of the line in normal mode
+vim.keymap.set({ 'n', 'v' }, 'gh', '^', { desc = '[P]Go to the beginning line' })
+vim.keymap.set({ 'n', 'v' }, 'gl', '$', { desc = '[P]go to the end of the line' })
+
 -- vim: ts=2 sts=2 sw=2 et
