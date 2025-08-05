@@ -69,4 +69,6 @@ if vim.fn.has 'termguicolors' == 1 then
   --[[ vim.t_8b = "[[48;2;%lu;%lu;%lum" ]]
   vim.opt.termguicolors = true
 end
+
+vim.opt.winborder = 'rounded'
 -- vim: ts=2 sts=2 sw=2 et
