@@ -17,6 +17,10 @@ alias cl='clear'
 alias bo='brew outdated'
 alias bu='brew upgrade'
 
+# Wireguard
+alias vpu='sudo wg-quick up wg0'
+alias vpd='sudo wg-quick down wg0'
+
 alias lpath='echo $PATH | tr ":" "\n"' # list the PATH separated by new lines
 
 # Recursively delete `.DS_Store` files
