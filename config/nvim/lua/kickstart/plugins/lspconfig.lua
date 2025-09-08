@@ -1,4 +1,32 @@
 return {
+  {
+    'williamboman/mason.nvim',
+    opts = {
+      registries = {
+        'github:mason-org/mason-registry',
+        'github:Crashdummyy/mason-registry',
+      },
+      ensure_installed = {
+        'lua-language-server',
+        'xmlformatter',
+        'csharpier',
+        'prettier',
+        'stylua',
+        'html-lsp',
+        'json-lsp',
+        'rust-analyzer',
+        'codelldb',
+        'delve',
+        'gopls',
+
+        -- !
+        'roslyn',
+        'rzls',
+        -- "csharp-language-server",
+        -- "omnisharp",
+      },
+    },
+  },
   { -- LSP Configuration & Plugins
     'neovim/nvim-lspconfig',
     --opts = {
@@ -125,6 +153,7 @@ return {
         end,
       })
 
+      vim.lsp.config('roslyn', {})
       -- LSP servers and clients are able to communicate to each other what features they support.
       --  By default, Neovim doesn't support everything that is in the LSP specification.
       --  When you add nvim-cmp, luasnip, etc. Neovim now has *more* capabilities.
@@ -267,12 +296,12 @@ return {
             },
           },
         },
-        omnisharp = {
-          cmd = { 'omnisharp', '--languageserver', '--hostPID', tostring(pid) },
-          on_attach = vim.lsp.on_attach,
-          on_init = vim.lsp.on_init,
-          capabilities = vim.lsp.capabilities,
-        },
+        --omnisharp = {
+        -- cmd = { 'omnisharp', '--languageserver', '--hostPID', tostring(pid) },
+        --on_attach = vim.lsp.on_attach,
+        --on_init = vim.lsp.on_init,
+        --capabilities = vim.lsp.capabilities,
+        --        },
       }
 
       -- Ensure the servers and tools above are installed
