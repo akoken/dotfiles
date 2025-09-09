@@ -92,10 +92,23 @@ return {
             vim.keymap.set('n', keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
           end
 
+          -- Smart goto functions that avoid deprecation warnings
+          local function smart_goto_definition()
+            -- Check if we can get multiple results
+            local clients = vim.lsp.get_clients { bufnr = 0 }
+
+            -- Use telescope if multiple clients might return results, otherwise use native
+            if #clients > 1 then
+              require('telescope.builtin').lsp_definitions()
+            else
+              vim.lsp.buf.definition()
+            end
+          end
+
           -- Jump to the definition of the word under your cursor.
           --  This is where a variable was first declared, or where a function is defined, etc.
           --  To jump back, press <C-t>.
-          map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
+          map('gd', smart_goto_definition, '[G]oto [D]efinition')
 
           -- Find references for the word under your cursor.
           map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
