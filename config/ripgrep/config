@@ -1,0 +1,7 @@
+## Ignore specific directories
+--glob=!.git/
+--glob=!node_modules/
+--glob=!obj/
+
+## Limit search depth
+--max-depth=3
