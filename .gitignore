@@ -11,4 +11,5 @@
 **/zsh/.zsh_sessions
 
 config/nvim/lazy-lock.json
+config/.copilot/config.json
 .bak
