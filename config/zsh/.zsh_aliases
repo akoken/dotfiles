@@ -16,6 +16,7 @@ alias du='du -h -c' # calculate disk usage for a folder
 alias cl='clear'
 alias bo='brew outdated'
 alias bu='brew upgrade'
+alias cop='copilot --banner'
 
 # Wireguard
 alias wgu='sudo wg-quick up wg0'
