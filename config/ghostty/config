@@ -22,6 +22,7 @@ keybind = ctrl+shift+x=toggle_quick_terminal
 
 # Window style
 macos-titlebar-style = hidden
+background-blur = macos-glass-clear
 bold-is-bright = true
 background-opacity = 0.9
 background-blur-radius = 20
