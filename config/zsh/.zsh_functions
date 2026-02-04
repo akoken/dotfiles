@@ -59,3 +59,9 @@ docker() {
             ;;
     esac
 }
+
+
+coh() { copilot --model claude-haiku-4.5 --allow-all-tools -p "$@"; }
+
+coo() { copilot --model claude-haiku-4.5 --allow-all-tools -p "$@"; }
+
