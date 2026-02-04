@@ -61,7 +61,8 @@ docker() {
 }
 
 
-coh() { copilot --model claude-haiku-4.5 --allow-all-tools -p "$@"; }
+co() { copilot --model claude-haiku-4.5 --allow-all-tools --silent -p "$@"; }
 
-coo() { copilot --model claude-haiku-4.5 --allow-all-tools -p "$@"; }
+coh() { copilot --model claude-haiku-4.5 --allow-all-tools --silent -p "$@"; }
+
 
