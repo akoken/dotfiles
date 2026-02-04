@@ -61,8 +61,17 @@ docker() {
 }
 
 
-co() { copilot --model claude-haiku-4.5 --allow-all-tools --silent -p "$@"; }
+co() { copilot --model claude-opus-4.5 --allow-all-tools --silent -p "$@"; }
 
 coh() { copilot --model claude-haiku-4.5 --allow-all-tools --silent -p "$@"; }
+
+cog() { copilot --model gemini-3-pro --allow-all-tools --silent -p "$@"; }
+
+# Resume the last session
+cog() { copilot --allow-all-tools --continue; }
+
+# Resume a specific session
+cog() { copilot --allow-all-tools --resume "$@"; }
+
 
 
