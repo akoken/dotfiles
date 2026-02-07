@@ -181,7 +181,7 @@ cross-platform.
 - [Raycast](https://raycast.com) - MacOS productivity app
 - [Zsh](https://zsh.org/) - Shell
 - [Oh My Posh](https://ohmyposh.dev) - Cross-platform prompt theme engine
-- [Nerd fonts](https://nerdfonts.com)(I use Cartograph CF and [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) as fallback)
+- [Nerd fonts](https://nerdfonts.com)(I use MonoLisa and [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) as fallback)
 - [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
 - [Eza](https://github.com/eza-community/eza) - `ls` replacement
 - [bat](https://github.com/sharkdp/bat) - `cat` replacement
