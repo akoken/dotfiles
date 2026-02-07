@@ -1,7 +1,8 @@
 # Fonts
+font-family = "MonoLisa"
 font-family = "Cartograph CF"
+font-family = "PragmataPro"
 font-family = "Liga SFMono Nerd Font"
-font-family = "CaskaydiaCove Nerd Font Mono"
 font-size = 20
 cursor-color = #FFA500
 font-feature = +liga
@@ -22,7 +23,7 @@ keybind = ctrl+shift+x=toggle_quick_terminal
 
 # Window style
 macos-titlebar-style = hidden
-background-blur = macos-glass-clear
+#background-blur = macos-glass-clear
 bold-is-bright = true
 background-opacity = 0.9
 background-blur-radius = 20
