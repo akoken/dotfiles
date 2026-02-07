@@ -25,13 +25,13 @@ local config = {
 		b.get_background(dark_opacity, light_opacity),
 	},
 
-	line_height = 1.1,
-	font_size = 20,
+	--line_height = 1.1,
+	font_size = 18,
 	font = wezterm.font_with_fallback({
+		"MonoLisa",
+		--"PragmataPro",
 		"Cartograph CF",
 		"Liga SFMono Nerd Font",
-		"Monaspace Neon",
-		"CaskaydiaCove Nerd Font Mono",
 	}),
 
 	color_scheme = cs.get_color_scheme(),
