@@ -193,7 +193,6 @@ I almost exclusively work on macOS, but many of these are cross-platform.
 | Prompt | [Oh My Posh](https://ohmyposh.dev) | Cross-platform prompt theme engine |
 | Window Manager | [AeroSpace](https://github.com/nikitabobko/AeroSpace) | Tiling window manager for macOS |
 | Launcher | [Raycast](https://raycast.com) | Spotlight replacement |
-| Menu Bar | [SketchyBar](https://github.com/FelixKratz/SketchyBar) | Custom macOS menu bar |
 | Fonts | [Nerd Fonts](https://nerdfonts.com) | MonoLisa + [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) fallback |
 | Navigation | [zoxide](https://github.com/ajeetdsouza/zoxide) | Smarter `cd` |
 | File Listing | [eza](https://github.com/eza-community/eza) | Modern `ls` replacement |
