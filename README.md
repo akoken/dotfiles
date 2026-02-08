@@ -1,189 +1,208 @@
 # My Dotfiles
-Welcome to my dotfiles repository! This contains the configuration files I use for my daily development workflow.
+
+Personal dotfiles for my macOS development environment.
 
 > [!Note]
 >
 > This project is still a work in progress! Use at your own risk.
 
-![alt text](/assets/preview.png)
+![Preview](/assets/preview.png)
 
-# Setup
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Repository Structure](#repository-structure)
+- [Install Script](#install-script)
+- [ZSH Configuration](#zsh-configuration)
+- [Neovim](#neovim)
+- [Tmux](#tmux)
+- [Terminal Emulators](#terminal-emulators)
+- [Utility Scripts](#utility-scripts)
+- [Docker](#docker)
+- [Preferred Apps and Tools](#preferred-apps-and-tools)
+
+## Quick Start
 
 > [!Note]
 >
-> You need to install the XCode CLI tools for macOS configuration.
+> Requires the Xcode Command Line Tools.
 
 ```bash
 xcode-select --install
-```
-After cloning the repository, you can set up the dotfiles using the install.sh script. Run the script with one of the following commands:
-
-```bash
-./install.sh help
-Usage: install.sh {backup|link|homebrew|shell|macos|all}
-```
-## Available Setup Options
-
-### `backup`
-
-```bash
-./install.sh backup
-```
-
-This command creates a backup of your current dotfiles (if any) in ~/.dotfiles-backup/. It scans for files that will be symlinked and moves them to the backup directory. It also handles vim/neovim setups, moving related files into the [XDG base directory](http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html), e.g., ~/.config.
-
-- `~/.config/nvim/` - The home of [neovim](https://neovim.io/) configuration
-- `~/.vim/` - The home of vim configuration
-- `~/.vimrc` - The main init file for vim
-
-### `link`
-
-```bash
-./install.sh link
-```
-
-This command creates symbolic links from the dotfiles directory to your home directory (`$HOME`). This allows you to keep the configurations in version control while using them in your actual environment.
-
-### `homebrew`
-
-```bash
-./install.sh homebrew
-```
-
-This command installs `Homebrew` (macOS/Linux package manager) by downloading and running the Homebrew installer script. If the script detects you're on Linux, it will use Linuxbrew instead.
-
-Once Homebrew is installed, it runs brew bundle to install the packages listed in the [Brewfile](./Brewfile).
-
-### `shell`
-
-```bash
-./install.sh shell
-```
-
-This command sets up your shell configuration. It specifically configures the shell to Zsh using the `chsh` command.
-
-### `macos`
-
-```bash
-./install.sh macos
-```
-
-This command applies macOS-specific settings using defaults write commands. It modifies various system preferences, including:
-
-* Show all filename extensions in Finder
-* Show hidden files by default
-* Set UTF-8 encoding in Terminal.app
-* Expand save dialogs by default
-* Enable full keyboard access for all controls
-* Enable subpixel font rendering on non-Apple LCDs
-* Show the Path and Status bars in Finder
-* Enable Safari’s debug menu
-
-### `all`
-
-```bash
+git clone https://github.com/akoken/dotfiles.git ~/dotfiles
+cd ~/dotfiles
+./install.sh backup   # optional — backs up existing dotfiles first
 ./install.sh all
 ```
 
-This runs all the installation tasks mentioned above (except for backup, which must be run manually).
+## Repository Structure
 
-## ZSH Configuration
-
-The prompt for ZSH is configured in the `config/zsh/zshrc` file and performs the
-following operations.
-
-- Sets `EDITOR` to `nvim`
-- Recursively searches the `$DOTFILES/zsh` directory for any `.zsh` files and
-  sources them
-- Sources a `~/.localrc`, if available for configuration that is
-  machine-specific and/or should not ever be checked into git
-- Adds `~/bin` and `$DOTFILES/bin` to the `PATH`
-
-## Neovim Setup
-
-To install Neovim, use Homebrew:
-
-```bash
-brew install neovim
+```
+dotfiles/
+├── Brewfile                  # Homebrew packages, casks, and VS Code extensions
+├── Dockerfile                # Linux test environment
+├── install.sh                # Setup & installation script
+├── bin/                      # Custom shell scripts (symlinked to ~/bin)
+└── config/
+    ├── aerospace/            # Tiling window manager
+    ├── bat/                  # bat themes
+    ├── delta/                # Git diff pager themes
+    ├── ghostty/              # Ghostty terminal config + shaders
+    ├── git/                  # Global gitconfig, gitignore, commit template
+    ├── nvim/                 # Neovim (lazy.nvim + kickstart-based)
+    ├── oh-my-posh/           # Prompt theme
+    ├── ripgrep/              # ripgrep defaults
+    ├── sketchybar/           # macOS menu bar replacement
+    ├── starship/             # Starship prompt config
+    ├── tmux/                 # Tmux config + plugins + scripts
+    ├── wezterm/              # WezTerm terminal config
+    └── zsh/                  # Zsh config (zshrc, aliases, functions, env)
 ```
 
-However, it was likely installed already if you ran the `./install.sh brew`
-command provided in the dotfiles.
+## Install Script
 
-All of the configuration for Neovim starts at `config/nvim/init.lua`, which is
-symlinked into the `~/.config/nvim` directory.
+```bash
+./install.sh {backup|clean|link|copy|git|homebrew|shell|macos|all}
+```
 
-> [!Warning]
->
-> The first time you run `nvim` with this configuration, it will likely have a
-> lot of errors. This is because it is dependent on a number of plugins being
-> installed.
-
-### Installing plugins
-
-On the first run, all required plugins should automatically installed by
-[lazy.nvim](https://github.com/folke/lazy.nvim), a plugin manager for neovim.
+| Command      | Description |
+|--------------|-------------|
+| `backup`     | Back up existing dotfiles to `~/dotfiles-backup/` |
+| `clean`      | Remove symlinks created by `link` |
+| `link`       | Create symlinks from `config/` → `~/.config/` and `bin/` → `~/bin` |
+| `copy`       | Copy configs instead of symlinking (useful for containers) |
+| `git`        | Set up Git identity and credential helper |
+| `homebrew`   | Install Homebrew and run `brew bundle` from the [Brewfile](./Brewfile) |
+| `shell`      | Set Zsh as the default shell |
+| `macos`      | Apply macOS system preferences (Finder, keyboard, Safari, etc.) |
+| `all`        | Run `link` → `homebrew` → `shell` → `git` → `macos` |
 
 > [!Note]
 >
-> Plugins can be synced in a headless way from the command line using the `vu`
-> alias.
+> `backup` and `clean` must be run manually — they are not included in `all`.
 
-## Tmux Setup
+## ZSH Configuration
 
-### Requirements
+The shell environment is managed through [Zinit](https://github.com/zdharma-continuum/zinit) and organized across several files in `config/zsh/`:
 
-- [tpm](https://github.com/tmux-plugins/tpm)
-- [fzf](https://github.com/junegunn/fzf) (specifically [fzf-tmux](https://github.com/junegunn/fzf#fzf-tmux-script))
-- [bat](https://github.com/sharkdp/bat)
-- [icalBuddy](https://formulae.brew.sh/formula/ical-buddy#default) for MacOS calendar
+| File               | Purpose |
+|--------------------|---------|
+| `.zshenv`          | Sets `XDG_CONFIG_HOME`, `EDITOR`, `DOTFILES`, history, and PATH |
+| `.zshrc`           | Loads plugins, completions, key bindings, and tool integrations |
+| `.zsh_aliases`     | Shell, git, tmux, and tool aliases |
+| `.zsh_functions`   | Helper functions (`g`, `md`, `docker open/close/flush`, etc.) |
+| `.zprofile`        | Homebrew and tool-specific PATH setup |
 
-### Installation
+### Plugins (via Zinit)
 
-Clone the tmux plugin repo:
+- [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting)
+- [zsh-completions](https://github.com/zsh-users/zsh-completions)
+- [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions)
+- [fzf-tab](https://github.com/Aloxaf/fzf-tab)
+
+### Key integrations
+
+- [Oh My Posh](https://ohmyposh.dev) — prompt theme engine (config in `config/oh-my-posh/`)
+- [zoxide](https://github.com/ajeetdsouza/zoxide) — smart `cd`
+- [fzf](https://github.com/junegunn/fzf) — fuzzy finder with key bindings
+- [direnv](https://direnv.net/) — per-directory environment variables
+
+## Neovim
+
+Configuration lives in `config/nvim/` and is symlinked to `~/.config/nvim`. Built on a [kickstart.nvim](https://github.com/nvim-lua/kickstart.nvim) foundation with custom plugins.
+
+> [!Warning]
+>
+> The first time you run `nvim`, [lazy.nvim](https://github.com/folke/lazy.nvim) will automatically install all plugins. Expect some initial errors until installation completes.
+
+Plugins can be synced headlessly from the command line:
 
 ```bash
+vu   # alias for: nvim --headless "+Lazy! sync" +qa
+```
+
+### Notable plugins
+
+Telescope, Treesitter, LSP (via lspconfig), blink-cmp, conform, nvim-tree, flash, trouble, gitsigns, todo-comments, vim-tmux-navigator, and language-specific setups for Go and Rust.
+
+## Tmux
+
+Configuration is in `config/tmux/tmux.conf` with a Catppuccin theme. Prefix is set to `Ctrl-A`.
+
+### Setup
+
+```bash
+# Install the plugin manager
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+
+# Inside tmux, install plugins with:
+# prefix + I
 ```
 
-Then install the plugins with the following command:
+### Plugins
+
+tmux-sensible, tmux-yank, tmux-resurrect, tmux-continuum, tmux-thumbs, tmux-fzf, tmux-fzf-url, tmux-sessionx, catppuccin-tmux, and vim-tmux-navigator.
+
+![Tmux](/assets/tmux.png)
+
+## Terminal Emulators
+
+### Ghostty
+
+Primary terminal. Config in `config/ghostty/` with custom cursor shaders, Vesper dark / Catppuccin Latte theme, and MonoLisa font.
+
+### WezTerm
+
+Secondary GPU-accelerated terminal. Config in `config/wezterm/wezterm.lua`.
+
+## Utility Scripts
+
+Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
+
+| Script               | Description |
+|----------------------|-------------|
+| `brew-why`           | List installed packages and their dependents |
+| `extract`            | Extract any archive format automatically |
+| `git-bare-clone`     | Clone a repo as a bare repository for worktrees |
+| `git-create-worktree`| Create a new git worktree |
+| `git-graph`          | Visual git log graph |
+| `ip`                 | Print your public IP address |
+| `jwt`                | Decode a JWT token |
+| `update`             | Update Homebrew packages |
+| `wgh`                | Clean up ghost windows in AeroSpace |
+| `wtfport`            | Find which process is listening on a given port |
+
+## Docker
+
+A Dockerfile is provided to test the dotfiles setup in a Linux environment:
 
 ```bash
-CTRL^ + I
-```
-
-![alt text](/assets/tmux.png)
-
-## Docker Setup
-
-A Dockerfile is provided to help test the dotfiles setup in a Linux environment. To build the Docker image:
-
-```bash
-docker build -t dotfiles --force-rm  .
-```
-
-This creates a dotfiles image with the repository cloned. To run the container:
-
-```bash
+docker build -t dotfiles --force-rm .
 docker run -it --rm dotfiles
 ```
 
-This opens a Bash shell in the container, allowing you to test the dotfiles installation process.
-
 ## Preferred Apps and Tools
 
-I almost exclusively work on macOS, so this list will be specific to that
-operating system, but several of these reccomendations are also available,
-cross-platform.
+I almost exclusively work on macOS, but many of these are cross-platform.
 
-- [WezTerm](https://wezfurlong.org/wezterm/index.html) - GPU-accelerated terminal emulator
-- [Aerospace](https://github.com/nikitabobko/AeroSpace) - Tiling window manager for macOS
-- [Raycast](https://raycast.com) - MacOS productivity app
-- [Zsh](https://zsh.org/) - Shell
-- [Oh My Posh](https://ohmyposh.dev) - Cross-platform prompt theme engine
-- [Nerd fonts](https://nerdfonts.com)(I use MonoLisa and [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) as fallback)
-- [zoxide](https://github.com/ajeetdsouza/zoxide) (Highly recommended)
-- [Eza](https://github.com/eza-community/eza) - `ls` replacement
-- [bat](https://github.com/sharkdp/bat) - `cat` replacement
-- [fzf](https://github.com/PatrickF1/fzf.fish) - Interactive filtering
-- [icalBuddy](https://formulae.brew.sh/formula/ical-buddy#default) for MacOS calendar
+| Category | Tool | Description |
+|----------|------|-------------|
+| Terminal | [Ghostty](https://ghostty.org) | Fast, native terminal emulator |
+| Terminal | [WezTerm](https://wezfurlong.org/wezterm/) | GPU-accelerated terminal emulator |
+| Shell | [Zsh](https://zsh.org/) | Default shell |
+| Prompt | [Oh My Posh](https://ohmyposh.dev) | Cross-platform prompt theme engine |
+| Window Manager | [AeroSpace](https://github.com/nikitabobko/AeroSpace) | Tiling window manager for macOS |
+| Launcher | [Raycast](https://raycast.com) | Spotlight replacement |
+| Menu Bar | [SketchyBar](https://github.com/FelixKratz/SketchyBar) | Custom macOS menu bar |
+| Fonts | [Nerd Fonts](https://nerdfonts.com) | MonoLisa + [SF Mono Nerd Font](https://github.com/shaunsingh/SFMono-Nerd-Font-Ligaturized) fallback |
+| Navigation | [zoxide](https://github.com/ajeetdsouza/zoxide) | Smarter `cd` |
+| File Listing | [eza](https://github.com/eza-community/eza) | Modern `ls` replacement |
+| File Viewing | [bat](https://github.com/sharkdp/bat) | `cat` with syntax highlighting |
+| Search | [ripgrep](https://github.com/BurntSushi/ripgrep) | Fast `grep` replacement |
+| Search | [fd](https://github.com/sharkdp/fd) | Fast `find` replacement |
+| Filtering | [fzf](https://github.com/junegunn/fzf) | Fuzzy finder |
+| Git | [delta](https://github.com/dandavison/delta) | Syntax-highlighting diff pager |
+
+## License
+
+[MIT](./LICENSE) © Abdurrahman Alp Köken
