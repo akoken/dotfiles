@@ -200,7 +200,6 @@ I almost exclusively work on macOS, but many of these are cross-platform.
 | Search | [ripgrep](https://github.com/BurntSushi/ripgrep) | Fast `grep` replacement |
 | Search | [fd](https://github.com/sharkdp/fd) | Fast `find` replacement |
 | Filtering | [fzf](https://github.com/junegunn/fzf) | Fuzzy finder |
-| Git | [delta](https://github.com/dandavison/delta) | Syntax-highlighting diff pager |
 
 ## License
 
