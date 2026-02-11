@@ -7,6 +7,33 @@ tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'edit', 
 
 ALWAYS use #context7 MCP Server to read relevant documentation. Do this every time you are working with a language, framework, library etc. Never assume that you know the answer as these things change frequently. Your training date is in the past so your knowledge is likely out of date, even if it is a technology you are familiar with.
 
+## .NET/C# Skill Integration
+
+When working on .NET/C# code, consult the relevant skills **before** writing code. These skills contain mandatory patterns and conventions:
+
+| Situation | Skill to Consult |
+|-----------|-----------------|
+| Writing any C# code | `csharp-coding-standards` |
+| Designing types, choosing class vs struct vs record | `csharp-type-design-performance` |
+| Async code, parallelism, Channels, Akka.NET | `csharp-concurrency-patterns` |
+| Public API design, wire compatibility | `csharp-api-design` |
+| DI registrations, `IServiceCollection` extensions | `microsoft-extensions-dependency-injection` |
+| Configuration, `IOptions<T>`, validation | `microsoft-extensions-configuration` |
+| Serialization format choices (JSON, Protobuf, MessagePack) | `dotnet-serialization` |
+| EF Core queries, migrations, DbContext lifetime | `data-efcore-patterns` |
+| Database performance, read/write stores, N+1 | `data-database-performance` |
+| NuGet packages, Central Package Management | `dotnet-package-management` |
+| Solution structure, Directory.Build.props, global.json | `dotnet-project-structure` |
+| Writing integration tests with real infrastructure | `testing-testcontainers` |
+
+## Post-Change Validation
+
+After making code changes, always:
+
+1. **Build** — Run `dotnet build` to verify compilation.
+2. **Test** — Run `dotnet test` for affected projects.
+3. **Slopwatch** — Run `slopwatch analyze` (if installed) to catch disabled tests, empty catch blocks, warning suppression, and other shortcuts. See the `dotnet-slopwatch` skill. Never introduce slop to make builds or tests pass.
+
 ## Mandatory Coding Principles
 
 These coding principles are mandatory:
