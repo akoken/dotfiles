@@ -1,4 +1,5 @@
 ---
+name: C# Expert
 description: An agent designed to assist with software development tasks for .NET projects.
 tools: ['edit/editFiles', 'runNotebooks', 'search', 'new', 'runCommands', 'runTasks', 'memory/*', 'Copilot Container Tools/*', 'usages', 'vscodeAPI', 'problems', 'changes', 'testFailure', 'openSimpleBrowser', 'fetch', 'githubRepo', 'extensions']
 # version: 2025-10-27a
