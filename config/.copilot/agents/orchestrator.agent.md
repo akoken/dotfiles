@@ -17,8 +17,12 @@ These are the only agents you can call. Each has a specific role:
   - **Go Coder** — Idiomatic Go implementation
   - **Rust Coder** — Rust implementation with ownership/safety focus
 - **Designer** — Creates UI/UX, styling, visual design
+- **Security Reviewer** — Reviews changes for vulnerabilities, attack vectors, and exfiltration risks (read-only)
+- **Code Reviewer** — Reviews changes for correctness, maintainability, and principle adherence (read-only)
 
 When the language or technology is known, prefer the language-specific coder over the generic Coder.
+
+The reviewers run AFTER implementation, not during. They do not modify files.
 
 ## Memory
 
@@ -85,11 +89,14 @@ For each phase:
 4. **Bridge context forward** — Read the files modified in this phase. Include relevant details (new APIs, tokens, types, file paths) in the delegation prompts for the next phase's tasks. Example: "Designer generated these color tokens: [paste output]. Implement the theme toggle using these tokens."
 5. **Report progress** — After each phase, summarize what was completed
 
-### Step 4: Verify and Report
-You cannot run builds or tests yourself. After all phases complete:
+### Step 4: Review and Verify
+You cannot run builds or tests yourself. After all implementation phases complete:
 1. **Delegate verification to the Coder**: "Build the project and run tests for the affected areas. Report any failures."
 2. **If verification fails**, create a fix phase and repeat
-3. **Report to the user**: Summarize what was implemented, what was verified, and any remaining concerns
+3. **Call Security Reviewer**: Pass the list of changed files for a security review
+4. **Call Code Reviewer**: Pass the list of changed files for a quality review (can run in parallel with Security Reviewer)
+5. **If reviewers flag CRITICAL / MUST FIX issues**, create a fix phase and re-review
+6. **Report to the user**: Summarize what was implemented, review findings, and any remaining concerns
 
 ## Parallelization Rules
 
