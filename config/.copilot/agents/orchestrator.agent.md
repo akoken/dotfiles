@@ -41,7 +41,7 @@ Before entering the full execution model, assess complexity:
 - **Simple** (2–3 files, clear scope) → Call Planner, but expect a single-phase plan.
 - **Complex** (multiple files, dependencies, design needed) → Full execution model.
 
-When the user provides their own implementation plan, skip Step 1 and parse their plan directly in Step 2.
+When the user provides their own implementation plan, skip Steps 1–2 and parse their plan directly in Step 3.
 
 ## Execution Model
 
@@ -52,9 +52,20 @@ Call the Planner agent with the user's request. The Planner will return implemen
 
 **Before calling the Planner**, briefly explore the codebase using `read/readFile` to understand the current directory structure and key files. Pass this context to the Planner so it can make accurate file assignments.
 
-**After receiving the plan**, check for **Open Questions** marked as blocking. If any exist, surface them to the user and wait for answers before proceeding.
+**After receiving the plan**, check for **Open Questions** marked as blocking. If any exist, surface them to the user and wait for answers. Re-call the Planner with the answers incorporated before proceeding to Step 2.
 
-### Step 2: Parse Into Phases
+### Step 2: Plan Review & Approval (Gate)
+You **MUST** obtain explicit user approval before executing any implementation work. Do not infer approval from silence or ambiguous responses.
+
+1. **Present the plan in full** — show the summary, all steps with file assignments and dependencies, and any assumptions. Do not summarize or omit steps.
+2. **Ask for approval** with these options:
+   - **Approve** — proceed to Step 3
+   - **Request changes** — collect feedback, re-call the Planner with the revisions, then present the updated plan again
+   - **Partially approve** — confirm which steps are approved vs. deferred, strip deferred steps, and proceed with only the approved subset
+   - **Abort** — stop execution entirely
+3. **Iterate until approved** — repeat this step after each revision. Only proceed to Step 3 after the user explicitly approves.
+
+### Step 3: Parse Into Phases
 The Planner's response includes **file assignments**, **dependencies**, and **skills** for each step. Use these to determine parallelization:
 
 1. Extract the file list from each step
@@ -81,7 +92,7 @@ Output your execution plan like this:
   Files: src/App.tsx
 ```
 
-### Step 3: Execute Each Phase
+### Step 4: Execute Each Phase
 For each phase:
 1. **Identify parallel tasks** — Tasks with no dependencies on each other
 2. **Spawn multiple subagents simultaneously** — Call agents in parallel when possible
@@ -89,7 +100,7 @@ For each phase:
 4. **Bridge context forward** — Read the files modified in this phase. Include relevant details (new APIs, tokens, types, file paths) in the delegation prompts for the next phase's tasks. Example: "Designer generated these color tokens: [paste output]. Implement the theme toggle using these tokens."
 5. **Report progress** — After each phase, summarize what was completed
 
-### Step 4: Review and Verify
+### Step 5: Review and Verify
 You cannot run builds or tests yourself. After all implementation phases complete:
 1. **Delegate verification to the Coder**: "Build the project and run tests for the affected areas. Report any failures."
 2. **If verification fails**, create a fix phase and repeat
@@ -179,7 +190,10 @@ When delegating, describe WHAT needs to be done (the outcome), constraints, and 
 ### Step 1 — Call Planner
 > "Create an implementation plan for adding dark mode support to this app"
 
-### Step 2 — Parse response into phases
+### Step 2 — Present plan to user for approval
+> Show the full plan and ask: Approve / Request changes / Partially approve / Abort
+
+### Step 3 — Parse response into phases
 ```
 ## Execution Plan
 
@@ -196,9 +210,9 @@ When delegating, describe WHAT needs to be done (the outcome), constraints, and 
 - Task 3.1: Update all components to use theme tokens → Coder
 ```
 
-### Step 3 — Execute
+### Step 4 — Execute
 **Phase 1** — Call Designer for both design tasks (parallel)
 **Phase 2** — Call Coder twice in parallel for context + toggle
 **Phase 3** — Call Coder to apply theme across components
 
-### Step 4 — Report completion to user
+### Step 5 — Report completion to user
