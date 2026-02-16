@@ -113,7 +113,8 @@ run_command() {
 parse_params() {
   # default values of variables set from params
   create_upstream=1
-  prefix="$(git config github.user)/"
+  prefix=$(git config github.user 2>/dev/null || true)
+  [[ -n "$prefix" ]] && prefix="${prefix}/"
   base='origin/main'
   branch=''
 
