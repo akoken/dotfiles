@@ -45,8 +45,6 @@ alias lld="ls -l | grep ^d"
 # Git aliases
 alias gs='git s'
 alias gg="git-graph"
-alias gwtc="git-bare-clone"
-alias gwta="git-create-worktree"
 alias gwtr="git worktree remove"
 alias gwtl="git worktree list"
 
