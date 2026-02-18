@@ -6,7 +6,7 @@ Personal dotfiles for my macOS development environment.
 >
 > This project is still a work in progress! Use at your own risk.
 
-![Preview](/assets/preview.png)
+![Preview](https://github.com/user-attachments/assets/d5ab8449-8aa5-45df-9c25-f840b10adf50)
 
 ## Table of Contents
 
@@ -143,7 +143,7 @@ git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 tmux-sensible, tmux-yank, tmux-resurrect, tmux-continuum, tmux-thumbs, tmux-fzf, tmux-fzf-url, tmux-sessionx, catppuccin-tmux, and vim-tmux-navigator.
 
-![Tmux](/assets/tmux.png)
+![Tmux](https://github.com/user-attachments/assets/390cd17c-c7fc-4aba-894f-c88322274881)
 
 ## Terminal Emulators
 
