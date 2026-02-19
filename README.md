@@ -52,7 +52,6 @@ dotfiles/
     ├── nvim/                 # Neovim (lazy.nvim + kickstart-based)
     ├── oh-my-posh/           # Prompt theme
     ├── ripgrep/              # ripgrep defaults
-    ├── sketchybar/           # macOS menu bar replacement
     ├── starship/             # Starship prompt config
     ├── tmux/                 # Tmux config + plugins + scripts
     ├── wezterm/              # WezTerm terminal config
@@ -168,7 +167,7 @@ Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
 | `git-graph`          | Visual git log graph |
 | `ip`                 | Print your public IP address |
 | `jwt`                | Decode a JWT token |
-| `update`             | Update Homebrew packages |
+| `update`             | Update Homebrew packages and Neovim plugins|
 | `wgh`                | Clean up ghost windows in AeroSpace |
 | `wtfport`            | Find which process is listening on a given port |
 
