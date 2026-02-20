@@ -51,8 +51,15 @@ Reference these when assigning `Skills:` per step:
 
 `csharp-coding-standards` · `csharp-type-design-performance` · `csharp-concurrency-patterns` · `csharp-api-design` · `microsoft-extensions-dependency-injection` · `microsoft-extensions-configuration` · `dotnet-serialization` · `data-efcore-patterns` · `data-database-performance` · `dotnet-package-management` · `dotnet-project-structure` · `testing-testcontainers` · `testing-playwright-blazor` · `testing-crap-analysis` · `dotnet-slopwatch` · `dotnet-local-tools`
 
+## Plan Document
+
+You MUST always save your plan to a markdown file so the orchestrator can pass it to the coder agent. Use the `execute` tool to write the plan to a file at `.github/plans/<descriptive-name>.plan.md` in the repository root. Choose a short, descriptive filename based on the task (e.g., `add-auth-middleware.plan.md`, `fix-db-connection.plan.md`). If the `.github/plans/` directory does not exist, create it. Always include the full plan output in the file using the **Output Format** above.
+
+After saving the file, tell the orchestrator the path to the plan document so it can be passed to the coder agent.
+
 ## Rules
 
+- **Always save the plan to a file**: the orchestrator depends on a markdown file to pass context to the coder.
 - **File assignments are required**: every step must list specific file paths so the orchestrator can phase work.
 - **Maximize parallelism**: group tasks by file locality -- steps touching different files should be independent.
 - **Make dependencies explicit**: always fill `Depends on:`; default to `none` when possible.
