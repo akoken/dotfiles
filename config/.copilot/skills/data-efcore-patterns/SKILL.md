@@ -1,6 +1,6 @@
 ---
 name: data-efcore-patterns
-description: Entity Framework Core best practices including NoTracking by default, migration management, dedicated migration services, and common pitfalls to avoid.
+description: Entity Framework Core best practices including NoTracking by default, migration management, dedicated migration services, and common pitfalls to avoid. Use when working with Entity Framework Core.
 ---
 
 # Entity Framework Core Patterns

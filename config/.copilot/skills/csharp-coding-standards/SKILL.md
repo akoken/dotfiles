@@ -1,6 +1,6 @@
 ---
 name: csharp-coding-standards
-description: Write modern, high-performance C# code using records, pattern matching, value objects, async/await, Span<T>/Memory<T>, and best-practice API design patterns. Emphasizes functional-style programming with C# 12+ features.
+description: Write modern, high-performance C# code using records, pattern matching, value objects, async/await, Span and Memory types, and best-practice API design patterns. Emphasizes functional-style programming with C# 12+ features. Use when writing C# code to ensure modern best practices.
 ---
 
 # Modern C# Coding Standards

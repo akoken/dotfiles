@@ -1,6 +1,6 @@
 ---
 name: microsoft-extensions-dependency-injection
-description: Organize DI registrations using IServiceCollection extension methods. Group related services into composable Add* methods for clean Program.cs and reusable configuration in tests.
+description: Organize DI registrations using IServiceCollection extension methods. Group related services into composable Add* methods for clean Program.cs and reusable configuration in tests. Use when configuring dependency injection in .NET applications.
 ---
 
 # Dependency Injection Patterns

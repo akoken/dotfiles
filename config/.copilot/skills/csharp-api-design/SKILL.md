@@ -1,6 +1,6 @@
 ---
 name: csharp-api-design
-description: Design stable, compatible public APIs using extend-only design principles. Manage API compatibility, wire compatibility, and versioning for NuGet packages and distributed systems.
+description: Design stable, compatible public APIs using extend-only design principles. Manage API compatibility, wire compatibility, and versioning for NuGet packages and distributed systems. Use when designing public APIs or libraries in C#.
 ---
 
 # Public API Design and Compatibility
