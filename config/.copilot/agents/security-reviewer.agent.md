@@ -1,7 +1,7 @@
 ---
 name: Security Reviewer
 description: Reviews code changes for security vulnerabilities, attack vectors, and data exfiltration risks. Read-only — inspects diffs and reports findings with a high signal-to-noise ratio.
-model: Claude Opus 4.6 (copilot)
+model: GPT-5.3-Codex (copilot)
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'search', 'web', 'memory/*']
 ---
 
