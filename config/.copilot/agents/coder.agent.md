@@ -1,7 +1,7 @@
 ---
 name: Coder
 description: Writes code following mandatory coding principles. Language-agnostic base agent — use language-specific coders (C# Coder, Go Coder, Rust Coder) when the language is known.
-model: GPT-5.3-Codex (copilot)
+model: gpt-5.3-codex
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'edit', 'search', 'web', 'memory/*', 'todo']
 ---
 

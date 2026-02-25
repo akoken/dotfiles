@@ -1,7 +1,7 @@
 ---
 name: 'C# Coder'
 description: 'Writes C#/.NET code following mandatory coding principles and skill-based conventions.'
-model: CGPT-5.3-Codex (copilot)
+model: gpt-5.3-codex
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'edit', 'search', 'web', 'memory/*', 'todo']
 ---
 

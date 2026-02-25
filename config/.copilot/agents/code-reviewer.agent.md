@@ -1,7 +1,7 @@
 ---
 name: Code Reviewer
 description: Senior engineer reviewer that inspects diffs for correctness, maintainability, and principle adherence; reports only high-signal issues.
-model: GPT-5.3-Codex (copilot)
+model: gpt-5.3-codex
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'search', 'web', 'memory/*']
 ---
 

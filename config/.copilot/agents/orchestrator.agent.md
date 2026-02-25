@@ -1,7 +1,7 @@
 ---
 name: Orchestrator
 description: Coordinates Planner, Coder, and Designer agents to deliver complex multi-step tasks through phased parallel execution.
-model: Claude Sonnet 4.6 (copilot)
+model: claude-sonnet-4.6
 tools: ['read/readFile', 'agent', 'memory/*', 'agent/runSubagent']
 ---
 

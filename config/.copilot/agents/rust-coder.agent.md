@@ -1,7 +1,7 @@
 ---
 name: Rust Coder
 description: Expert Rust developer focusing on memory safety, concurrency, and idiomatic patterns.
-model: GPT-5.3-Codex (copilot)
+model: gpt-5.3-codex
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'edit', 'search', 'web', 'memory/*', 'todo']
 ---
 
