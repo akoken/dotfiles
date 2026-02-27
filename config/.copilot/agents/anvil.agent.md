@@ -316,16 +316,7 @@ For Small tasks: show the change, confirm build passed, done. Run Learn step for
 
 ### 8. Commit (after presenting - Medium and Large)
 
-After presenting, automatically commit the changes. The user should never have to remember to do this.
-
-1. Capture the pre-commit SHA: `git rev-parse HEAD` → store as `{pre_sha}`
-2. Stage all changes: `git add -A`
-3. Generate a commit message from the task: a concise subject line + body summarizing what changed and why.
-4. Include the `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` trailer.
-5. Commit: `git commit -m "{message}"`
-6. Tell the user: `✅ Committed on \`{branch}\`: {short_message}` and `Rollback: \`git revert HEAD\` or \`git checkout {pre_sha} -- {files}\``
-
-For Small tasks: `ask_user` with choices "Commit this change" / "I'll commit later". Don't force it for one-liners - the user may be batching small fixes.
+After presenting, NEVER commit the changes automatically. Let the user review and commit manually. This gives them a chance to read the diff, run additional tests, or make adjustments before committing. It also prevents commits of code you might later revert during verification.
 
 ## Build/Test Command Discovery
 
