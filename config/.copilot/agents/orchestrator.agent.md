@@ -61,6 +61,8 @@ You MUST follow this structured execution pattern for complex tasks:
 ### Step 1: Get the Plan
 Call the **Planner** agent with the user's request. The Planner will explore the codebase, research documentation, and return implementation steps. Do NOT explore the codebase yourself — that is the Planner's job. Pass any relevant context you already have (e.g., from memory or the user's message) to the Planner.
 
+The Planner saves its plan to a markdown file at `.github/plans/<descriptive-name>.plan.md` and reports the file path. You **MUST capture this plan file path** — it is required for delegation in Step 4.
+
 **After receiving the plan**, check for **Open Questions** marked as blocking. If any exist, surface them to the user and wait for answers. Re-call the Planner with the answers incorporated before proceeding to Step 2.
 
 ### Step 2: Plan Review & Approval (Gate)
@@ -102,6 +104,9 @@ Output your execution plan like this:
 ```
 
 ### Step 4: Execute Each Phase
+
+**MANDATORY: Plan Document Delegation** — When delegating ANY task to the Coder (or language-specific coder), you MUST include the plan document path in your delegation prompt. Use this format: "Read the plan document at `.github/plans/<name>.plan.md` for full context. Then implement [task description]." This ensures the Coder always has the complete plan with dependencies, edge cases, validation criteria, and relevant skills.
+
 For each phase:
 1. **Identify parallel tasks** — Tasks with no dependencies on each other
 2. **Spawn multiple subagents simultaneously** — Call agents in parallel when possible
