@@ -45,6 +45,15 @@ How we verify correctness -- tests to add/update, scenarios to run.
 ### Open Questions
 Only if blocking or materially affecting the approach.
 
+### Assumptions & Decisions
+What the Planner assumed and why. Explicit assumptions let the Orchestrator challenge them before implementation begins.
+
+### Change Classification
+Exactly one of: `internal refactor` · `new feature` · `bug fix` · `breaking API change` · `migration` · `security fix`. The Orchestrator passes this to reviewers to adjust their focus.
+
+### Fallback Actions (optional, per step)
+For steps with a meaningful failure mode, include a fallback action — e.g., "If Docker is unavailable, use a local process." Omit when the only fallback is "escalate to user."
+
 ## Available Skills
 
 Reference these when assigning `Skills:` per step:
@@ -61,6 +70,9 @@ After saving the file, tell the orchestrator the path to the plan document so it
 
 - **Always save the plan to a file**: the orchestrator depends on a markdown file to pass context to the coder.
 - **File assignments are required**: every step must list specific file paths so the orchestrator can phase work.
+- **Assumptions & Decisions are required**: document what you assumed so the Orchestrator can validate before committing to implementation.
+- **Change Classification is required**: every plan must include exactly one classification so reviewers know what to focus on.
+- **Include Fallback Actions** for steps with a meaningful failure mode (e.g., external dependency, network, tooling).
 - **Maximize parallelism**: group tasks by file locality -- steps touching different files should be independent.
 - **Make dependencies explicit**: always fill `Depends on:`; default to `none` when possible.
 - **Reference relevant skills**: include `Skills:` per step when applicable so the coder applies the right patterns.

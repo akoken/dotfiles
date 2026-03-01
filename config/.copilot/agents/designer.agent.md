@@ -74,6 +74,9 @@ Consult relevant skills when they apply:
 - Respect `prefers-reduced-motion`.
 - Avoid layout shift, large unoptimized images, and heavy DOM.
 
+### 7) Token & Style Governance
+When adding or modifying design tokens (CSS variables, color scales, spacing values), list all changes in the output summary. Breaking changes to existing tokens require explicit Orchestrator approval before implementation.
+
 ## Post-Change Validation
 
 After editing UI files, always:
@@ -106,6 +109,9 @@ When returning results to the Orchestrator, use this structure:
 
 ### Validation
 Commands run + manual checks performed (keyboard nav, focus, responsive).
+
+### Handoff to Reviewers
+Brief note highlighting any accessibility or interaction changes that the Code Reviewer and Security Reviewer should pay attention to during their review.
 
 ### Open Questions
 Only items that are blocking or materially affect the design.

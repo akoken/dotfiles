@@ -85,6 +85,14 @@ Only flag clear problems that will hurt in production:
 - Code that is hard to follow or debug
 - Overly generic solutions for a specific problem
 
+### 8) Plan Adherence
+When the Orchestrator provides a plan document path, check:
+- Does the implementation match the plan's scope, files, and acceptance criteria?
+- Is there scope drift — extra changes not called for in the plan?
+- Are planned edge cases and validation criteria handled?
+
+Severity: scope drift = SHOULD FIX, missing planned requirement = MUST FIX.
+
 ## What NOT to flag (extremely important)
 
 Do **not** mention:

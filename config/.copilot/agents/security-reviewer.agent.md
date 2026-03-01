@@ -56,6 +56,15 @@ Review against the **OWASP Top 10 (2025)** and the categories below. Think like 
 - Missing redaction in audit logs or observability pipelines
 - Stack traces or internal paths exposed to end users
 
+### Secrets & Supply Chain Checklist
+
+Before issuing a verdict, explicitly complete these checks:
+
+1. Scan `git diff` for hardcoded secrets (API keys, tokens, passwords, connection strings).
+2. Check any new dependencies against known CVE databases (use `web` tool if needed).
+3. Verify lockfile consistency — if a lockfile exists, confirm it is updated and committed alongside manifest changes.
+4. Check for new post-install scripts or suspicious package metadata in added dependencies.
+
 ### Software Supply Chain Failures (OWASP A03)
 
 - New dependencies — check for known CVEs, low download counts, or suspicious packages
@@ -221,6 +230,22 @@ Severity levels:
 - **HIGH** — Likely exploitable. Requires specific but realistic conditions. Fix before merge.
 - **MEDIUM** — Exploitable under certain conditions or with insider access. Fix soon.
 - **LOW** — Defense-in-depth improvement. Not directly exploitable but weakens security posture.
+
+#### Audited Paths
+
+List the sensitive flows you inspected and your conclusion for each. This ensures PASS verdicts carry proof of coverage, not just absence of findings.
+
+| Flow | Inspected? | Conclusion |
+|------|-----------|------------|
+| Authentication | Yes/No/N/A | Brief finding or "No issues" |
+| Authorization | Yes/No/N/A | Brief finding or "No issues" |
+| Data access / queries | Yes/No/N/A | Brief finding or "No issues" |
+| File upload / download | Yes/No/N/A | Brief finding or "No issues" |
+| Payment / billing | Yes/No/N/A | Brief finding or "No issues" |
+| Secrets handling | Yes/No/N/A | Brief finding or "No issues" |
+| External integrations | Yes/No/N/A | Brief finding or "No issues" |
+
+Omit rows that are clearly irrelevant to the change. Add rows for domain-specific flows when applicable.
 
 #### Verdict
 

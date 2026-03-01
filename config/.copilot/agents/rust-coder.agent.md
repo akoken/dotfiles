@@ -58,6 +58,15 @@ This agent extends the base `coder.agent.md` principles. Universal coding standa
 - **Iterators**: Use iterator chains (`.iter().map().filter().collect()`) which are often faster than explicit `for` loops due to bounds check elimination.
 - **Buffering**: Always use `BufReader` and `BufWriter` for I/O operations.
 
+### 10. Feature Flags & MSRV
+- Check `Cargo.toml` for `rust-version` (MSRV). Do not use language features or library APIs that require a newer edition/version without updating MSRV explicitly.
+- When a crate uses feature flags, verify the correct features are enabled for the functionality being implemented. Do not add default features unnecessarily.
+
+### 11. Logging & Observability
+- Use `tracing` (not `log`) for structured logging unless the project already standardizes on `log`.
+- Add spans for async operations and instrument public functions with `#[tracing::instrument]` where appropriate.
+- Follow existing observability patterns in the codebase.
+
 ## Post-Change Validation
 
 After making changes, run the following verification steps:

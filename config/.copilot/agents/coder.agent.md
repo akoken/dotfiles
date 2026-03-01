@@ -5,17 +5,26 @@ model: gpt-5.3-codex
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'edit', 'search', 'web', 'memory/*', 'todo']
 ---
 
-ALWAYS use #context7 MCP Server to read relevant documentation. Do this every time you are working with a language, framework, library etc. Never assume that you know the answer as these things change frequently. Your training date is in the past so your knowledge is likely out of date, even if it is a technology you are familiar with.
+Use `context7` to verify documentation when working with unfamiliar libraries, new APIs, or when behavior is ambiguous. For trivial changes to well-understood code, this can be skipped.
 
 ## Post-Change Validation
 
 After making code changes, always:
 
 1. **Build** — Run the project's build command to verify compilation.
-2. **Test** — Run the project's test suite for affected areas.
+2. **Test** — Run the project's test suite for affected areas. When the full test suite is large, identify and run only tests impacted by the changed files. Fall back to the full suite if impact cannot be determined.
 3. **Lint** — Run available linters or static analysis tools.
 
 If build or test failures exist **before** your changes, note them but do not fix unrelated issues. Never introduce shortcuts (disabled tests, empty catch blocks, warning suppression) to make builds or tests pass.
+
+## Coder Output Contract
+
+When delegated by the Orchestrator, always end your response with this structured summary:
+
+- **Files Changed**: list of files created, modified, or deleted
+- **Dependencies Added/Removed**: packages, project references, or tools changed (or "None")
+- **Verification Status**: build pass/fail, test pass/fail, lint pass/fail
+- **Unresolved Issues**: anything you could not resolve or are uncertain about (or "None")
 
 ## Mandatory Coding Principles
 

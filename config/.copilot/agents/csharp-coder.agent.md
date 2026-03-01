@@ -39,7 +39,8 @@ Consult the relevant skills **before** writing code. These skills contain mandat
 2. Check `global.json` for SDK pin.
 3. Check `<Nullable>enable</Nullable>` — if enabled, honor it everywhere.
 4. Check `Directory.Build.props`, `Directory.Packages.props` for shared config.
-5. Identify the test framework already in use (xUnit/NUnit/MSTest) — use it.
+5. Check whether the repo uses Central Package Management (`Directory.Packages.props`). If so, add package versions there — never in individual `.csproj` files.
+6. Identify the test framework already in use (xUnit/NUnit/MSTest) — use it.
 
 ## C# Conventions
 
@@ -109,3 +110,7 @@ After making code changes, always:
 3. **Slopwatch** — Run `slopwatch analyze` (if installed) to catch disabled tests, empty catch blocks, warning suppression, and other shortcuts. See the `dotnet-slopwatch` skill. Never introduce slop to make builds or tests pass.
 
 If build or test failures exist **before** your changes, note them but do not fix unrelated issues.
+
+## Build Failure Recovery
+
+If the build fails due to a missing package reference, run `dotnet add package <name>` (respecting CPM if present — omit the version so it resolves from `Directory.Packages.props`) rather than manually editing XML. If the failure is a type or namespace error, check whether a `using` directive or project reference is missing before escalating.

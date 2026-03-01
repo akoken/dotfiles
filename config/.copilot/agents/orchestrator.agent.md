@@ -105,21 +105,22 @@ Output your execution plan like this:
 
 ### Step 4: Execute Each Phase
 
-**MANDATORY: Plan Document Delegation** — When delegating ANY task to the Coder (or language-specific coder), you MUST include the plan document path in your delegation prompt. Use this format: "Read the plan document at `.github/plans/<name>.plan.md` for full context. Then implement [task description]." This ensures the Coder always has the complete plan with dependencies, edge cases, validation criteria, and relevant skills.
+**MANDATORY: Plan Document Delegation** — When delegating ANY task to the Coder (or language-specific coder), you MUST include the plan document path and the **Change Classification** from the plan in your delegation prompt. Use this format: "Read the plan document at `.github/plans/<name>.plan.md` for full context. Change Classification: [classification from plan]. Then implement [task description]. End your response with the Coder Output Contract (see below)." This ensures the Coder always has the complete plan with dependencies, edge cases, validation criteria, and relevant skills.
 
 For each phase:
 1. **Identify parallel tasks** — Tasks with no dependencies on each other
 2. **Spawn multiple subagents simultaneously** — Call agents in parallel when possible
 3. **Wait for all tasks in phase to complete** before starting next phase
 4. **Bridge context forward** — Read the files modified in this phase. Include relevant details (new APIs, tokens, types, file paths) in the delegation prompts for the next phase's tasks. Example: "Designer generated these color tokens: [paste output]. Implement the theme toggle using these tokens."
-5. **Report progress** — After each phase, summarize what was completed
+5. **Integration check** — After all parallel tasks in a phase complete, delegate a build + test verification to the Coder before proceeding to the next phase. This catches merge conflicts and dependency collisions between parallel coders early. If the integration check fails, create a sequential fix phase before continuing.
+6. **Report progress** — After each phase, summarize what was completed
 
 ### Step 5: Review and Verify
 You cannot run builds or tests yourself. After all implementation phases complete:
 1. **Delegate verification to the Coder**: "Build the project and run tests for the affected areas. Report any failures."
 2. **If verification fails**, create a fix phase and repeat
-3. **Call Security Reviewer**: Pass the list of changed files for a security review
-4. **Call Code Reviewer**: Pass the list of changed files for a quality review (can run in parallel with Security Reviewer)
+3. **Call Security Reviewer**: Pass the list of changed files for a security review. Request **Audited Paths** in the output so PASS verdicts carry proof of coverage.
+4. **Call Code Reviewer**: Pass the list of changed files and the **plan document path** for a quality review (can run in parallel with Security Reviewer). The plan path enables the Code Reviewer to check **Plan Adherence**.
 5. **If reviewers flag CRITICAL / MUST FIX issues**, create a fix phase and re-review
 6. **Report to the user**: Summarize what was implemented, review findings, and any remaining concerns
 
@@ -169,6 +170,17 @@ If you find yourself assigning overlapping scope, that's a signal to make it seq
 - ❌ "Update the main layout" + "Add the navigation" (both might touch Layout.tsx)
 - ✅ Phase 1: "Update the main layout" → Phase 2: "Add navigation to the updated layout"
 
+## Coder Output Contract
+
+Every Coder agent (including language-specific coders) must end its response with a structured summary so the Orchestrator can bridge context to the next phase without re-reading files:
+
+- **Files Changed**: list of files created, modified, or deleted
+- **Dependencies Added/Removed**: packages, project references, or tools changed
+- **Verification Status**: build pass/fail, test pass/fail, lint pass/fail
+- **Unresolved Issues**: anything the Coder could not resolve or is uncertain about
+
+The Orchestrator should treat missing contract fields as a soft failure — log and proceed, do not block.
+
 ## Error Handling
 
 ### When an agent reports failure
@@ -183,8 +195,13 @@ If parallel agents create logically incompatible outputs despite file-scoping:
 2. Re-read the affected files to assess the conflict
 3. Create a sequential resolution task for the Coder
 
-### Maximum retries: 2 per task
-After 2 failed attempts, escalate to the user.
+### Retry taxonomy
+
+Not all failures are equal. Classify before retrying:
+
+- **Transient** (build timeout, tool flake, network hiccup) → retry automatically, max 2 attempts.
+- **Logic** (wrong output, test failure, type error) → rephrase the task with error context and retry once. If the retry fails, escalate to the user.
+- **Blocking** (missing dependency, security risk, potential data loss, requires user decision) → escalate immediately, no retry.
 
 ## CRITICAL: Describe outcomes, not implementation tactics
 
