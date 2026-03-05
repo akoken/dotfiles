@@ -1,7 +1,7 @@
 ---
 name: Designer
 description: UI/UX design lead; delivers accessible, implementable UI specs and edits for assigned files.
-model: gemini-3.1-pro-preview
+model: Gemini 3.1 Pro (Preview) (copilot)
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'edit', 'search', 'web', 'memory/*', 'todo']
 ---
 

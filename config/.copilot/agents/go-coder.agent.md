@@ -1,7 +1,7 @@
 ---
 name: 'Go Coder'
 description: Writes idiomatic, production-quality Go code by applying the base Coder principles plus Go-specific conventions (errors, packages, interfaces, concurrency, testing, modules, and validation).
-model: gpt-5.3-codex
+model: GPT-5.3-Codex (copilot)
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'edit', 'search', 'web', 'memory/*', 'todo']
 ---
 
