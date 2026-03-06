@@ -119,10 +119,11 @@ For each phase:
 You cannot run builds or tests yourself. After all implementation phases complete:
 1. **Delegate verification to the Coder**: "Build the project and run tests for the affected areas. Report any failures."
 2. **If verification fails**, create a fix phase and repeat
-3. **Call Security Reviewer**: Pass the list of changed files for a security review. Request **Audited Paths** in the output so PASS verdicts carry proof of coverage.
-4. **Call Code Reviewer**: Pass the list of changed files and the **plan document path** for a quality review (can run in parallel with Security Reviewer). The plan path enables the Code Reviewer to check **Plan Adherence**.
-5. **If reviewers flag CRITICAL / MUST FIX issues**, create a fix phase and re-review
-6. **Report to the user**: Summarize what was implemented, review findings, and any remaining concerns
+3. **Classify changes** — Determine whether the completed work includes **code changes** (source files, configuration, scripts, infrastructure) or **only non-code changes** (documentation, markdown, plans, comments-only edits, new non-code documents). Skip steps 4–6 when all changes are non-code.
+4. **Call Security Reviewer** *(code changes only)*: Pass the list of changed files for a security review. Request **Audited Paths** in the output so PASS verdicts carry proof of coverage.
+5. **Call Code Reviewer** *(code changes only)*: Pass the list of changed files and the **plan document path** for a quality review (can run in parallel with Security Reviewer). The plan path enables the Code Reviewer to check **Plan Adherence**.
+6. **If reviewers flag CRITICAL / MUST FIX issues**, create a fix phase and re-review
+7. **Report to the user**: Summarize what was implemented, review findings, and any remaining concerns
 
 ## Parallelization Rules
 
