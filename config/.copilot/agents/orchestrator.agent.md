@@ -1,7 +1,7 @@
 ---
 name: Orchestrator
 description: Coordinates Planner, Coder, and Designer agents to deliver complex multi-step tasks through phased parallel execution.
-model: GPT-5.2 (copilot)
+model: GPT-5.4 (copilot)
 tools: ['read/readFile', 'agent', 'memory/*', 'agent/runSubagent']
 ---
 
