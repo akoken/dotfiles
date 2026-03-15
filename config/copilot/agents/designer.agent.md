@@ -35,6 +35,7 @@ Consult relevant skills when they apply:
 
 | Situation | Skill |
 |-----------|-------|
+| Frontend layout, visual hierarchy, responsive behavior, interaction states | `frontend-design` |
 | UI test selectors, flows, assertions | `testing-playwright-blazor` |
 | Editing C# / Razor / Blazor components | `csharp-coding-standards` |
 | Configuration that impacts UI wiring | `microsoft-extensions-configuration` |
