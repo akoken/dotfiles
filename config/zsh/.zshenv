@@ -1,6 +1,7 @@
 . "$HOME/.cargo/env"
 
 export XDG_CONFIG_HOME="$HOME/.config"
+#export COPILOT_HOME="$XDG_CONFIG_HOME/copilot"
 
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 HISTFILE="$HOME/.zsh_history"
