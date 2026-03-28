@@ -46,6 +46,7 @@ dotfiles/
 └── config/
     ├── aerospace/            # Tiling window manager
     ├── bat/                  # bat themes
+    ├── copilot/              # Copilot agents and skills
     ├── delta/                # Git diff pager themes
     ├── ghostty/              # Ghostty terminal config + shaders
     ├── git/                  # Global gitconfig, gitignore, commit template
