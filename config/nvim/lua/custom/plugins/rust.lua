@@ -4,6 +4,9 @@ return {
     version = '^4', -- Recommended
     ft = { 'rust' },
     opts = {
+      dap = {
+        adapter = false,
+      },
       server = {
         on_attach = function(_, bufnr)
           vim.keymap.set('n', '<leader>cR', function()
