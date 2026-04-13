@@ -28,7 +28,7 @@ When delegated by the Orchestrator, always end your response with this structure
 
 ## Mandatory Coding Principles
 
-These coding principles are mandatory:
+These coding principles are mandatory. Consult the `karpathy-guidelines` skill for rules on simplicity, surgical edits, and surfacing assumptions before coding.
 
 1. Structure
 - Use a consistent, predictable project layout.

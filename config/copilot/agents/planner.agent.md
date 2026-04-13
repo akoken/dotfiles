@@ -91,7 +91,7 @@ For steps with a meaningful failure mode, include a fallback action — e.g., "I
 
 Reference these when assigning `Skills:` per step:
 
-`csharp-coding-standards` · `csharp-type-design-performance` · `csharp-concurrency-patterns` · `csharp-api-design` · `microsoft-extensions-dependency-injection` · `microsoft-extensions-configuration` · `dotnet-serialization` · `data-efcore-patterns` · `data-database-performance` · `dotnet-package-management` · `dotnet-project-structure` · `testing-testcontainers` · `testing-playwright-blazor` · `testing-crap-analysis` · `dotnet-slopwatch` · `dotnet-local-tools`
+`karpathy-guidelines` · `csharp-coding-standards` · `csharp-type-design-performance` · `csharp-concurrency-patterns` · `csharp-api-design` · `microsoft-extensions-dependency-injection` · `microsoft-extensions-configuration` · `dotnet-serialization` · `data-efcore-patterns` · `data-database-performance` · `dotnet-package-management` · `dotnet-project-structure` · `testing-testcontainers` · `testing-playwright-blazor` · `testing-crap-analysis` · `dotnet-slopwatch` · `dotnet-local-tools`
 
 ## Plan Document
 
