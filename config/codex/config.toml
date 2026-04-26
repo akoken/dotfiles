@@ -82,6 +82,10 @@ path = "skills/grill-me"
 enabled = true
 
 [[skills.config]]
+path = "skills/karpathy-guidelines"
+enabled = true
+
+[[skills.config]]
 path = "skills/local-tools"
 enabled = true
 
