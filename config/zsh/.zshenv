@@ -2,6 +2,7 @@
 
 export XDG_CONFIG_HOME="$HOME/.config"
 #export COPILOT_HOME="$XDG_CONFIG_HOME/copilot"
+export CODEX_HOME="$XDG_CONFIG_HOME/codex"
 
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 HISTFILE="$HOME/.zsh_history"
