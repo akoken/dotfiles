@@ -1,0 +1,126 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+[agents]
+max_threads = 6
+max_depth = 2
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+startup_timeout_sec = 20
+
+[[skills.config]]
+path = "skills/code-review-expert"
+enabled = true
+
+[[skills.config]]
+path = "skills/csharp-api-design"
+enabled = true
+
+[[skills.config]]
+path = "skills/csharp-coding-standards"
+enabled = true
+
+[[skills.config]]
+path = "skills/csharp-concurrency-patterns"
+enabled = true
+
+[[skills.config]]
+path = "skills/csharp-type-design-performance"
+enabled = true
+
+[[skills.config]]
+path = "skills/data-database-performance"
+enabled = true
+
+[[skills.config]]
+path = "skills/data-efcore-patterns"
+enabled = true
+
+[[skills.config]]
+path = "skills/database-performance"
+enabled = true
+
+[[skills.config]]
+path = "skills/dotnet-devcert-trust"
+enabled = true
+
+[[skills.config]]
+path = "skills/dotnet-local-tools"
+enabled = true
+
+[[skills.config]]
+path = "skills/dotnet-package-management"
+enabled = true
+
+[[skills.config]]
+path = "skills/dotnet-project-structure"
+enabled = true
+
+[[skills.config]]
+path = "skills/dotnet-serialization"
+enabled = true
+
+[[skills.config]]
+path = "skills/dotnet-slopwatch"
+enabled = true
+
+[[skills.config]]
+path = "skills/efcore-patterns"
+enabled = true
+
+[[skills.config]]
+path = "skills/frontend-design"
+enabled = true
+
+[[skills.config]]
+path = "skills/frontend-design-gpt"
+enabled = true
+
+[[skills.config]]
+path = "skills/grill-me"
+enabled = true
+
+[[skills.config]]
+path = "skills/local-tools"
+enabled = true
+
+[[skills.config]]
+path = "skills/microsoft-extensions-configuration"
+enabled = true
+
+[[skills.config]]
+path = "skills/microsoft-extensions-dependency-injection"
+enabled = true
+
+[[skills.config]]
+path = "skills/prd"
+enabled = true
+
+[[skills.config]]
+path = "skills/skills-index-snippets"
+enabled = true
+
+[[skills.config]]
+path = "skills/testcontainers"
+enabled = true
+
+[[skills.config]]
+path = "skills/testing-crap-analysis"
+enabled = true
+
+[[skills.config]]
+path = "skills/testing-playwright-blazor"
+enabled = true
+
+[[skills.config]]
+path = "skills/testing-testcontainers"
+enabled = true
+
+[[skills.config]]
+path = "skills/ubiquitous-language"
+enabled = true
+
+[[skills.config]]
+path = "skills/write-a-prd"
+enabled = true
