@@ -1,8 +1,14 @@
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+personality = "pragmatic"
 #:schema https://developers.openai.com/codex/config-schema.json
 
 [agents]
 max_threads = 6
 max_depth = 2
+
+[features]
+multi_agent = true
 
 [mcp_servers.context7]
 command = "npx"
@@ -127,4 +133,35 @@ enabled = true
 
 [[skills.config]]
 path = "skills/write-a-prd"
+enabled = true
+
+[projects."/Users/akoken/Developer/repos/dotfiles"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/dentist"]
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+"gpt-5.5" = 3
+
+[marketplaces.openai-bundled]
+last_updated = "2026-04-28T20:50:43Z"
+source_type = "local"
+source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
+
+[marketplaces.openai-primary-runtime]
+last_updated = "2026-04-28T20:51:04Z"
+source_type = "local"
+source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
+
+[plugins."browser-use@openai-bundled"]
+enabled = true
+
+[plugins."documents@openai-primary-runtime"]
+enabled = true
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = true
+
+[plugins."presentations@openai-primary-runtime"]
 enabled = true
