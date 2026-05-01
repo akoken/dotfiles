@@ -14,6 +14,7 @@ config/nvim/lazy-lock.json
 config/.copilot/config.json
 .bak
 
+# Codex
 **/codex/*.sqlite*
 **/codex/sessions
 **/codex/tmp
@@ -29,4 +30,7 @@ config/.copilot/config.json
 **/codex/sqlite
 **/codex/vendor_imports
 
-
+# OpenCode
+node_modules/
+**/opencode/package.json 
+**/opencode/package-lock.json
