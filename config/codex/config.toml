@@ -1,167 +1,184 @@
-model = "gpt-5.4"
-model_reasoning_effort = "medium"
+model = "gpt-5.5"
+model_reasoning_effort = "high"
 personality = "pragmatic"
-#:schema https://developers.openai.com/codex/config-schema.json
 
 [agents]
-max_threads = 6
 max_depth = 2
+max_threads = 6
 
 [features]
 multi_agent = true
-
-[mcp_servers.context7]
-command = "npx"
-args = ["-y", "@upstash/context7-mcp"]
-startup_timeout_sec = 20
-
-[[skills.config]]
-path = "skills/code-review-expert"
-enabled = true
-
-[[skills.config]]
-path = "skills/csharp-api-design"
-enabled = true
-
-[[skills.config]]
-path = "skills/csharp-coding-standards"
-enabled = true
-
-[[skills.config]]
-path = "skills/csharp-concurrency-patterns"
-enabled = true
-
-[[skills.config]]
-path = "skills/csharp-type-design-performance"
-enabled = true
-
-[[skills.config]]
-path = "skills/data-database-performance"
-enabled = true
-
-[[skills.config]]
-path = "skills/data-efcore-patterns"
-enabled = true
-
-[[skills.config]]
-path = "skills/database-performance"
-enabled = true
-
-[[skills.config]]
-path = "skills/dotnet-devcert-trust"
-enabled = true
-
-[[skills.config]]
-path = "skills/dotnet-local-tools"
-enabled = true
-
-[[skills.config]]
-path = "skills/dotnet-package-management"
-enabled = true
-
-[[skills.config]]
-path = "skills/dotnet-project-structure"
-enabled = true
-
-[[skills.config]]
-path = "skills/dotnet-serialization"
-enabled = true
-
-[[skills.config]]
-path = "skills/dotnet-slopwatch"
-enabled = true
-
-[[skills.config]]
-path = "skills/efcore-patterns"
-enabled = true
-
-[[skills.config]]
-path = "skills/frontend-design"
-enabled = true
-
-[[skills.config]]
-path = "skills/frontend-design-gpt"
-enabled = true
-
-[[skills.config]]
-path = "skills/grill-me"
-enabled = true
-
-[[skills.config]]
-path = "skills/karpathy-guidelines"
-enabled = true
-
-[[skills.config]]
-path = "skills/local-tools"
-enabled = true
-
-[[skills.config]]
-path = "skills/microsoft-extensions-configuration"
-enabled = true
-
-[[skills.config]]
-path = "skills/microsoft-extensions-dependency-injection"
-enabled = true
-
-[[skills.config]]
-path = "skills/prd"
-enabled = true
-
-[[skills.config]]
-path = "skills/skills-index-snippets"
-enabled = true
-
-[[skills.config]]
-path = "skills/testcontainers"
-enabled = true
-
-[[skills.config]]
-path = "skills/testing-crap-analysis"
-enabled = true
-
-[[skills.config]]
-path = "skills/testing-playwright-blazor"
-enabled = true
-
-[[skills.config]]
-path = "skills/testing-testcontainers"
-enabled = true
-
-[[skills.config]]
-path = "skills/ubiquitous-language"
-enabled = true
-
-[[skills.config]]
-path = "skills/write-a-prd"
-enabled = true
-
-[projects."/Users/akoken/Developer/repos/dotfiles"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/dentist"]
-trust_level = "trusted"
-
-[tui.model_availability_nux]
-"gpt-5.5" = 3
+terminal_resize_reflow = true
 
 [marketplaces.openai-bundled]
-last_updated = "2026-04-28T20:50:43Z"
+last_updated = "2026-05-11T18:55:27Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
 [marketplaces.openai-primary-runtime]
-last_updated = "2026-04-28T20:51:04Z"
+last_updated = "2026-05-09T17:56:44Z"
 source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
 
-[plugins."browser-use@openai-bundled"]
-enabled = true
+[mcp_servers.MCP_DOCKER]
+args = [
+    "mcp",
+    "gateway",
+    "run",
+]
+command = "docker"
+
+[mcp_servers.context7]
+args = [
+    "-y",
+    "@upstash/context7-mcp",
+]
+command = "npx"
+startup_timeout_sec = 20
 
 [plugins."documents@openai-primary-runtime"]
+enabled = true
+
+[plugins."presentations@openai-primary-runtime"]
 enabled = true
 
 [plugins."spreadsheets@openai-primary-runtime"]
 enabled = true
 
-[plugins."presentations@openai-primary-runtime"]
+[plugins."codex-security@openai-curated"]
 enabled = true
+
+[plugins."browser-use@openai-bundled"]
+enabled = true
+
+[projects."/Users/akoken/Developer/repos/dentist"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/dotfiles"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/minigrep"]
+trust_level = "trusted"
+
+[[skills.config]]
+enabled = true
+path = "skills/code-review-expert"
+
+[[skills.config]]
+enabled = true
+path = "skills/csharp-api-design"
+
+[[skills.config]]
+enabled = true
+path = "skills/csharp-coding-standards"
+
+[[skills.config]]
+enabled = true
+path = "skills/csharp-concurrency-patterns"
+
+[[skills.config]]
+enabled = true
+path = "skills/csharp-type-design-performance"
+
+[[skills.config]]
+enabled = true
+path = "skills/data-database-performance"
+
+[[skills.config]]
+enabled = true
+path = "skills/data-efcore-patterns"
+
+[[skills.config]]
+enabled = true
+path = "skills/database-performance"
+
+[[skills.config]]
+enabled = true
+path = "skills/dotnet-devcert-trust"
+
+[[skills.config]]
+enabled = true
+path = "skills/dotnet-local-tools"
+
+[[skills.config]]
+enabled = true
+path = "skills/dotnet-package-management"
+
+[[skills.config]]
+enabled = true
+path = "skills/dotnet-project-structure"
+
+[[skills.config]]
+enabled = true
+path = "skills/dotnet-serialization"
+
+[[skills.config]]
+enabled = true
+path = "skills/dotnet-slopwatch"
+
+[[skills.config]]
+enabled = true
+path = "skills/efcore-patterns"
+
+[[skills.config]]
+enabled = true
+path = "skills/frontend-design"
+
+[[skills.config]]
+enabled = true
+path = "skills/frontend-design-gpt"
+
+[[skills.config]]
+enabled = true
+path = "skills/grill-me"
+
+[[skills.config]]
+enabled = true
+path = "skills/karpathy-guidelines"
+
+[[skills.config]]
+enabled = true
+path = "skills/local-tools"
+
+[[skills.config]]
+enabled = true
+path = "skills/microsoft-extensions-configuration"
+
+[[skills.config]]
+enabled = true
+path = "skills/microsoft-extensions-dependency-injection"
+
+[[skills.config]]
+enabled = true
+path = "skills/prd"
+
+[[skills.config]]
+enabled = true
+path = "skills/skills-index-snippets"
+
+[[skills.config]]
+enabled = true
+path = "skills/testcontainers"
+
+[[skills.config]]
+enabled = true
+path = "skills/testing-crap-analysis"
+
+[[skills.config]]
+enabled = true
+path = "skills/testing-playwright-blazor"
+
+[[skills.config]]
+enabled = true
+path = "skills/testing-testcontainers"
+
+[[skills.config]]
+enabled = true
+path = "skills/ubiquitous-language"
+
+[[skills.config]]
+enabled = true
+path = "skills/write-a-prd"
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
