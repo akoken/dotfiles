@@ -8,6 +8,10 @@ This skill guides creation of distinctive, production-grade frontend interfaces 
 
 The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
 
+## Repo Design Sources
+
+When working inside an existing repo, first check for `Design.md` and `Design.html` at the repo root. If `Design.md` exists, read it and use it as the governing design brief for visual direction, layout rules, tokens, copy tone, and interaction constraints. If `Design.html` exists, inspect it as an optional visual/reference prototype and carry over relevant structure, styling, states, and assets unless the user explicitly asks to diverge.
+
 ## Design Thinking
 
 Before coding, understand the context and commit to a BOLD aesthetic direction:
