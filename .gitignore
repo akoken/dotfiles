@@ -5,7 +5,7 @@
 **/tmux/plugins
 
 # Zsh Extensions
-**/zsh/.zcompdump
+**/zsh/.zcompdump*
 **/zsh/.zcompcache
 **/zsh/.zsh_history
 **/zsh/.zsh_sessions
@@ -29,6 +29,10 @@ config/.copilot/config.json
 **/codex/plugins
 **/codex/sqlite
 **/codex/vendor_imports
+**/codex/computer-use
+**/codex/browser
+**/codex/memories
+**/codex/rules
 
 # OpenCode
 node_modules/
