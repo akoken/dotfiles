@@ -10,6 +10,7 @@ prepend_path /usr/local/opt/grep/libexec/gnubin
 prepend_path /usr/local/sbin
 prepend_path $DOTFILES/bin
 prepend_path $HOME/bin
+prepend_path $HOME/.local/bin
 
 # display how long all tasks over 10 seconds take
 export REPORTTIME=10
