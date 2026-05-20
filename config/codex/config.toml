@@ -1,4 +1,4 @@
-model = "gpt-5.5"
+model = "gpt-5.4-mini"
 model_reasoning_effort = "high"
 personality = "pragmatic"
 
@@ -131,6 +131,10 @@ path = "skills/frontend-design"
 [[skills.config]]
 enabled = true
 path = "skills/frontend-design-gpt"
+
+[[skills.config]]
+enabled = true
+path = "skills/graphify"
 
 [[skills.config]]
 enabled = true
