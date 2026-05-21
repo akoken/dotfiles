@@ -10,6 +10,10 @@ Use this skill when the quality of the work depends on art direction, hierarchy,
 
 Goal: ship interfaces that feel deliberate, premium, and current. Default toward award-level composition: one big idea, strong imagery, sparse copy, rigorous spacing, and a small number of memorable motions.
 
+## Repo Design Sources
+
+When working inside an existing repo, first check for `Design.md` and `Design.html` at the repo root. If `Design.md` exists, read it and use it as the governing design brief for art direction, hierarchy, spacing, tokens, copy tone, and interaction constraints. If `Design.html` exists, inspect it as an optional visual/reference prototype and carry over relevant structure, styling, states, and assets unless the user explicitly asks to diverge.
+
 ## Working Model
 
 Before building, write three things:
