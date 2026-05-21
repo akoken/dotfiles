@@ -1,4 +1,4 @@
-model = "gpt-5.4-mini"
+model = "gpt-5.5"
 model_reasoning_effort = "high"
 personality = "pragmatic"
 
@@ -194,3 +194,8 @@ path = "skills/write-a-prd"
 [memories]
 generate_memories = true
 use_memories = true
+
+[hooks.state]
+
+[hooks.state."/Users/akoken/Developer/repos/catmon/.codex/hooks.json:pre_tool_use:0:0"]
+trusted_hash = "sha256:30122407ead6e481c88bc576415162040c83ada6ff86cb19723ac6e02bc73761"
