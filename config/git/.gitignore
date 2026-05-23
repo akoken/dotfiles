@@ -66,3 +66,19 @@ bld/
 msbuild.log
 msbuild.err
 msbuild.wrn
+
+# AI Agent Leaks
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.*
+credentials.*
+.kube/
+.aws/
+config/database.yml
+.ssh/id_rsa
+.npmrc
