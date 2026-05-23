@@ -224,6 +224,7 @@ codeFontSize = 13
 followUpQueueMode = "steer"
 git-always-force-push = true
 conversationDetailMode = "STEPS_COMMANDS"
+git-show-sidebar-pr-icons = true
 
 [desktop.appearanceLightChromeTheme]
 accent = "#339cff"
