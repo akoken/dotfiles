@@ -10,14 +10,15 @@ max_threads = 6
 multi_agent = true
 terminal_resize_reflow = true
 memories = true
+js_repl = false
 
 [marketplaces.openai-bundled]
-last_updated = "2026-05-17T17:34:46Z"
+last_updated = "2026-05-23T10:37:32Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
 [marketplaces.openai-primary-runtime]
-last_updated = "2026-05-16T22:56:26Z"
+last_updated = "2026-05-21T21:56:22Z"
 source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
 
@@ -36,6 +37,23 @@ args = [
 ]
 command = "npx"
 startup_timeout_sec = 20
+
+[mcp_servers.node_repl]
+args = []
+command = "/Applications/Codex.app/Contents/Resources/node_repl"
+startup_timeout_sec = 120
+
+[mcp_servers.node_repl.env]
+BROWSER_USE_AVAILABLE_BACKENDS = "iab"
+BROWSER_USE_MARKETPLACE_NAME = "openai-bundled"
+CODEX_CLI_PATH = "/Applications/Codex.app/Contents/Resources/codex"
+CODEX_HOME = "/Users/akoken/.config/codex"
+NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS = "1000"
+NODE_REPL_NODE_MODULE_DIRS = ""
+NODE_REPL_NODE_PATH = "/Applications/Codex.app/Contents/Resources/node"
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "167fdf579477181fba1773c1efb067b00c5a64fe85dafb50a2001bde198dc739"
+NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
+NODE_REPL_UNTRUSTED_ENV_ALLOWLIST = "BROWSER_USE_MARKETPLACE_NAME"
 
 [plugins."documents@openai-primary-runtime"]
 enabled = true
@@ -199,3 +217,41 @@ use_memories = true
 
 [hooks.state."/Users/akoken/Developer/repos/catmon/.codex/hooks.json:pre_tool_use:0:0"]
 trusted_hash = "sha256:30122407ead6e481c88bc576415162040c83ada6ff86cb19723ac6e02bc73761"
+
+[desktop]
+ambient-suggestions-enabled = false
+codeFontSize = 13
+followUpQueueMode = "steer"
+git-always-force-push = true
+conversationDetailMode = "STEPS_COMMANDS"
+
+[desktop.appearanceLightChromeTheme]
+accent = "#339cff"
+contrast = 45
+ink = "#1a1c1f"
+opaqueWindows = false
+surface = "#ffffff"
+
+[desktop.appearanceLightChromeTheme.fonts]
+code = "MonoLisa"
+
+[desktop.appearanceLightChromeTheme.semanticColors]
+diffAdded = "#00a240"
+diffRemoved = "#ba2623"
+skill = "#924ff7"
+
+[desktop.appearanceDarkChromeTheme]
+accent = "#339cff"
+contrast = 85
+ink = "#ffffff"
+opaqueWindows = false
+surface = "#181818"
+
+[desktop.appearanceDarkChromeTheme.fonts]
+code = "MonoLisa"
+ui = "SF Pro Display"
+
+[desktop.appearanceDarkChromeTheme.semanticColors]
+diffAdded = "#40c977"
+diffRemoved = "#fa423e"
+skill = "#ad7bf9"
