@@ -15,24 +15,11 @@ config/.copilot/config.json
 .bak
 
 # Codex
-**/codex/*.sqlite*
-**/codex/sessions
-**/codex/tmp
-**/codex/shell_snapshots
-**/codex/skills/.system
-**/codex/*json*
-**/codex/cache
-**/codex/.vscode
-**/codex/.personality_migration
-**/codex/installation_id
-**/codex/AGENTS.md
-**/codex/plugins
-**/codex/sqlite
-**/codex/vendor_imports
-**/codex/computer-use
-**/codex/browser
-**/codex/memories
-**/codex/rules
+/config/codex/*
+!/config/codex/config.toml
+!/config/codex/agents/
+!/config/codex/skills/
+/config/codex/skills/.system/
 
 # OpenCode
 node_modules/
