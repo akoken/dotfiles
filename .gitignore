@@ -19,6 +19,7 @@ config/.copilot/config.json
 !/config/codex/config.toml
 !/config/codex/agents/
 !/config/codex/skills/
+!/config/codex/.codexignore
 /config/codex/skills/.system/
 
 # OpenCode

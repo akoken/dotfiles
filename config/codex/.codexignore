@@ -1,0 +1,27 @@
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Cloud credentials
+.aws/
+.gcp/
+.azure/
+.kube/
+.ssh/
+
+# Package manager credentials
+.npmrc
+.pypirc
+
+# Large/generated folders
+node_modules/
+dist/
+build/
+coverage/
+
+# AI/cache
+.cache/
