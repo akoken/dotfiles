@@ -70,6 +70,9 @@ enabled = true
 [plugins."browser@openai-bundled"]
 enabled = true
 
+[plugins."caveman@caveman-repo"]
+enabled = true
+
 [projects."/Users/akoken/Developer/repos/dentist"]
 trust_level = "trusted"
 
