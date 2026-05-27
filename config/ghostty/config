@@ -25,7 +25,7 @@ keybind = ctrl+shift+x=toggle_quick_terminal
 macos-titlebar-style = hidden
 background-blur = macos-glass-clear
 bold-is-bright = true
-background-opacity = 0.75
+background-opacity = 0.90
 background-blur-radius = 20
 window-padding-color = background
 window-padding-x = 20
@@ -34,6 +34,7 @@ window-padding-balance = false
 cursor-style = bar
 working-directory = home
 window-inherit-working-directory = false
+scrollback-limit = 5000
 
 # Other
 quick-terminal-position = top
