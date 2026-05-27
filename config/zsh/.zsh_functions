@@ -74,3 +74,35 @@ cocon() { copilot --allow-all-tools --continue; }
 
 # Resume a specific session
 cores() { copilot --allow-all-tools --resume "$@"; }
+
+# Local Coding Server and Client
+
+lcs() {
+    if [[ -z "$1" ]]; then
+        echo "Usage: lcs <model-path>" >&2
+        return 1
+    fi
+
+    local model_path="${1/#\~/$HOME}"
+    local model_name="${model_path##*/}"
+
+    model_name="${model_name%.gguf}"
+    model_name="${model_name%.mlx}"
+
+    export LOCAL_CODING_MODEL="$model_name"
+
+    llama-server --model "$model_path" \
+     --n-gpu-layers 99 --ctx-size 128000 --flash-attn on \
+     --batch-size 512 --threads 8 --temp 0.2 --min-p 0.05 \
+     --top-p 0.95 --top-k 40 --spec-type draft-mtp \
+     --spec-draft-n-max 2 --host 127.0.0.1 --port 8080
+}
+
+ccl() {
+    if [[ -z "$LOCAL_CODING_MODEL" ]]; then
+        echo "LOCAL_CODING_MODEL is not set. Run 'lcs <model>' first." >&2
+        return 1
+    fi
+
+    claude --model "$LOCAL_CODING_MODEL" "$@"
+}

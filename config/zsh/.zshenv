@@ -35,3 +35,7 @@ export EDITOR='nvim'
 export GIT_EDITOR='nvim'
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=true
+
+# Claude Code(Local)
+export ANTHROPIC_BASE_URL=http://localhost:8080
+export ANTHROPIC_AUTH_TOKEN=llamacpp
