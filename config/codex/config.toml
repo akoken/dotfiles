@@ -13,12 +13,12 @@ memories = true
 js_repl = false
 
 [marketplaces.openai-bundled]
-last_updated = "2026-05-23T10:37:32Z"
+last_updated = "2026-05-26T22:23:30Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
 [marketplaces.openai-primary-runtime]
-last_updated = "2026-05-21T21:56:22Z"
+last_updated = "2026-05-26T22:26:19Z"
 source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
 
