@@ -19,7 +19,6 @@ alias bu='brew upgrade'
 alias cop='copilot --model gpt-5.4 --banner'
 
 # Claude Code
-alias ccl='claude --model Qwen3.6-35B-A3B-MTP-UD-Q4_K_XL'
 alias cc='claude'
 
 alias lpath='echo $PATH | tr ":" "\n"' # list the PATH separated by new lines
