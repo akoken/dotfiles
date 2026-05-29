@@ -16,7 +16,7 @@ config/.copilot/config.json
 
 # Codex
 /config/codex/*
-!/config/codex/config.toml
+!/config/codex/*config.toml
 !/config/codex/agents/
 !/config/codex/skills/
 !/config/codex/.codexignore

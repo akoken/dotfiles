@@ -2,6 +2,12 @@ model = "gpt-5.5"
 model_reasoning_effort = "high"
 personality = "pragmatic"
 
+[model_providers.llama_cpp]
+name      = "llama.cpp"
+base_url  = "http://localhost:8001/v1"
+env_key   = "LLAMA_CPP_API_KEY"
+wire_api  = "responses"
+
 [agents]
 max_depth = 2
 max_threads = 6
