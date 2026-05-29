@@ -38,4 +38,15 @@ export DOTNET_NOLOGO=true
 
 # Claude Code(Local)
 export ANTHROPIC_BASE_URL=http://localhost:8080
+
+# Bypass the need to have an Anthropic login
 export ANTHROPIC_AUTH_TOKEN=llamacpp
+
+# Turn off telemetry shit
+export BETA_TRACING_ENDPOINT=http://127.0.0.1/fakebullshituri
+export ENABLE_ENHANCED_TELEMETRY_BETA=0
+export CLAUDE_CODE_ENABLE_TELEMETRY=0
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
+export DISABLE_TELEMETRY=1
+export OTEL_LOG_USER_PROMPTS=0
