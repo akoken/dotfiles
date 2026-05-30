@@ -1,2 +1,7 @@
 model_provider = "llama_cpp"
 model = "Qwen3.6-35B-A3B-UD-Q8_K_XL"
+
+[features]
+terminal_resize_reflow = true
+memories = true
+mentions_v2 = true
