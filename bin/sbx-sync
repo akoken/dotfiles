@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SANDBOX="${1:-}"
+AGENT="${2:-}"
+
+if [[ -z "$SANDBOX" || -z "$AGENT" ]]; then
+  echo "Usage: $0 <sandbox-name> <codex|claude>"
+  exit 1
+fi
+
+REMOTE_HOME="$(sbx exec "$SANDBOX" -- sh -lc 'printf "%s" "$HOME"')"
+
+ensure_codex_env() {
+  sbx exec "$SANDBOX" -- sh -lc '
+    mkdir -p "$HOME/.config/codex"
+
+    touch "$HOME/.profile" "$HOME/.zshenv"
+
+    grep -qxF '\''export CODEX_HOME="$HOME/.config/codex"'\'' "$HOME/.profile" 2>/dev/null || \
+      echo '\''export CODEX_HOME="$HOME/.config/codex"'\'' >> "$HOME/.profile"
+
+    grep -qxF '\''export CODEX_HOME="$HOME/.config/codex"'\'' "$HOME/.zshenv" 2>/dev/null || \
+      echo '\''export CODEX_HOME="$HOME/.config/codex"'\'' >> "$HOME/.zshenv"
+  '
+}
+
+ensure_codex_links() {
+  sbx exec "$SANDBOX" -- sh -lc '
+    mkdir -p "$HOME/.codex"
+
+    rm -rf "$HOME/.codex/skills"
+    ln -s "$HOME/.config/codex/skills" "$HOME/.codex/skills"
+
+    rm -f "$HOME/.codex/config.toml"
+    ln -s "$HOME/.config/codex/config.toml" "$HOME/.codex/config.toml"
+  '
+}
+
+disable_unsupported_codex_mcp() {
+  sbx exec "$SANDBOX" -- sh -lc '
+    python3 - <<PY
+from pathlib import Path
+import re
+
+p = Path.home() / ".config/codex/config.toml"
+
+if p.exists():
+    s = p.read_text()
+
+    for name in ["node_repl", "MCP_DOCKER"]:
+        s = re.sub(
+            rf"\n?\[mcp_servers\.{re.escape(name)}\][\s\S]*?(?=\n\[[^\]]+\]|\Z)",
+            f"\n# {name} disabled in Docker Sandbox\n",
+            s,
+        )
+
+        s = re.sub(
+            rf"\n?\[mcp_servers\.{re.escape(name)}\.env\][\s\S]*?(?=\n\[[^\]]+\]|\Z)",
+            "\n",
+            s,
+        )
+
+    p.write_text(s)
+PY
+  '
+}
+
+detect_sandbox_workdir() {
+  touch .sbx_probe
+
+  sbx exec "$SANDBOX" -- sh -lc '
+    dirname "$(find / -name .sbx_probe 2>/dev/null | head -1)"
+  '
+}
+
+sync_dir_via_workspace_tar() {
+  local src="$1"
+  local dest="$2"
+  local name="$3"
+
+  local real_src
+  local sandbox_workdir
+  local archive_name
+  local host_archive
+  local sandbox_archive
+
+  if [[ ! -e "$src" ]]; then
+    echo "Skipping missing path: $src"
+    return 0
+  fi
+
+  real_src="$(realpath "$src")"
+
+  if [[ ! -d "$real_src" ]]; then
+    echo "Skipping non-directory path: $src -> $real_src"
+    return 0
+  fi
+
+  sandbox_workdir="$(detect_sandbox_workdir)"
+
+  if [[ -z "$sandbox_workdir" || "$sandbox_workdir" == "." ]]; then
+    echo "Could not detect sandbox workdir"
+    exit 1
+  fi
+
+  archive_name=".${name}-$(date +%s).tar"
+  host_archive="./$archive_name"
+  sandbox_archive="$sandbox_workdir/$archive_name"
+
+  echo "Syncing $src -> $real_src -> $SANDBOX:$dest"
+
+  rm -f "$host_archive"
+
+  TAR_CMD="$(command -v gtar || command -v tar)"
+  COPYFILE_DISABLE=1 "$TAR_CMD" \
+    --exclude='._*' \
+    --exclude='.DS_Store' \
+    --exclude='__MACOSX' \
+    --exclude='.codex' \
+    --exclude='.tmp' \
+    --exclude='vendor_imports' \
+    -C "$real_src" \
+    -cf "$host_archive" .
+
+  sbx exec "$SANDBOX" -- sh -lc "
+    rm -rf '$dest'
+    mkdir -p '$dest'
+    tar -C '$dest' -xf '$sandbox_archive'
+    rm -f '$sandbox_archive'
+  "
+
+  rm -f "$host_archive"
+}
+
+case "$AGENT" in
+  codex)
+    sync_dir_via_workspace_tar "$HOME/.config/codex" "$REMOTE_HOME/.config/codex" "codex-config"
+    ensure_codex_env
+    disable_unsupported_codex_mcp
+    ensure_codex_links
+
+    sbx exec "$SANDBOX" -- sh -lc '
+      export CODEX_HOME="$HOME/.config/codex"
+
+      echo "HOME=$HOME"
+      echo "CODEX_HOME=$CODEX_HOME"
+
+      echo "Skills path:"
+      ls -la "$HOME/.codex/skills"
+
+      echo "Detected skills:"
+      find "$HOME/.codex/skills" -maxdepth 2 -name SKILL.md | sort | head -50
+
+      command -v codex
+      codex --version
+    '
+    ;;
+
+  claude)
+    sync_dir_via_workspace_tar "$HOME/.claude" "$REMOTE_HOME/.claude" "claude-home"
+    sync_dir_via_workspace_tar "$HOME/.config/claude" "$REMOTE_HOME/.config/claude" "claude-config"
+    sync_dir_via_workspace_tar "$HOME/.config/claude-code" "$REMOTE_HOME/.config/claude-code" "claude-code-config"
+
+    sbx exec "$SANDBOX" -- sh -lc '
+      command -v claude
+      claude --version
+    '
+    ;;
+
+  *)
+    echo "Unsupported agent: $AGENT"
+    echo "Usage: $0 <sandbox-name> <codex|claude>"
+    exit 1
+    ;;
+esac
+
+echo "Done."
