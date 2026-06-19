@@ -5,3 +5,7 @@ model = "Qwen3.6-35B-A3B-UD-Q8_K_XL"
 terminal_resize_reflow = true
 memories = true
 mentions_v2 = true
+
+[tui]
+status_line = ["model-with-reasoning", "current-dir", "git-branch", "run-state", "context-used"]
+status_line_use_colors = true
