@@ -29,8 +29,6 @@ When delegated by the Orchestrator, always end your response with this structure
 
 ## Mandatory Coding Principles
 
-. Consult the `karpathy-guidelines` skill for rules on simplicity, surgical edits, and surfacing assumptions before coding.
-
 1. Structure
 - Use a consistent, predictable layout.
 - Group code by feature or surface area.

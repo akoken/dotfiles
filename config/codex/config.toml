@@ -19,14 +19,26 @@ memories = true
 js_repl = false
 
 [marketplaces.openai-bundled]
-last_updated = "2026-06-18T18:18:10Z"
+last_updated = "2026-06-26T10:59:40Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
 [marketplaces.openai-primary-runtime]
-last_updated = "2026-06-15T00:56:47Z"
+last_updated = "2026-06-24T05:56:51Z"
 source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
+
+[marketplaces.caveman]
+last_updated = "2026-06-25T11:39:48Z"
+last_revision = "25d22f864ad68cc447a4cb93aefde918aa4aec9f"
+source_type = "git"
+source = "https://github.com/JuliusBrussee/caveman.git"
+
+[marketplaces.claude-plugins-official]
+last_updated = "2026-06-26T10:59:41Z"
+last_revision = "82f22ec4f0a73aa2564036ffc28a1da00c707e0c"
+source_type = "git"
+source = "https://github.com/anthropics/claude-plugins-official.git"
 
 [mcp_servers.MCP_DOCKER]
 args = [
@@ -55,12 +67,12 @@ NODE_REPL_NODE_MODULE_DIRS = "/Applications/Codex.app/Contents/Resources/cua_nod
 NODE_REPL_NODE_PATH = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
 NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
 CODEX_HOME = "/Users/akoken/.config/codex"
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "d0737b0390c0cfd6105f8cbe62b5895e2e0ad45c705b1512bf754806a04797c9"
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "d1a8040310e3ed270b3d17f6f3d41f4cdbad9096fa1a4f7c425fbb37afe949d3"
 BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
 NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
 BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.616.30709"
+BROWSER_USE_CODEX_APP_VERSION = "26.623.31921"
 CODEX_CLI_PATH = "/Applications/Codex.app/Contents/Resources/codex"
 
 [plugins."documents@openai-primary-runtime"]
@@ -87,6 +99,15 @@ enabled = true
 [plugins."browser@openai-bundled"]
 enabled = true
 
+[plugins."template-creator@openai-primary-runtime"]
+enabled = true
+
+[plugins."caveman@caveman"]
+enabled = true
+
+[plugins."rust-analyzer-lsp@claude-plugins-official"]
+enabled = true
+
 [projects."/Users/akoken/Developer/repos/dentist"]
 trust_level = "trusted"
 
@@ -97,6 +118,12 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [projects."/Users/akoken/Developer/repos/catmon"]
+trust_level = "trusted"
+
+[projects."/Users/akoken"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/dpi-pass"]
 trust_level = "trusted"
 
 [[skills.config]]
@@ -174,10 +201,6 @@ path = "skills/graphify"
 [[skills.config]]
 enabled = true
 path = "skills/grill-me"
-
-[[skills.config]]
-enabled = true
-path = "skills/karpathy-guidelines"
 
 [[skills.config]]
 enabled = true

@@ -34,7 +34,6 @@ Mode rules:
 
 Prefer a short, deliberate shortlist of exact installed skills instead of trying to use every available skill.
 
-- `karpathy-guidelines` for non-trivial coding work, refactors, and surgical edits.
 - `code-review-expert` when reviewing diffs, validating risky changes, or cross-checking reviewer findings.
 - `graphify` for codebase orientation, architecture questions, file relationships, or any broad repo exploration where building on `graphify-out/` can replace expensive multi-file reads and reduce token usage.
 - The exact language or domain skill that matches the task when the stack is clear, such as `csharp-coding-standards`, `csharp-api-design`, `csharp-concurrency-patterns`, `data-efcore-patterns`, `data-database-performance`, `microsoft-extensions-configuration`, `microsoft-extensions-dependency-injection`, `testing-testcontainers`, `testing-playwright-blazor`, or `frontend-design`.
