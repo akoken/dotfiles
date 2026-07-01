@@ -1,5 +1,5 @@
 model = "gpt-5.5"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 personality = "pragmatic"
 
 [model_providers.llama_cpp]
@@ -19,12 +19,12 @@ memories = true
 js_repl = false
 
 [marketplaces.openai-bundled]
-last_updated = "2026-06-26T10:59:40Z"
+last_updated = "2026-06-30T14:11:51Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
 [marketplaces.openai-primary-runtime]
-last_updated = "2026-06-24T05:56:51Z"
+last_updated = "2026-07-01T06:57:02Z"
 source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
 
@@ -35,8 +35,8 @@ source_type = "git"
 source = "https://github.com/JuliusBrussee/caveman.git"
 
 [marketplaces.claude-plugins-official]
-last_updated = "2026-06-26T10:59:41Z"
-last_revision = "82f22ec4f0a73aa2564036ffc28a1da00c707e0c"
+last_updated = "2026-06-30T14:11:52Z"
+last_revision = "7d0e5f5aae1643db011e905b561fca81776388a6"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
@@ -67,12 +67,12 @@ NODE_REPL_NODE_MODULE_DIRS = "/Applications/Codex.app/Contents/Resources/cua_nod
 NODE_REPL_NODE_PATH = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
 NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
 CODEX_HOME = "/Users/akoken/.config/codex"
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "d1a8040310e3ed270b3d17f6f3d41f4cdbad9096fa1a4f7c425fbb37afe949d3"
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "d5cbb8ec1ee520cba7943b1e1accb6b25acd9941ea4e2e9e4dbcf25ff9983a2d"
 BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
 NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
 BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.623.31921"
+BROWSER_USE_CODEX_APP_VERSION = "26.623.70822"
 CODEX_CLI_PATH = "/Applications/Codex.app/Contents/Resources/codex"
 
 [plugins."documents@openai-primary-runtime"]
@@ -124,6 +124,18 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [projects."/Users/akoken/Developer/repos/dpi-pass"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/model-test"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/nova"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/firstmate"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/obsidian"]
 trust_level = "trusted"
 
 [[skills.config]]
@@ -257,6 +269,12 @@ use_memories = true
 
 [hooks.state."/Users/akoken/Developer/repos/catmon/.codex/hooks.json:pre_tool_use:0:0"]
 trusted_hash = "sha256:30122407ead6e481c88bc576415162040c83ada6ff86cb19723ac6e02bc73761"
+
+[hooks.state."/Users/akoken/.codex/hooks.json:session_start:0:0"]
+trusted_hash = "sha256:2f4250823b1e146b23dd5260dc6b50152ec970e501f9ec0b3876e35e7e4beeca"
+
+[hooks.state."/Users/akoken/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:a90fd0b3055edc43e7b5ca1a5cdf36fa93576d9df968f2c3ccbd489309af49d3"
 
 [desktop]
 ambient-suggestions-enabled = false

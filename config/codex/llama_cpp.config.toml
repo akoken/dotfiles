@@ -1,5 +1,9 @@
 model_provider = "llama_cpp"
-model = "Qwen3.6-35B-A3B-UD-Q8_K_XL"
+#model = "Qwen3.6-35B-A3B-UD-Q8_K_XL"
+#model = "Qwen3.6-27B-UD-Q8_K_XL"
+#model = "ornith-1.0-35b-Q8_0"
+model = "Ornith-1.0-35B-MTP-APEX-I-Quality"
+approvals_reviewer = "user"
 
 [features]
 terminal_resize_reflow = true
@@ -9,3 +13,14 @@ mentions_v2 = true
 [tui]
 status_line = ["model-with-reasoning", "current-dir", "git-branch", "run-state", "context-used"]
 status_line_use_colors = true
+
+[hooks.state]
+
+[hooks.state."/Users/akoken/.codex/hooks.json:session_start:0:0"]
+trusted_hash = "sha256:2f4250823b1e146b23dd5260dc6b50152ec970e501f9ec0b3876e35e7e4beeca"
+
+[hooks.state."/Users/akoken/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:a90fd0b3055edc43e7b5ca1a5cdf36fa93576d9df968f2c3ccbd489309af49d3"
+
+[projects."/Users/akoken/Developer/repos/model-test"]
+trust_level = "trusted"
