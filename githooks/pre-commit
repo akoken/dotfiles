@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -u
+
+exec '/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard' scan-staged

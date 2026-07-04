@@ -1,5 +1,5 @@
 model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 personality = "pragmatic"
 
 [model_providers.llama_cpp]
@@ -19,7 +19,7 @@ memories = true
 js_repl = false
 
 [marketplaces.openai-bundled]
-last_updated = "2026-06-30T14:11:51Z"
+last_updated = "2026-07-03T20:37:02Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
@@ -29,14 +29,14 @@ source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
 
 [marketplaces.caveman]
-last_updated = "2026-06-25T11:39:48Z"
-last_revision = "25d22f864ad68cc447a4cb93aefde918aa4aec9f"
+last_updated = "2026-07-03T19:02:15Z"
+last_revision = "0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0"
 source_type = "git"
 source = "https://github.com/JuliusBrussee/caveman.git"
 
 [marketplaces.claude-plugins-official]
-last_updated = "2026-06-30T14:11:52Z"
-last_revision = "7d0e5f5aae1643db011e905b561fca81776388a6"
+last_updated = "2026-07-04T21:10:47Z"
+last_revision = "a0ae4e4344c47434ccaf159ff844c3957ca007fc"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
@@ -67,12 +67,12 @@ NODE_REPL_NODE_MODULE_DIRS = "/Applications/Codex.app/Contents/Resources/cua_nod
 NODE_REPL_NODE_PATH = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
 NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
 CODEX_HOME = "/Users/akoken/.config/codex"
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "d5cbb8ec1ee520cba7943b1e1accb6b25acd9941ea4e2e9e4dbcf25ff9983a2d"
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "60e4902788f207f88fd09344dfeafe07769488bdb2924bbb12b322c3b9d2b999"
 BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
 NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
 BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.623.70822"
+BROWSER_USE_CODEX_APP_VERSION = "26.623.101652"
 CODEX_CLI_PATH = "/Applications/Codex.app/Contents/Resources/codex"
 
 [plugins."documents@openai-primary-runtime"]
@@ -136,6 +136,9 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [projects."/Users/akoken/Developer/repos/obsidian"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/aura"]
 trust_level = "trusted"
 
 [[skills.config]]
@@ -213,6 +216,46 @@ path = "skills/graphify"
 [[skills.config]]
 enabled = true
 path = "skills/grill-me"
+
+[[skills.config]]
+enabled = true
+path = "skills/agent-guard"
+
+[[skills.config]]
+enabled = true
+path = "skills/ci-repair"
+
+[[skills.config]]
+enabled = true
+path = "skills/env-lint"
+
+[[skills.config]]
+enabled = true
+path = "skills/flaky-detector"
+
+[[skills.config]]
+enabled = true
+path = "skills/secret-guard"
+
+[[skills.config]]
+enabled = true
+path = "skills/dependency-resilience"
+
+[[skills.config]]
+enabled = true
+path = "skills/production-readiness"
+
+[[skills.config]]
+enabled = true
+path = "skills/release-reproducibility"
+
+[[skills.config]]
+enabled = true
+path = "skills/structured-handoff"
+
+[[skills.config]]
+enabled = true
+path = "skills/test-gap"
 
 [[skills.config]]
 enabled = true
