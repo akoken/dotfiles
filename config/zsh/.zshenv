@@ -25,9 +25,14 @@ export RIPGREP_CONFIG_PATH="$HOME/.config/ripgrep/config"
 
 fpath=(
     $DOTFILES/config/zsh/functions
+    /usr/local/share/zsh/functions       # base autoload funcs (is-at-least, colors, add-zsh-hook, compinit)
     /usr/local/share/zsh/site-functions
     $fpath
 )
+# Drop nonexistent/duplicate entries (e.g. a stale Cellar/zsh/<old-version> path
+# left in an inherited $FPATH after a Homebrew zsh upgrade) and dedupe.
+fpath=(${^fpath}(N-/))
+typeset -aU fpath
 
 typeset -aU path
 
@@ -37,10 +42,10 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=true
 
 # Claude Code(Local)
-export ANTHROPIC_BASE_URL=http://localhost:8080
+#export ANTHROPIC_BASE_URL=http://localhost:8080
 
 # Bypass the need to have an Anthropic login
-export ANTHROPIC_AUTH_TOKEN=llamacpp
+#export ANTHROPIC_AUTH_TOKEN=llamacpp
 
 # Turn off telemetry shit
 export BETA_TRACING_ENDPOINT=http://127.0.0.1/fakebullshituri
