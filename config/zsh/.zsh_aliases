@@ -51,7 +51,7 @@ alias gwtr="git worktree remove"
 alias gwtl="git worktree list"
 
 alias cat=bat --theme="Catppuccin Mocha"
-alias curl="/opt/homebrew/opt/curl/bin/curl"
+alias curl="${HOMEBREW_PREFIX}/opt/curl/bin/curl"
 alias sf="fzf --preview='bat --color=always {}'"
 alias sft="fzf-tmux --preview='bat --color=always {}'"
 
