@@ -19,7 +19,7 @@ memories = true
 js_repl = false
 
 [marketplaces.openai-bundled]
-last_updated = "2026-07-03T20:37:02Z"
+last_updated = "2026-07-07T17:52:10Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
@@ -35,8 +35,8 @@ source_type = "git"
 source = "https://github.com/JuliusBrussee/caveman.git"
 
 [marketplaces.claude-plugins-official]
-last_updated = "2026-07-04T21:10:47Z"
-last_revision = "a0ae4e4344c47434ccaf159ff844c3957ca007fc"
+last_updated = "2026-07-07T17:52:11Z"
+last_revision = "67bbffb903a2ae5c2faa3f03a1d3d80a6dc3bed5"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
@@ -67,12 +67,12 @@ NODE_REPL_NODE_MODULE_DIRS = "/Applications/Codex.app/Contents/Resources/cua_nod
 NODE_REPL_NODE_PATH = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
 NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
 CODEX_HOME = "/Users/akoken/.config/codex"
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "60e4902788f207f88fd09344dfeafe07769488bdb2924bbb12b322c3b9d2b999"
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "97669f77b3ca7114a2df05d55646416ea34b28100c07213ef9f643803449ef2f"
 BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
 NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
 BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.623.101652"
+BROWSER_USE_CODEX_APP_VERSION = "26.623.141536"
 CODEX_CLI_PATH = "/Applications/Codex.app/Contents/Resources/codex"
 
 [plugins."documents@openai-primary-runtime"]
