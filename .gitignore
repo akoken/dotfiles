@@ -1,5 +1,6 @@
 # MacOS
 .DS_Store
+session.json
 
 # Tmux Plugins
 **/tmux/plugins
@@ -26,3 +27,6 @@ config/.copilot/config.json
 node_modules/
 **/opencode/package.json 
 **/opencode/package-lock.json
+
+# Herdr
+config/herdr/session.json

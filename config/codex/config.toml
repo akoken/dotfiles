@@ -1,5 +1,5 @@
-model = "gpt-5.5"
-model_reasoning_effort = "high"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
 personality = "pragmatic"
 
 [model_providers.llama_cpp]
@@ -19,12 +19,12 @@ memories = true
 js_repl = false
 
 [marketplaces.openai-bundled]
-last_updated = "2026-07-07T17:52:10Z"
+last_updated = "2026-07-10T23:10:03Z"
 source_type = "local"
 source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
 
 [marketplaces.openai-primary-runtime]
-last_updated = "2026-07-01T06:57:02Z"
+last_updated = "2026-07-10T07:56:49Z"
 source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
 
@@ -35,8 +35,8 @@ source_type = "git"
 source = "https://github.com/JuliusBrussee/caveman.git"
 
 [marketplaces.claude-plugins-official]
-last_updated = "2026-07-07T17:52:11Z"
-last_revision = "67bbffb903a2ae5c2faa3f03a1d3d80a6dc3bed5"
+last_updated = "2026-07-10T23:09:59Z"
+last_revision = "119f4ebf21f6b932627e26824a7cae073c441fea"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
@@ -67,13 +67,20 @@ NODE_REPL_NODE_MODULE_DIRS = "/Applications/Codex.app/Contents/Resources/cua_nod
 NODE_REPL_NODE_PATH = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
 NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
 CODEX_HOME = "/Users/akoken/.config/codex"
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "97669f77b3ca7114a2df05d55646416ea34b28100c07213ef9f643803449ef2f"
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "1491199f46178eb038259aaea144492b8a8ade32bba5d2b4843c94936be551bb,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f"
 BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
 NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
+NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = "Control desktop apps on macOS through Computer Use."
 BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.623.141536"
+BROWSER_USE_CODEX_APP_VERSION = "26.707.41301"
 CODEX_CLI_PATH = "/Applications/Codex.app/Contents/Resources/codex"
+
+[mcp_servers.computer-use]
+command = "./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient"
+args = ["mcp"]
+cwd = "."
+enabled = false
 
 [plugins."documents@openai-primary-runtime"]
 enabled = true
@@ -96,9 +103,6 @@ enabled = true
 [plugins."pdf@openai-primary-runtime"]
 enabled = true
 
-[plugins."browser@openai-bundled"]
-enabled = true
-
 [plugins."template-creator@openai-primary-runtime"]
 enabled = true
 
@@ -106,6 +110,12 @@ enabled = true
 enabled = true
 
 [plugins."rust-analyzer-lsp@claude-plugins-official"]
+enabled = true
+
+[plugins."visualize@openai-bundled"]
+enabled = true
+
+[plugins."browser@openai-bundled"]
 enabled = true
 
 [projects."/Users/akoken/Developer/repos/dentist"]
@@ -319,41 +329,35 @@ trusted_hash = "sha256:2f4250823b1e146b23dd5260dc6b50152ec970e501f9ec0b3876e35e7
 [hooks.state."/Users/akoken/.codex/hooks.json:user_prompt_submit:0:0"]
 trusted_hash = "sha256:a90fd0b3055edc43e7b5ca1a5cdf36fa93576d9df968f2c3ccbd489309af49d3"
 
+[hooks.state."/Users/akoken/Developer/repos/firstmate/.codex/hooks.json:stop:0:0"]
+trusted_hash = "sha256:6874d92dd2befa3254ab2c99d3559399f98d3c155f533ce19c9872115504946b"
+
+[hooks.state."/Users/akoken/Developer/repos/firstmate/.codex/hooks.json:pre_tool_use:0:0"]
+trusted_hash = "sha256:a920c3e99340de2feaf624585635e43b8541c9fdd5aeb5c0d9dd2479ef05b411"
+
 [desktop]
 ambient-suggestions-enabled = false
 codeFontSize = 13
 followUpQueueMode = "steer"
-git-always-force-push = true
 conversationDetailMode = "STEPS_COMMANDS"
 git-show-sidebar-pr-icons = true
-
-[desktop.appearanceLightChromeTheme]
-accent = "#339cff"
-contrast = 45
-ink = "#1a1c1f"
-opaqueWindows = false
-surface = "#ffffff"
-
-[desktop.appearanceLightChromeTheme.fonts]
-code = "MonoLisa"
-
-[desktop.appearanceLightChromeTheme.semanticColors]
-diffAdded = "#00a240"
-diffRemoved = "#ba2623"
-skill = "#924ff7"
+enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "max"]
+dock-icon-preference = "codex-system"
+git-branch-prefix = "akoken/"
+git-always-force-push = true
 
 [desktop.appearanceDarkChromeTheme]
 accent = "#339cff"
-contrast = 85
+contrast = 60
 ink = "#ffffff"
 opaqueWindows = false
 surface = "#181818"
 
 [desktop.appearanceDarkChromeTheme.fonts]
-code = "MonoLisa"
-ui = "SF Pro Display"
+code = "MonaLisa"
 
 [desktop.appearanceDarkChromeTheme.semanticColors]
 diffAdded = "#40c977"
 diffRemoved = "#fa423e"
 skill = "#ad7bf9"
+
