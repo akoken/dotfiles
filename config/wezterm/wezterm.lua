@@ -20,11 +20,8 @@ local w = require("utils/wallpaper")
 local wezterm = require("wezterm")
 
 local config = {
-	background = {
-		w.get_wallpaper(wallpapers_glob),
-		b.get_background(dark_opacity, light_opacity),
-	},
-
+	window_background_opacity = 0.8,
+	macos_window_background_blur = 50,
 	--line_height = 1.1,
 	font_size = 18,
 	font = wezterm.font_with_fallback({
