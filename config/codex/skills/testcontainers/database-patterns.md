@@ -1,201 +1,93 @@
-# Database Testing Patterns
-
-Full code examples for testing with SQL Server, PostgreSQL, and database migrations using TestContainers.
+# Database Testcontainers Patterns
 
 ## Contents
 
-- [SQL Server Integration Tests](#sql-server-integration-tests)
-- [PostgreSQL Integration Tests](#postgresql-integration-tests)
-- [Testing Migrations with Real Databases](#testing-migrations-with-real-databases)
+- Module selection
+- SQL Server
+- PostgreSQL
+- Migration verification
+- Isolation and reset strategies
+- Failure diagnostics
 
-## SQL Server Integration Tests
+## Module Selection
 
-```csharp
-using Testcontainers;
-using Xunit;
+Prefer the official database module because it provides a typed builder, connection string, defaults, and service-aware behavior.
 
-public class SqlServerTests : IAsyncLifetime
-{
-    private readonly TestcontainersContainer _dbContainer;
-    private IDbConnection _db;
+| Dependency | Package | Builder |
+|---|---|---|
+| SQL Server | `Testcontainers.MsSql` | `MsSqlBuilder` |
+| PostgreSQL | `Testcontainers.PostgreSql` | `PostgreSqlBuilder` |
 
-    public SqlServerTests()
-    {
-        _dbContainer = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-            .WithEnvironment("ACCEPT_EULA", "Y")
-            .WithEnvironment("SA_PASSWORD", "Your_password123")
-            .WithPortBinding(1433, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(1433))
-            .Build();
-    }
+Use `dotnet add package` and let the repository's central package management or lock strategy pin the resolved version.
 
-    public async Task InitializeAsync()
-    {
-        await _dbContainer.StartAsync();
-
-        var port = _dbContainer.GetMappedPublicPort(1433);
-        var connectionString = $"Server=localhost,{port};Database=master;User Id=sa;Password=Your_password123;TrustServerCertificate=true";
-
-        _db = new SqlConnection(connectionString);
-        await _db.OpenAsync();
-
-        // Create test database
-        await _db.ExecuteAsync("CREATE DATABASE TestDb");
-        await _db.ExecuteAsync("USE TestDb");
-
-        // Run schema migrations
-        await _db.ExecuteAsync(@"
-            CREATE TABLE Orders (
-                Id INT PRIMARY KEY,
-                CustomerId NVARCHAR(50) NOT NULL,
-                Total DECIMAL(18,2) NOT NULL,
-                CreatedAt DATETIME2 DEFAULT GETUTCDATE()
-            )");
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _db.DisposeAsync();
-        await _dbContainer.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task CanInsertAndRetrieveOrder()
-    {
-        // Arrange
-        await _db.ExecuteAsync(@"
-            INSERT INTO Orders (Id, CustomerId, Total)
-            VALUES (1, 'CUST001', 99.99)");
-
-        // Act
-        var order = await _db.QuerySingleAsync<Order>(
-            "SELECT * FROM Orders WHERE Id = @Id",
-            new { Id = 1 });
-
-        // Assert
-        Assert.Equal(1, order.Id);
-        Assert.Equal("CUST001", order.CustomerId);
-        Assert.Equal(99.99m, order.Total);
-    }
-}
-```
-
-## PostgreSQL Integration Tests
+## SQL Server
 
 ```csharp
-public class PostgreSqlTests : IAsyncLifetime
-{
-    private readonly TestcontainersContainer _dbContainer;
-    private NpgsqlConnection _connection;
+using Microsoft.Data.SqlClient;
+using Testcontainers.MsSql;
 
-    public PostgreSqlTests()
-    {
-        _dbContainer = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("postgres:latest")
-            .WithEnvironment("POSTGRES_PASSWORD", "postgres")
-            .WithEnvironment("POSTGRES_DB", "testdb")
-            .WithPortBinding(5432, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(5432))
-            .Build();
-    }
+await using var database = new MsSqlBuilder(
+        "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04")
+    .Build();
 
-    public async Task InitializeAsync()
-    {
-        await _dbContainer.StartAsync();
+await database.StartAsync(cancellationToken);
 
-        var port = _dbContainer.GetMappedPublicPort(5432);
-        var connectionString = $"Host=localhost;Port={port};Database=testdb;Username=postgres;Password=postgres";
-
-        _connection = new NpgsqlConnection(connectionString);
-        await _connection.OpenAsync();
-
-        // Create schema
-        await _connection.ExecuteAsync(@"
-            CREATE TABLE orders (
-                id SERIAL PRIMARY KEY,
-                customer_id VARCHAR(50) NOT NULL,
-                total NUMERIC(10,2) NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            )");
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _connection.DisposeAsync();
-        await _dbContainer.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task PostgreSql_ShouldHandleTransactions()
-    {
-        using var transaction = await _connection.BeginTransactionAsync();
-
-        await _connection.ExecuteAsync(
-            "INSERT INTO orders (customer_id, total) VALUES (@CustomerId, @Total)",
-            new { CustomerId = "CUST1", Total = 100.00m },
-            transaction);
-
-        await transaction.RollbackAsync();
-
-        var count = await _connection.QuerySingleAsync<int>(
-            "SELECT COUNT(*) FROM orders");
-
-        Assert.Equal(0, count); // Rollback should prevent insert
-    }
-}
+await using var connection = new SqlConnection(database.GetConnectionString());
+await connection.OpenAsync(cancellationToken);
 ```
 
-## Testing Migrations with Real Databases
+Use the connection string supplied by the module. Do not reconstruct hostnames, ports, credentials, or trust settings manually.
+
+## PostgreSQL
 
 ```csharp
-public class MigrationTests : IAsyncLifetime
-{
-    private readonly TestcontainersContainer _container;
-    private string _connectionString;
+using Npgsql;
+using Testcontainers.PostgreSql;
 
-    public async Task InitializeAsync()
-    {
-        _container = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-            .WithEnvironment("ACCEPT_EULA", "Y")
-            .WithEnvironment("SA_PASSWORD", "Your_password123")
-            .WithPortBinding(1433, true)
-            .Build();
+await using var database = new PostgreSqlBuilder("postgres:15.1")
+    .Build();
 
-        await _container.StartAsync();
+await database.StartAsync(cancellationToken);
 
-        var port = _container.GetMappedPublicPort(1433);
-        _connectionString = $"Server=localhost,{port};Database=TestDb;User Id=sa;Password=Your_password123;TrustServerCertificate=true";
-    }
-
-    [Fact]
-    public async Task Migrations_ShouldRunSuccessfully()
-    {
-        // Run Entity Framework migrations
-        var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(_connectionString);
-
-        using var context = new AppDbContext(optionsBuilder.Options);
-
-        // Apply migrations
-        await context.Database.MigrateAsync();
-
-        // Verify schema
-        var canConnect = await context.Database.CanConnectAsync();
-        Assert.True(canConnect);
-
-        // Verify tables exist
-        var tables = await context.Database.SqlQueryRaw<string>(
-            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES").ToListAsync();
-
-        Assert.Contains("Orders", tables);
-        Assert.Contains("Customers", tables);
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _container.DisposeAsync();
-    }
-}
+await using var connection = new NpgsqlConnection(database.GetConnectionString());
+await connection.OpenAsync(cancellationToken);
 ```
+
+Pin the image tag to the version family used in production unless the test explicitly checks an upgrade path.
+
+## Migration Verification
+
+Test migrations through the same entry point used by deployment or application startup:
+
+1. Start an empty database container.
+2. Run the production migration command/service.
+3. Assert the expected schema or perform representative reads and writes.
+4. When upgrade compatibility matters, initialize the prior schema/data, apply the new migration, and verify preserved data.
+5. When rollback is supported, test it explicitly; do not imply rollback safety from an upgrade-only test.
+
+Avoid hand-written test schemas that can drift from production migrations.
+
+## Isolation and Reset Strategies
+
+Choose one boundary and document it in the fixture:
+
+- **Container per test:** strongest isolation, slowest startup.
+- **Container per class/collection:** good default when startup is expensive; reset state before each test.
+- **Transaction rollback:** fast but invalid for code that opens multiple connections, commits independently, or tests transaction behavior.
+- **Respawn/truncation:** useful for shared relational containers when configured for the real schema.
+- **Database/schema per test:** useful only when creation and cleanup are reliable and names are collision-free.
+
+Parallel tests must never share mutable rows, queue names, schemas, or database names unless the test is intentionally about concurrency.
+
+## Failure Diagnostics
+
+On startup, migration, or readiness failure, capture:
+
+- pinned image name;
+- container state and exit code;
+- stdout/stderr with secrets redacted;
+- resolved host and mapped port;
+- migration command and exit result;
+- Docker/runtime availability.
+
+Keep failure output bounded. Do not print connection-string passwords or tokens.

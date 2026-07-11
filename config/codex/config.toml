@@ -9,7 +9,7 @@ base_url  = "http://localhost:8080/v1"
 wire_api  = "responses"
 
 [agents]
-max_depth = 2
+max_depth = 1
 max_threads = 6
 
 [features]
@@ -35,8 +35,8 @@ source_type = "git"
 source = "https://github.com/JuliusBrussee/caveman.git"
 
 [marketplaces.claude-plugins-official]
-last_updated = "2026-07-10T23:09:59Z"
-last_revision = "119f4ebf21f6b932627e26824a7cae073c441fea"
+last_updated = "2026-07-11T19:00:21Z"
+last_revision = "dc72937d68b7343c4ce3b1725f0e4bc713d87805"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
@@ -107,7 +107,7 @@ enabled = true
 enabled = true
 
 [plugins."caveman@caveman"]
-enabled = true
+enabled = false
 
 [plugins."rust-analyzer-lsp@claude-plugins-official"]
 enabled = true
@@ -181,18 +181,6 @@ path = "skills/data-efcore-patterns"
 
 [[skills.config]]
 enabled = true
-path = "skills/database-performance"
-
-[[skills.config]]
-enabled = true
-path = "skills/dotnet-devcert-trust"
-
-[[skills.config]]
-enabled = true
-path = "skills/dotnet-local-tools"
-
-[[skills.config]]
-enabled = true
 path = "skills/dotnet-package-management"
 
 [[skills.config]]
@@ -209,15 +197,7 @@ path = "skills/dotnet-slopwatch"
 
 [[skills.config]]
 enabled = true
-path = "skills/efcore-patterns"
-
-[[skills.config]]
-enabled = true
 path = "skills/frontend-design"
-
-[[skills.config]]
-enabled = true
-path = "skills/frontend-design-gpt"
 
 [[skills.config]]
 enabled = true
@@ -269,23 +249,11 @@ path = "skills/test-gap"
 
 [[skills.config]]
 enabled = true
-path = "skills/local-tools"
-
-[[skills.config]]
-enabled = true
 path = "skills/microsoft-extensions-configuration"
 
 [[skills.config]]
 enabled = true
 path = "skills/microsoft-extensions-dependency-injection"
-
-[[skills.config]]
-enabled = true
-path = "skills/prd"
-
-[[skills.config]]
-enabled = true
-path = "skills/skills-index-snippets"
 
 [[skills.config]]
 enabled = true
@@ -298,14 +266,6 @@ path = "skills/testing-crap-analysis"
 [[skills.config]]
 enabled = true
 path = "skills/testing-playwright-blazor"
-
-[[skills.config]]
-enabled = true
-path = "skills/testing-testcontainers"
-
-[[skills.config]]
-enabled = true
-path = "skills/ubiquitous-language"
 
 [[skills.config]]
 enabled = true
@@ -344,7 +304,7 @@ git-show-sidebar-pr-icons = true
 enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "max"]
 dock-icon-preference = "codex-system"
 git-branch-prefix = "akoken/"
-git-always-force-push = true
+git-always-force-push = false
 
 [desktop.appearanceDarkChromeTheme]
 accent = "#339cff"
@@ -360,4 +320,3 @@ code = "MonaLisa"
 diffAdded = "#40c977"
 diffRemoved = "#fa423e"
 skill = "#ad7bf9"
-

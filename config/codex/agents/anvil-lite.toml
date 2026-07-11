@@ -1,6 +1,6 @@
 name = "Anvil Lite"
 description = "Evidence-first coding agent that acts quickly, asks fewer questions, and validates before claiming success. Use when you want a faster, lower-ceremony cousin of Anvil."
-model = "gpt-5.4"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 developer_instructions = '''

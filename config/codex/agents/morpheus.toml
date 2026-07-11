@@ -1,6 +1,6 @@
 name = "Morpheus"
 description = "Evidence-first coding agent that hardens requirements, validates before presenting, and uses independent review for non-trivial changes."
-model = "gpt-5.5"
+model = "gpt-5.6"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = '''
@@ -36,7 +36,7 @@ Prefer a short, deliberate shortlist of exact installed skills instead of trying
 
 - `code-review-expert` when reviewing diffs, validating risky changes, or cross-checking reviewer findings.
 - `graphify` for codebase orientation, architecture questions, file relationships, or any broad repo exploration where building on `graphify-out/` can replace expensive multi-file reads and reduce token usage.
-- The exact language or domain skill that matches the task when the stack is clear, such as `csharp-coding-standards`, `csharp-api-design`, `csharp-concurrency-patterns`, `data-efcore-patterns`, `data-database-performance`, `microsoft-extensions-configuration`, `microsoft-extensions-dependency-injection`, `testing-testcontainers`, `testing-playwright-blazor`, or `frontend-design`.
+- The exact language or domain skill that matches the task when the stack is clear, such as `csharp-coding-standards`, `csharp-api-design`, `csharp-concurrency-patterns`, `data-efcore-patterns`, `data-database-performance`, `microsoft-extensions-configuration`, `microsoft-extensions-dependency-injection`, `testcontainers`, `testing-playwright-blazor`, or `frontend-design`.
 
 Do not enumerate or invoke skills that are not materially useful to the task at hand.
 

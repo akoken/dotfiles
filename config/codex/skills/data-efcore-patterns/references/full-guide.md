@@ -1,10 +1,13 @@
----
-name: efcore-patterns
-description: Entity Framework Core best practices including NoTracking by default, query splitting for navigation collections, migration management, dedicated migration services, and common pitfalls to avoid.
-invocable: false
----
-
 # Entity Framework Core Patterns
+
+## Contents
+
+- Tracking and explicit updates
+- Migrations and migration services
+- Retry execution strategies
+- Bulk operations and common query pitfalls
+- DbContext lifetime
+- Provider-realistic testing
 
 ## When to Use This Skill
 
@@ -14,7 +17,6 @@ Use this skill when:
 - Managing database migrations
 - Integrating EF Core with .NET Aspire
 - Debugging change tracking issues
-- Loading multiple navigation collections efficiently (query splitting)
 
 ## Core Principles
 
@@ -546,58 +548,6 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 
 ---
 
-## Pattern 6: Query Splitting to Prevent Cartesian Explosion
-
-When you load multiple navigation collections via `Include()`, EF Core generates a single query that can cause cartesian explosion. If you have 10 orders with 10 items each, you get 100 rows instead of 10 + 10.
-
-### Global Configuration (Recommended for Most Cases)
-
-Enable query splitting globally in your DbContext configuration:
-
-```csharp
-services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString, npgsqlOptions =>
-        {
-            npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
-        }));
-```
-
-### Per-Query Override
-
-Use single query when you know it's more efficient:
-
-```csharp
-// Use single query when you know the structure is well-understood
-var orders = await dbContext.Orders
-    .Include(o => o.Items)
-    .Include(o => o.Payments)
-    .AsSingleQuery()  // Override global split behavior
-    .ToListAsync();
-```
-
-### Trade-offs
-
-| Behavior | Pros | Cons |
-|-----------|-------|-------|
-| SplitQuery | No cartesian explosion, better for large collections | Multiple round-trips, potential consistency issues |
-| SingleQuery | Single round-trip, transactional consistency | Cartesian explosion with multiple collections |
-
-**Recommendation**: Default to `SplitQuery` globally, override with `AsSingleQuery()` for specific queries where single-query is known to be better.
-
-### When to Prefer SingleQuery
-
-- Small, well-understood navigation graphs (2-3 levels)
-- Queries where all related data is always needed
-- Performance-critical paths where round-trip cost is lower than cartesian explosion
-
-### When to Prefer SplitQuery
-
-- Large or unpredictable navigation graphs
-- Many-to-many relationships
-- Queries loading collections that may not all be needed
-
----
-
 ## Testing with EF Core
 
 ### In-Memory Provider (Unit Tests Only)
@@ -613,7 +563,7 @@ using var context = new ApplicationDbContext(options);
 
 ### Real Database with TestContainers (Integration Tests)
 
-See the `testcontainers-integration-tests` skill for proper database testing.
+See the `testcontainers` skill for proper database testing.
 
 ```csharp
 // Use real PostgreSQL in container

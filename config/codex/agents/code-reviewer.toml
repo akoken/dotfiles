@@ -1,6 +1,6 @@
 name = "Code Reviewer"
 description = "Senior engineer reviewer that inspects diffs for correctness, maintainability, and principle adherence."
-model = "gpt-5.5"
+model = "gpt-5.6"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = '''
