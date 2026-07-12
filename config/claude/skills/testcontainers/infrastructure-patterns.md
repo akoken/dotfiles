@@ -1,387 +1,89 @@
-# Infrastructure Testing Patterns
-
-Patterns for testing Redis, RabbitMQ, multi-container networks, container reuse, and database reset with Respawn.
+# Infrastructure Testcontainers Patterns
 
 ## Contents
 
-- [Redis Integration Tests](#redis-integration-tests)
-- [RabbitMQ Integration Tests](#rabbitmq-integration-tests)
-- [Multi-Container Networks](#multi-container-networks)
-- [Reusing Containers Across Tests](#reusing-containers-across-tests)
-- [Database Reset with Respawn](#database-reset-with-respawn)
+- Generic containers
+- Service modules
+- Wait strategies
+- Networks and ports
+- Resource mapping
+- CI behavior
+- Diagnostics and performance
 
-## Redis Integration Tests
+## Generic Containers
 
-```csharp
-public class RedisTests : IAsyncLifetime
-{
-    private readonly TestcontainersContainer _redisContainer;
-    private IConnectionMultiplexer _redis;
-
-    public RedisTests()
-    {
-        _redisContainer = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("redis:alpine")
-            .WithPortBinding(6379, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(6379))
-            .Build();
-    }
-
-    public async Task InitializeAsync()
-    {
-        await _redisContainer.StartAsync();
-
-        var port = _redisContainer.GetMappedPublicPort(6379);
-        _redis = await ConnectionMultiplexer.ConnectAsync($"localhost:{port}");
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _redis.DisposeAsync();
-        await _redisContainer.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task Redis_ShouldCacheValues()
-    {
-        var db = _redis.GetDatabase();
-
-        await db.StringSetAsync("key1", "value1");
-        var value = await db.StringGetAsync("key1");
-
-        Assert.Equal("value1", value.ToString());
-    }
-
-    [Fact]
-    public async Task Redis_ShouldExpireKeys()
-    {
-        var db = _redis.GetDatabase();
-
-        await db.StringSetAsync("temp-key", "temp-value",
-            expiry: TimeSpan.FromSeconds(1));
-
-        Assert.True(await db.KeyExistsAsync("temp-key"));
-
-        await Task.Delay(1100);
-
-        Assert.False(await db.KeyExistsAsync("temp-key"));
-    }
-}
-```
-
-## RabbitMQ Integration Tests
+Use `ContainerBuilder` for an unsupported service or a custom image:
 
 ```csharp
-public class RabbitMqTests : IAsyncLifetime
-{
-    private readonly TestcontainersContainer _rabbitContainer;
-    private IConnection _connection;
+using DotNet.Testcontainers.Builders;
 
-    public RabbitMqTests()
-    {
-        _rabbitContainer = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("rabbitmq:management-alpine")
-            .WithPortBinding(5672, true)
-            .WithPortBinding(15672, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(5672))
-            .Build();
-    }
+const ushort ServicePort = 8080;
 
-    public async Task InitializeAsync()
-    {
-        await _rabbitContainer.StartAsync();
-
-        var port = _rabbitContainer.GetMappedPublicPort(5672);
-        var factory = new ConnectionFactory
-        {
-            HostName = "localhost",
-            Port = port,
-            UserName = "guest",
-            Password = "guest"
-        };
-
-        _connection = await factory.CreateConnectionAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _connection.CloseAsync();
-        await _rabbitContainer.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task RabbitMq_ShouldPublishAndConsumeMessage()
-    {
-        using var channel = await _connection.CreateChannelAsync();
-
-        var queueName = "test-queue";
-        await channel.QueueDeclareAsync(queueName, durable: false,
-            exclusive: false, autoDelete: true);
-
-        var message = "Hello, RabbitMQ!";
-        var body = Encoding.UTF8.GetBytes(message);
-        await channel.BasicPublishAsync(exchange: "",
-            routingKey: queueName,
-            body: body);
-
-        var consumer = new EventingBasicConsumer(channel);
-        var tcs = new TaskCompletionSource<string>();
-
-        consumer.Received += (model, ea) =>
-        {
-            var receivedMessage = Encoding.UTF8.GetString(ea.Body.ToArray());
-            tcs.SetResult(receivedMessage);
-        };
-
-        await channel.BasicConsumeAsync(queueName, autoAck: true,
-            consumer: consumer);
-
-        var received = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(message, received);
-    }
-}
+var container = new ContainerBuilder("example/service:1.2.3")
+    .WithPortBinding(ServicePort, true)
+    .WithWaitStrategy(
+        Wait.ForUnixContainer()
+            .UntilHttpRequestIsSucceeded(request => request.ForPort(ServicePort)))
+    .Build();
 ```
 
-## Multi-Container Networks
+Pin the image, configure an explicit readiness condition, and use `Hostname` plus `GetMappedPublicPort` from the started container.
 
-When you need multiple containers to communicate:
+## Service Modules
 
-```csharp
-public class MultiContainerTests : IAsyncLifetime
-{
-    private readonly INetwork _network;
-    private readonly TestcontainersContainer _dbContainer;
-    private readonly TestcontainersContainer _redisContainer;
+Prefer typed modules such as `RedisBuilder`, `RabbitMqBuilder`, or another official module when available. Modules provide service-specific defaults and connection information; generic builders are the fallback, not the default.
 
-    public MultiContainerTests()
-    {
-        _network = new TestcontainersNetworkBuilder()
-            .Build();
+For xUnit, choose the package matching the repository:
 
-        _dbContainer = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("postgres:latest")
-            .WithNetwork(_network)
-            .WithNetworkAliases("db")
-            .WithEnvironment("POSTGRES_PASSWORD", "postgres")
-            .Build();
+- xUnit v3: `Testcontainers.XunitV3`
+- xUnit v2: `Testcontainers.Xunit`
 
-        _redisContainer = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("redis:alpine")
-            .WithNetwork(_network)
-            .WithNetworkAliases("redis")
-            .Build();
-    }
+Use isolated `ContainerTest<...>` fixtures for destructive tests and shared `ContainerFixture<...>` fixtures when state can be reset deterministically.
 
-    public async Task InitializeAsync()
-    {
-        await _network.CreateAsync();
-        await Task.WhenAll(
-            _dbContainer.StartAsync(),
-            _redisContainer.StartAsync());
-    }
+## Wait Strategies
 
-    public async Task DisposeAsync()
-    {
-        await Task.WhenAll(
-            _dbContainer.DisposeAsync().AsTask(),
-            _redisContainer.DisposeAsync().AsTask());
-        await _network.DisposeAsync();
-    }
+Container startup is not service readiness. Match the wait strategy to the protocol:
 
-    [Fact]
-    public async Task Containers_CanCommunicate()
-    {
-        // Both containers can reach each other via network aliases
-        // db -> redis://redis:6379
-        // redis -> postgres://db:5432
-    }
-}
-```
+- HTTP health/readiness endpoint for web services;
+- listening port plus a real client probe for databases or brokers;
+- log-message wait only when the log contract is stable;
+- command-based health check when the image provides one.
 
-## Reusing Containers Across Tests
+Set a bounded startup timeout appropriate for the service and CI environment. Preserve logs when the timeout expires.
 
-For faster test execution, reuse containers across tests in a class:
+## Networks and Ports
 
-```csharp
-[Collection("Database collection")]
-public class FastDatabaseTests
-{
-    private readonly DatabaseFixture _fixture;
+- Use random host ports for host-to-container access.
+- For container-to-container communication, create a Testcontainers network and use stable network aliases.
+- Use `host.testcontainers.internal` only when a container must call a service on the test host.
+- Do not assume `localhost` inside a container refers to the test host or another container.
 
-    public FastDatabaseTests(DatabaseFixture fixture)
-    {
-        _fixture = fixture;
-    }
+Start independent containers concurrently only after their dependency relationships and readiness checks are explicit.
 
-    [Fact]
-    public async Task Test1()
-    {
-        // Use _fixture.Connection
-    }
+## Resource Mapping
 
-    [Fact]
-    public async Task Test2()
-    {
-        // Reuses the same container
-    }
-}
+Prefer `WithResourceMapping` for small configuration files, scripts, or certificates. Avoid bind mounts for portable tests because host paths and permissions differ across developer machines and CI runners.
 
-// Shared fixture
-public class DatabaseFixture : IAsyncLifetime
-{
-    private readonly TestcontainersContainer _container;
-    public IDbConnection Connection { get; private set; }
+Never bake real credentials into mapped resources. Generate test-only values or use the container module's defaults.
 
-    public DatabaseFixture()
-    {
-        _container = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-            .WithEnvironment("ACCEPT_EULA", "Y")
-            .WithEnvironment("SA_PASSWORD", "Your_password123")
-            .WithPortBinding(1433, true)
-            .Build();
-    }
+## CI Behavior
 
-    public async Task InitializeAsync()
-    {
-        await _container.StartAsync();
-        // Setup connection
-    }
+The CI runner must expose a Docker-API-compatible runtime. Use the repository's current checkout and .NET setup actions rather than copying pinned action versions from this reference.
 
-    public async Task DisposeAsync()
-    {
-        await Connection.DisposeAsync();
-        await _container.DisposeAsync();
-    }
-}
+The CI test command should match the local command. Cache package restores and container layers only when the CI platform supports safe, deterministic caching.
 
-[CollectionDefinition("Database collection")]
-public class DatabaseCollection : ICollectionFixture<DatabaseFixture> { }
-```
+Do not run `docker container prune`, disable the Resource Reaper, or enable container reuse on a shared runner unless the CI environment has an explicit isolated cleanup policy.
 
-## Database Reset with Respawn
+## Diagnostics and Performance
 
-When reusing containers, use [Respawn](https://github.com/jbogard/Respawn) to reset database state between tests:
+Speed improvements, in order:
 
-```xml
-<PackageReference Include="Respawn" Version="*" />
-```
+1. Use module defaults and a smaller pinned image where production compatibility permits.
+2. Share a class/collection fixture.
+3. Reset service state instead of recreating the container.
+4. Start independent dependencies concurrently.
+5. Cache pulled images in CI.
 
-### Basic Respawn Setup
+Do not trade away isolation or pinned inputs for faster green tests.
 
-```csharp
-using Respawn;
-
-public class DatabaseFixture : IAsyncLifetime
-{
-    private readonly TestcontainersContainer _container;
-    private Respawner _respawner = null!;
-    public NpgsqlConnection Connection { get; private set; } = null!;
-    public string ConnectionString { get; private set; } = null!;
-
-    public async Task InitializeAsync()
-    {
-        await _container.StartAsync();
-
-        var port = _container.GetMappedPublicPort(5432);
-        ConnectionString = $"Host=localhost;Port={port};Database=testdb;Username=postgres;Password=postgres";
-
-        Connection = new NpgsqlConnection(ConnectionString);
-        await Connection.OpenAsync();
-
-        await RunMigrationsAsync();
-
-        _respawner = await Respawner.CreateAsync(ConnectionString, new RespawnerOptions
-        {
-            TablesToIgnore = new Table[]
-            {
-                "__EFMigrationsHistory",
-                "AspNetRoles",
-                "schema_version"
-            },
-            DbAdapter = DbAdapter.Postgres
-        });
-    }
-
-    public async Task ResetDatabaseAsync()
-    {
-        await _respawner.ResetAsync(ConnectionString);
-    }
-
-    public async Task DisposeAsync()
-    {
-        await Connection.DisposeAsync();
-        await _container.DisposeAsync();
-    }
-}
-```
-
-### Using Respawn in Tests
-
-```csharp
-[Collection("Database collection")]
-public class OrderTests : IAsyncLifetime
-{
-    private readonly DatabaseFixture _fixture;
-
-    public OrderTests(DatabaseFixture fixture)
-    {
-        _fixture = fixture;
-    }
-
-    public async Task InitializeAsync()
-    {
-        await _fixture.ResetDatabaseAsync();
-    }
-
-    public Task DisposeAsync() => Task.CompletedTask;
-
-    [Fact]
-    public async Task CreateOrder_ShouldPersist()
-    {
-        await _fixture.Connection.ExecuteAsync(
-            "INSERT INTO orders (customer_id, total) VALUES (@CustomerId, @Total)",
-            new { CustomerId = "CUST1", Total = 100.00m });
-
-        var count = await _fixture.Connection.QuerySingleAsync<int>(
-            "SELECT COUNT(*) FROM orders");
-
-        Assert.Equal(1, count);
-    }
-
-    [Fact]
-    public async Task AnotherTest_StartsWithCleanDatabase()
-    {
-        var count = await _fixture.Connection.QuerySingleAsync<int>(
-            "SELECT COUNT(*) FROM orders");
-
-        Assert.Equal(0, count); // Clean slate!
-    }
-}
-```
-
-### Respawn Options
-
-```csharp
-var respawner = await Respawner.CreateAsync(connectionString, new RespawnerOptions
-{
-    TablesToIgnore = new Table[]
-    {
-        "__EFMigrationsHistory",
-        new Table("public", "lookup_data"),
-    },
-    SchemasToInclude = new[] { "public", "app" },
-    SchemasToExclude = new[] { "audit", "logging" },
-    DbAdapter = DbAdapter.Postgres,
-    WithReseed = true
-});
-```
-
-### Why Respawn Over Container Recreation
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **New container per test** | Complete isolation | Slow (10-30s per container) |
-| **Respawn** | Fast (~50ms), preserves schema/migrations | Requires careful table exclusion |
-| **Transaction rollback** | Fastest | Can't test commit behavior |
+On failure, collect bounded stdout/stderr, container state, readiness diagnostics, and the resolved endpoint. Redact secrets before attaching logs to test output.

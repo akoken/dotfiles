@@ -1,0 +1,7 @@
+interface:
+  display_name: "Writing Great Skills"
+  short_description: "Review and improve Codex skill design"
+  default_prompt: "Use $writing-great-skills to review this skill for predictable behavior."
+
+policy:
+  allow_implicit_invocation: false
