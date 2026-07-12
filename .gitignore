@@ -27,6 +27,7 @@ config/.copilot/config.json
 node_modules/
 **/opencode/package.json 
 **/opencode/package-lock.json
+**/opencode/plugins
 
 # Herdr
 config/herdr/session.json
