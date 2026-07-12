@@ -1,3 +1,4 @@
+onboarding = false
 [keys]
 prefix = "ctrl+a"
 focus_pane_left  = "prefix+h"
@@ -16,4 +17,11 @@ goto             = "prefix+g"
 copy_mode  = "prefix+y"  # herdr's copy-mode entry key; copy-mode's own internal keys (v/space select, y/Enter copy, q/Esc cancel) aren't configurable
 
 [theme]
-name = "catppuccin"
+name = "rose-pine"
+
+auto_switch = false
+[ui.toast]
+delivery = "system"
+
+[experimental]
+switch_ascii_input_source_in_prefix = true
