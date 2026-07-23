@@ -1,5 +1,5 @@
-model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "xhigh"
 personality = "pragmatic"
 
 [model_providers.llama_cpp]
@@ -30,14 +30,14 @@ source_type = "local"
 source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
 
 [marketplaces.caveman]
-last_updated = "2026-07-03T19:02:15Z"
+last_updated = "2026-07-07T08:36:10Z"
 last_revision = "0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0"
 source_type = "git"
 source = "https://github.com/JuliusBrussee/caveman.git"
 
 [marketplaces.claude-plugins-official]
-last_updated = "2026-07-12T14:49:16Z"
-last_revision = "7e5f01c661543f246196e67c2b5b9b4e774ae0be"
+last_updated = "2026-07-13T06:01:34Z"
+last_revision = "108f8f429d6e334578bf51d14776b6753a386214"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
@@ -153,6 +153,9 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [projects."/Users/akoken/Developer/repos/aura"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/firstmate/projects/aura"]
 trust_level = "trusted"
 
 [[skills.config]]
@@ -275,8 +278,13 @@ path = "skills/testing-playwright-blazor"
 enabled = true
 path = "skills/write-a-prd"
 
+[tui]
+status_line = ["model-with-reasoning", "current-dir", "project-name", "git-branch", "context-used", "run-state", "permissions", "five-hour-limit"]
+status_line_use_colors = true
+
 [tui.model_availability_nux]
 "gpt-5.5" = 4
+"gpt-5.6-sol" = 4
 
 [memories]
 generate_memories = true

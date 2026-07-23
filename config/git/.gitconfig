@@ -139,6 +139,9 @@ s = status
 # status of commit
 st = status -sb
 
+# machine readable status of commit
+sp = status --porcelain
+
 # add, commit, stage your changes
 acm = !git add . && git commit -m
 
@@ -168,6 +171,9 @@ sw = switch
 
 # checkout a new not yet existing branch
 swc = switch -c
+
+# pull origin main
+pm = pull origin main
 
 # push changes to a remote
 p = push
