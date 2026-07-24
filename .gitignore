@@ -30,4 +30,5 @@ node_modules/
 **/opencode/plugins
 
 # Herdr
-config/herdr/session.json
+/config/herdr/*
+!config/herdr/config.toml
