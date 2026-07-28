@@ -19,7 +19,7 @@ alias bu='brew upgrade'
 alias cop='copilot --model gpt-5.4 --banner'
 
 # Claude Code
-alias cc='claude --dangerously-skip-permissions'
+alias cc='claude --dangerously-skip-permissions --remote-control --name "alp"'
 
 # Codex Full Permission
 alias cdx='codex --yolo'
