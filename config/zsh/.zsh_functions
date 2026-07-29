@@ -130,3 +130,6 @@ ccl() {
 
     claude --model "$model_name" "$@"
 }
+
+# Claude Code
+ccr() { claude --dangerously-skip-permissions --remote-control --name "$@"; }
