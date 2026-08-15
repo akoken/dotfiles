@@ -86,7 +86,11 @@ lcs() {
     command mkdir -p "${model_state_file:h}" || return 1
     print -r -- "$LOCAL_CODING_MODEL" >| "$model_state_file" || return 1
 
+    # Pass the key explicitly: llama-server otherwise falls back to whatever
+    # LLAMA_API_KEY the launching shell happens to carry, and a stale shell
+    # then enforces a key no current client knows.
     llama-server --model "$model_path" \
+     --api-key "${LLAMA_API_KEY:-local}" \
      --n-gpu-layers 99 --ctx-size 128000 --flash-attn on \
      --batch-size 512 --threads 8 --temp 0.2 --min-p 0.05 \
      --top-p 0.95 --top-k 40 --spec-type draft-mtp \
@@ -102,7 +106,9 @@ lcs() {
 unalias ccl 2>/dev/null
 
 ccl() {
-    export LOCAL_API_KEY="$(openssl rand -hex 32)"
+    # Fixed key for the localhost-only llama server; every client and the
+    # server must agree, so no per-invocation regeneration here.
+    export LOCAL_API_KEY="local"
     export LLAMA_API_KEY="$LOCAL_API_KEY"
 
     export ANTHROPIC_BASE_URL=http://localhost:8080

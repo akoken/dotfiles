@@ -39,16 +39,10 @@ export GIT_EDITOR='nvim'
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=true
 
-# Local LLM API key, persisted so every shell (and an already-running
-# llama-server) agrees on the same key instead of each shell minting its own.
-_local_api_key_file="${XDG_STATE_HOME:-$HOME/.local/state}/llama/api_key"
-if [[ ! -r "$_local_api_key_file" ]]; then
-    mkdir -p "${_local_api_key_file:h}"
-    (umask 077; openssl rand -hex 32 > "$_local_api_key_file")
-fi
-export LOCAL_API_KEY="$(<"$_local_api_key_file")"
+# Fixed key for the localhost-only llama server. Every client and the server
+# must agree on it; a generated per-shell key kept drifting, so keep it static.
+export LOCAL_API_KEY="local"
 export LLAMA_API_KEY="$LOCAL_API_KEY"
-unset _local_api_key_file
 
 # Copilot CLI (Local)
 export COPILOT_PROVIDER_BASE_URL="http://localhost:8080/v1"
