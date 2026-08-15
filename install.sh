@@ -150,7 +150,7 @@ setup_symlinks() {
     info "Creating symlink for .zshenv"
     ln -s "$DOTFILES/config/zsh/.zshenv" "$HOME/.zshenv"
   else
-    info "~/.zshenv already exists... Skipping."
+    info "$HOME/.zshenv already exists... Skipping."
   fi
 
   # Define source and target paths

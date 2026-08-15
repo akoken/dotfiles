@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint shell scripts
+        run: |
+          # bin/ mixes shell scripts with native binaries (e.g. git-graph),
+          # so pick out only the shell scripts by file type.
+          mapfile -t scripts < <(file bin/* | awk -F': ' '/shell script/{print $1}')
+          shellcheck -S warning install.sh githooks/pre-commit "${scripts[@]}"
+
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
