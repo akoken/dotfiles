@@ -9,16 +9,12 @@ COLOR_PURPLE="\033[1;35m"
 COLOR_YELLOW="\033[1;33m"
 COLOR_NONE="\033[0m"
 
+# Files to link directly into $HOME (git still reads ~/.gitconfig and the
+# core.excludesfile from there). gitmessage.txt is no longer listed: the
+# commit template resolves through the ~/.config/git symlink instead.
 linkables=(
   "git/.gitconfig"
   "git/.gitignore"
-  "git/gitmessage.txt"
-   #"zsh/.zshrc"
-   #"zsh/.zshenv"
-   #"zsh/.zprofile"
-   #"zsh/.zsh_aliases"
-   #"zsh/.zsh_functions"
-  # "zsh/.zsh_prompt"
 )
 
 # Configuration home
@@ -158,28 +154,28 @@ setup_symlinks() {
   info "Creating symlink for /bin folder..."
   # Check if source directory exists
   if [ ! -d "$source_path" ]; then
-      info "Source directory does not exist: $source_path"
-      exit 1
+      warning "Source directory does not exist: $source_path"
+      return 1
   fi
 
-  # Check if target already exists
+  # Check if target already exists.
+  # NOTE: these must be `return`, not `exit` — an `exit` here aborts the whole
+  # script, which silently skipped homebrew/shell/git/macos in `./install.sh all`.
   if [ -L "$target_path" ]; then
       info "Symlink already exists at $target_path - Skipping."
-      exit 0
+      return 0
   elif [ -e "$target_path" ]; then
       # If target exists but is not a symlink
-      echo "Target path exists but is not a symlink: $target_path"
-      exit 1
+      warning "Target path exists but is not a symlink: $target_path"
+      return 1
   fi
 
   # Create symlink
-  ln -s "$source_path" "$target_path"
-
-  if [ $? -eq 0 ]; then
+  if ln -s "$source_path" "$target_path"; then
     echo "Successfully created symlink: $target_path -> $source_path"
   else
     echo "Failed to create symlink: $target_path -> $source_path"
-    exit 1
+    return 1
   fi
 
 }

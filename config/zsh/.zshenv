@@ -5,10 +5,8 @@ export XDG_CONFIG_HOME="$HOME/.config"
 export CODEX_HOME="$XDG_CONFIG_HOME/codex"
 
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
-HISTFILE="$HOME/.zsh_history"
-HISTSIZE=10000
-SAVEHIST=10000
-HISTDUP=erase
+# HISTFILE/HISTSIZE/SAVEHIST live in .zshrc: macOS's /etc/zshrc re-assigns all
+# three after .zshenv runs, so setting them here has no effect.
 
 export DOTFILES="$(dirname "$(dirname "$(dirname "$(readlink "${(%):-%N}")")")")"
 
@@ -41,8 +39,16 @@ export GIT_EDITOR='nvim'
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=true
 
-export LOCAL_API_KEY="$(openssl rand -hex 32)"
+# Local LLM API key, persisted so every shell (and an already-running
+# llama-server) agrees on the same key instead of each shell minting its own.
+_local_api_key_file="${XDG_STATE_HOME:-$HOME/.local/state}/llama/api_key"
+if [[ ! -r "$_local_api_key_file" ]]; then
+    mkdir -p "${_local_api_key_file:h}"
+    (umask 077; openssl rand -hex 32 > "$_local_api_key_file")
+fi
+export LOCAL_API_KEY="$(<"$_local_api_key_file")"
 export LLAMA_API_KEY="$LOCAL_API_KEY"
+unset _local_api_key_file
 
 # Copilot CLI (Local)
 export COPILOT_PROVIDER_BASE_URL="http://localhost:8080/v1"

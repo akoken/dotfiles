@@ -58,7 +58,7 @@
   email = abdurrahman@akoken.com
 
 [commit]
-  template = ~/.gitmessage.txt
+  template = ~/.config/git/gitmessage.txt
   verbose = true
 
 [pull]

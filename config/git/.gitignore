@@ -21,6 +21,10 @@ tscommand*.txt
 
 # npm things
 npm-debug.log
+node_modules/
+
+# Python
+__pycache__/
 
 *.swp
 *.*~

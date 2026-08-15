@@ -23,6 +23,13 @@ setopt LOCAL_TRAPS
 setopt PROMPT_SUBST
 
 # history
+# Set here (not .zshenv) because macOS's /etc/zshrc re-assigns HISTFILE,
+# HISTSIZE, and SAVEHIST after .zshenv — pointing history into $ZDOTDIR,
+# i.e. straight into the dotfiles repo.
+HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
+[[ -d "${HISTFILE:h}" ]] || mkdir -p "${HISTFILE:h}"
+HISTSIZE=10000
+SAVEHIST=10000
 setopt EXTENDED_HISTORY          # write the history file in the ":start:elapsed;command" format.
 setopt HIST_REDUCE_BLANKS        # remove superfluous blanks before recording entry.
 setopt SHARE_HISTORY             # share history between all sessions.
@@ -52,8 +59,11 @@ zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-autosuggestions
 zinit light Aloxaf/fzf-tab
 
-# Load completions
-autoload -Uz compinit && compinit
+# Load completions; keep the dump in the cache dir, not $ZDOTDIR (the repo)
+_zcompdump="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/.zcompdump"
+[[ -d "${_zcompdump:h}" ]] || mkdir -p "${_zcompdump:h}"
+autoload -Uz compinit && compinit -d "$_zcompdump"
+unset _zcompdump
 
 zinit cdreplay -q
 
