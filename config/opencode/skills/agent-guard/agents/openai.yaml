@@ -1,4 +1,0 @@
-interface:
-  display_name: "Agent Guard"
-  short_description: "Gitleaks-backed secret leak guardrails"
-  default_prompt: "Use $agent-guard to scan this repo for secret leaks and report only redacted findings."
