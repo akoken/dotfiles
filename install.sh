@@ -239,7 +239,7 @@ setup_homebrew() {
   if test ! "$(command -v brew)"; then
     info "Homebrew not installed. Installing."
     # Run as a login shell (non-interactive) so that the script doesn't pause for user input
-    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh | bash --login
+    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash --login
   fi
 
   if [ "$(uname)" == "Linux" ]; then
@@ -372,7 +372,7 @@ all)
   setup_macos
   ;;
 *)
-  echo -e $"\nUsage: $(basename "$0") {backup|link|git|homebrew|shell|macos|all}\n"
+  echo -e $"\nUsage: $(basename "$0") {backup|clean|link|copy|git|homebrew|shell|macos|all}\n"
   exit 1
   ;;
 esac

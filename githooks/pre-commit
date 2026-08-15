@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
 set -u
 
-exec '/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard' scan-staged
+root="$(git rev-parse --show-toplevel)" || exit 1
+exec "$root/config/skills/agent-guard/bin/agent-guard" scan-staged
