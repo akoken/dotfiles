@@ -41,17 +41,13 @@ export GIT_EDITOR='nvim'
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=true
 
-# Claude Code(Local)
-#export ANTHROPIC_BASE_URL=http://localhost:8080
+export LOCAL_API_KEY="$(openssl rand -hex 32)"
+export LLAMA_API_KEY="$LOCAL_API_KEY"
 
-# Bypass the need to have an Anthropic login
-#export ANTHROPIC_AUTH_TOKEN=llamacpp
+# Copilot CLI (Local)
+export COPILOT_PROVIDER_BASE_URL="http://localhost:8080/v1"
+export COPILOT_PROVIDER_API_KEY="$LOCAL_API_KEY"
 
-# Turn off telemetry shit
-#export BETA_TRACING_ENDPOINT=http://127.0.0.1/fakebullshituri
-#export ENABLE_ENHANCED_TELEMETRY_BETA=0
-#export CLAUDE_CODE_ENABLE_TELEMETRY=0
-#export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
 export DISABLE_TELEMETRY=
 export OTEL_LOG_USER_PROMPTS=0

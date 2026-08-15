@@ -62,19 +62,6 @@ docker() {
     esac
 }
 
-
-co() { copilot --model claude-opus-4.6 --allow-all-tools --silent -p "$@"; }
-
-coh() { copilot --model claude-haiku-4.5 --allow-all-tools --silent -p "$@"; }
-
-cog() { copilot --model gemini-3-pro --allow-all-tools --silent -p "$@"; }
-
-# Resume the last session
-cocon() { copilot --allow-all-tools --continue; }
-
-# Resume a specific session
-cores() { copilot --allow-all-tools --resume "$@"; }
-
 # Local Coding Server and Client
 
 _local_coding_model_file() {
@@ -115,6 +102,21 @@ lcs() {
 unalias ccl 2>/dev/null
 
 ccl() {
+    export LOCAL_API_KEY="$(openssl rand -hex 32)"
+    export LLAMA_API_KEY="$LOCAL_API_KEY"
+
+    export ANTHROPIC_BASE_URL=http://localhost:8080
+
+    # Bypass the need to have an Anthropic login
+    export ANTHROPIC_AUTH_TOKEN="$LOCAL_API_KEY"
+
+    # Turn off telemetry shit
+    export BETA_TRACING_ENDPOINT=http://127.0.0.1/fakebullshituri
+    export ENABLE_ENHANCED_TELEMETRY_BETA=0
+    export CLAUDE_CODE_ENABLE_TELEMETRY=0
+    export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+    export DISABLE_TELEMETRY=1
+
     local model_state_file="$(_local_coding_model_file)"
     local model_name="$LOCAL_CODING_MODEL"
 
@@ -129,6 +131,15 @@ ccl() {
     fi
 
     claude --model "$model_name" "$@"
+}
+
+cpl() {
+    export COPILOT_PROVIDER_TYPE="openai"
+    export COPILOT_PROVIDER_BASE_URL="http://127.0.0.1:8080/v1"
+    export COPILOT_MODEL="Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf"
+    export COPILOT_PROVIDER_WIRE_API="completions"
+
+    copilot
 }
 
 # Claude Code
