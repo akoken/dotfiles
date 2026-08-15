@@ -1,0 +1,5 @@
+# Historical findings, accepted after the leaked key was revoked and the
+# config switched to an {env:...} reference. Do NOT add new fingerprints here
+# without rotating the leaked credential first.
+78a0097beff256237f6fde9317c47f6b0aa864a8:config/opencode/opencode.json:generic-api-key:36
+2f9077581849bab10fd610523e9ba13691622989:config/opencode/opencode.json:generic-api-key:22
