@@ -1,5 +1,3 @@
-export ZSH=$DOTFILES/zsh
-
 source "$ZDOTDIR/.zsh_functions"
 
 ########################################################

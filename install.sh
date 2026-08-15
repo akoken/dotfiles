@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
-DOTFILES="$(pwd)"
+# No `set -e`: several steps legitimately continue past non-zero exits
+# (existence probes, optional cleanups); errors are handled explicitly instead.
+set -uo pipefail
+
+# Resolve the repo root from the script's own location so the installer works
+# no matter which directory it is invoked from.
+DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COLOR_GRAY="\033[1;38;5;243m"
 COLOR_BLUE="\033[1;34m"
 COLOR_GREEN="\033[1;32m"
@@ -49,10 +55,12 @@ backup() {
   echo "Creating backup directory at $BACKUP_DIR"
   mkdir -p "$BACKUP_DIR"
 
-  for file in "${linkables[@]}"; do
+  # ${linkables[@]+...} keeps the expansion safe under `set -u` on bash 3.2
+  # (macOS stock bash) when the array is empty.
+  for file in ${linkables[@]+"${linkables[@]}"}; do
     filename="$(basename "$file")"
     target="$HOME/$filename"
-    if [ -f "$target" ]; then
+    if [ -f "$target" ] && [ ! -L "$target" ]; then
       echo "backing up $filename"
       cp "$target" "$BACKUP_DIR"
     else
@@ -61,7 +69,7 @@ backup() {
   done
 
   for filename in "$HOME/.config/nvim" "$HOME/.vim" "$HOME/.vimrc"; do
-    if [ ! -L "$filename" ]; then
+    if [ -e "$filename" ] && [ ! -L "$filename" ]; then
       echo "backing up $filename"
       cp -rf "$filename" "$BACKUP_DIR"
     else
@@ -72,7 +80,7 @@ backup() {
 
 cleanup_symlinks() {
   title "Cleaning up symlinks"
-  for file in "${linkables[@]}"; do
+  for file in ${linkables[@]+"${linkables[@]}"}; do
     target="$HOME/$(basename "$file")"
     if [ -L "$target" ]; then
       info "Cleaning up \"$target\""
@@ -87,7 +95,7 @@ cleanup_symlinks() {
   echo -e
   info "installing to $config_home"
 
-  config_files=$(find "$DOTFILES/config" -maxdepth 1 2>/dev/null)
+  config_files=$(find "$DOTFILES/config" -mindepth 1 -maxdepth 1 2>/dev/null)
   for config in $config_files; do
     target="$config_home/$(basename "$config")"
     if [ -L "$target" ]; then
@@ -104,7 +112,7 @@ cleanup_symlinks() {
 setup_symlinks() {
   title "Creating symlinks"
 
-  for file in "${linkables[@]}"; do
+  for file in ${linkables[@]+"${linkables[@]}"}; do
     target="$HOME/$(basename "$file")"
     if [ -e "$target" ]; then
       info "~${target#"$HOME"} already exists... Skipping."
@@ -190,10 +198,10 @@ copy() {
     info "Creating $data_home"
     mkdir -p "$data_home"
   fi
-  config_files=$(find "$DOTFILES/config" -maxdepth 1 2>/dev/null)
+  config_files=$(find "$DOTFILES/config" -mindepth 1 -maxdepth 1 2>/dev/null)
   for config in $config_files; do
     target="$config_home/$(basename "$config")"
-    info "copying $config to $config_home/$config"
+    info "copying $config to $target"
     cp -R "$config" "$target"
   done
 }
@@ -253,13 +261,13 @@ setup_shell() {
   title "Configuring shell"
 
   [[ -n "$(command -v brew)" ]] && zsh_path="$(brew --prefix)/bin/zsh" || zsh_path="$(which zsh)"
-  if ! grep "$zsh_path" /etc/shells; then
+  if ! grep -qx "$zsh_path" /etc/shells; then
     info "adding $zsh_path to /etc/shells"
     echo "$zsh_path" | sudo tee -a /etc/shells
   fi
 
   if [[ "$SHELL" != "$zsh_path" ]]; then
-    sudo chsh -s $(which zsh) $(whoami)
+    sudo chsh -s "$zsh_path" "$(whoami)"
     info "default shell changed to $zsh_path"
   fi
 }
@@ -331,7 +339,7 @@ setup_macos() {
   fi
 }
 
-case "$1" in
+case "${1:-}" in
 backup)
   backup
   ;;

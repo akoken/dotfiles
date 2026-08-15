@@ -1,4 +1,4 @@
-. "$HOME/.cargo/env"
+[[ -f "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env"
 
 export XDG_CONFIG_HOME="$HOME/.config"
 #export COPILOT_HOME="$XDG_CONFIG_HOME/copilot"
