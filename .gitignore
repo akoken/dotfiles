@@ -28,6 +28,8 @@ node_modules/
 **/opencode/package.json 
 **/opencode/package-lock.json
 **/opencode/plugins
+**/opencode/herdr-tui-session.js
+**/opencode/tui.jsonc
 
 # Herdr
 /config/herdr/*
