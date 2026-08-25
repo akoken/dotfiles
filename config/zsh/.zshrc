@@ -9,6 +9,7 @@ prepend_path /usr/local/sbin
 prepend_path $DOTFILES/bin
 prepend_path $HOME/bin
 prepend_path $HOME/.local/bin
+prepend_path $HOME/.venv-vllm-metal/bin
 
 # display how long all tasks over 10 seconds take
 export REPORTTIME=10
@@ -144,3 +145,11 @@ else
       source "$zpath"
   fi
 fi
+
+# pnpm
+export PNPM_HOME="/Users/akoken/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
