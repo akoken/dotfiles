@@ -92,9 +92,9 @@ lcs() {
     llama-server --model "$model_path" \
      --api-key "${LLAMA_API_KEY:-local}" \
      --n-gpu-layers 99 --ctx-size 128000 --flash-attn on \
-     --batch-size 512 --threads 8 --temp 0.2 --min-p 0.05 \
+     --batch-size 512 --threads 8 --temp 0.6 --min-p 0.05 \
      --top-p 0.95 --top-k 40 --spec-type draft-mtp \
-     --spec-draft-n-max 2 --host 127.0.0.1 --port 8080
+     --spec-draft-n-max 2 --host 127.0.0.1 --port 8081
 
     local status=$?
 
