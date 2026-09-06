@@ -13,7 +13,7 @@ session.json
 
 config/nvim/lazy-lock.json
 config/.copilot/config.json
-.bak
+*.bak
 
 # Codex
 /config/codex/*
@@ -22,6 +22,12 @@ config/.copilot/config.json
 !/config/codex/skills/
 !/config/codex/.codexignore
 /config/codex/skills/.system/
+# config.local.toml already falls under the /config/codex/* rule above (it
+# doesn't match the *config.toml exception, verified with `git check-ignore`)
+# but is listed explicitly so the exception line above can't silently start
+# matching it if it's ever edited.
+/config/codex/config.local.toml
+!/config/codex/config.local.toml.example
 
 # OpenCode
 node_modules/

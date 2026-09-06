@@ -1,3 +1,8 @@
+# Canonical intent source: this file, config/copilot/agents/orchestrator.agent.md,
+# and config/opencode/agents/orchestrator.md must describe the same agent
+# behavior; only the frontmatter/tool syntax and agent-table wording differ
+# per tool. Codex's Agent table also lists Debug Expert; keep it listed in
+# the other two tools too since a debug-expert agent exists for all three.
 name = "Orchestrator"
 description = "Coordinates planning, implementation, design, and standalone review agents through phased parallel execution."
 model = "gpt-5.6"

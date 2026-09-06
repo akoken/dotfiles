@@ -148,31 +148,11 @@ cpl() {
     copilot
 }
 
-q36_mlx() {
-    cd ~/mlx_projects
-    source ~/dflash-serve/bin/activate
-
-    # Qwen3.6-35B-A3B MoE — ~85.5 tok/s
-    dflash serve --model mlx-community/Qwen3.6-35B-A3B-8bit \
-      --draft-quant none --verify-mode dflash --verify-len-cap 6 \
-      --chat-template-args '{"reasoning_effort":"xhigh"}' \
-      --copyspec-mode auto --port 8081
-}
-
-q38_mlx() {
-    cd ~/mlx_projects
-    source ~/dflash-serve/bin/activate
-
-    # Qwen3.8-27B dense — ~32 tok/s (baseline 20.4, 1.6x)
-    dflash serve \
-      --model mlx-community/Qwen3.8-27B-4bit \
-      --draft z-lab/Qwen3.8-27B-DFlash2 \
-      --draft-quant none \
-      --verify-mode dflash --verify-len-cap 4 \
-      --copyspec-mode auto \
-      --chat-template-args '{"reasoning_effort":"low"}' \
-      --port 8081
-}
+# q36_mlx/q38_mlx assume a ~/mlx_projects checkout and a ~/dflash-serve venv
+# that only exist on this machine (dflash/vllm aren't in the Brewfile either)
+# — moved to ~/.zsh_functions.local, see
+# config/zsh/.zsh_functions.local.example for the template.
+[[ -f "$HOME/.zsh_functions.local" ]] && source "$HOME/.zsh_functions.local"
 
 q38_vllm() {
     vllm serve mlx-community/Qwen3.8-27B-4bit \

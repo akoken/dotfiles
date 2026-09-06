@@ -1,3 +1,13 @@
 #!/bin/bash
+# Print your public IP address.
+
+case "${1:-}" in
+-h | --help)
+  echo "Usage: $(basename "$0")"
+  echo "Print your public IP address."
+  exit 0
+  ;;
+esac
+
 PUBLIC_IP=$(curl -s ifconfig.me)
-echo $PUBLIC_IP
+echo "$PUBLIC_IP"

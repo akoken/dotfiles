@@ -3,6 +3,14 @@
 # By default this decodes the body of the jwt.
 # To decode the head, pass 1 as the second argument
 
+case "${1:-}" in
+-h | --help | "")
+  echo "Usage: $(basename "$0") <jwt> [part]"
+  echo "Decode a JWT token. part 1 decodes the header, 2 (default) the payload."
+  exit 0
+  ;;
+esac
+
 _decode_base64_url() {
     local len=$((${#1} % 4))
     local result="$1"

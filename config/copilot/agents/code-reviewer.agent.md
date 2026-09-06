@@ -5,6 +5,10 @@ model: GPT-5.4 (copilot)
 tools: ['vscode', 'execute', 'read', 'agent', 'context7/*', 'github/*', 'search', 'web', 'memory/*']
 ---
 
+<!-- Canonical intent source: config/codex/agents/code-reviewer.toml,
+     config/opencode/agents/code-reviewer.md, and this file must describe the
+     same agent behavior; only the frontmatter/tool syntax differs per tool. -->
+
 # Code Reviewer Agent
 
 You are the **Code Reviewer** in a multi-agent pipeline:

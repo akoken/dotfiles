@@ -1,0 +1,23 @@
+# Template for config.local.toml — machine-specific Codex state that must
+# never be committed (trusted project list, hook trust hashes, the absolute
+# notify path, and any local-source marketplace caches).
+#
+# Copy this file to config.local.toml (already gitignored) and fill in real
+# values, or just let Codex populate config.local.toml itself: trusting a
+# project or a hook writes back into $XDG_CONFIG_HOME/codex/config.toml,
+# which is generated — copy new entries here so `install.sh codex-sync`
+# doesn't drop them on the next regenerate.
+
+# notify = ["/path/to/some/notifier", "turn-ended"]
+
+# [marketplaces.some-local-marketplace]
+# source_type = "local"
+# source = "/absolute/path/to/local/marketplace"
+
+# [projects."/absolute/path/to/a/trusted/project"]
+# trust_level = "trusted"
+
+# [hooks.state]
+
+# [hooks.state."/absolute/path/to/.codex/hooks.json:session_start:0:0"]
+# trusted_hash = "sha256:0000000000000000000000000000000000000000000000000000000000000"

@@ -1,8 +1,12 @@
 model_provider = "llama_cpp"
-#model = "Qwen3.6-35B-A3B-UD-Q8_K_XL"
+model_reasoning_effort = "medium"
+model = "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q4_K_M"
 #model = "Qwen3.6-27B-UD-Q8_K_XL"
 #model = "ornith-1.0-35b-Q8_0"
-model = "Ornith-1.0-35B-MTP-APEX-I-Quality"
+#model = "Ornith-1.0-35B-MTP-APEX-I-Quality"
+#model= "Qwen-AgentWorld-35B-A3B-APEX-I-Quality"
+model_context_window = 128000
+#model_context_window = 262144
 approvals_reviewer = "user"
 
 [features]
@@ -23,4 +27,7 @@ trusted_hash = "sha256:2f4250823b1e146b23dd5260dc6b50152ec970e501f9ec0b3876e35e7
 trusted_hash = "sha256:a90fd0b3055edc43e7b5ca1a5cdf36fa93576d9df968f2c3ccbd489309af49d3"
 
 [projects."/Users/akoken/Developer/repos/model-test"]
+trust_level = "trusted"
+
+[projects."/Users/akoken/Developer/repos/qwen3.8-ch/MB.Qwen23Fast"]
 trust_level = "trusted"

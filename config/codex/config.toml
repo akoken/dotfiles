@@ -1,13 +1,14 @@
-model = "gpt-5.6-terra"
-model_reasoning_effort = "xhigh"
+model = "gpt-6-astra"
+model_reasoning_effort = "low"
 personality = "pragmatic"
 
-notify = ["/Users/akoken/Developer/repos/dotfiles/config/codex/computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
+# `notify` is an absolute, machine-specific app path — see config.local.toml
+# (and config.local.toml.example for the shape).
 
 [model_providers.llama_cpp]
 name      = "llama.cpp"
-base_url  = "http://localhost:8080/v1"
-#env_key   = "LLAMA_CPP_API_KEY"
+base_url  = "http://localhost:8081/v1"
+env_key   = "LLAMA_CPP_API_KEY"
 wire_api  = "responses"
 
 [agents]
@@ -16,30 +17,24 @@ max_threads = 6
 
 [features]
 hooks = true
+computer_use = false
 multi_agent = true
 terminal_resize_reflow = true
 memories = true
 js_repl = false
 
-[marketplaces.openai-bundled]
-last_updated = "2026-07-23T20:26:20Z"
-source_type = "local"
-source = "/Users/akoken/Developer/repos/dotfiles/config/codex/.tmp/bundled-marketplaces/openai-bundled"
-
-[marketplaces.openai-primary-runtime]
-last_updated = "2026-07-24T07:56:54Z"
-source_type = "local"
-source = "/Users/akoken/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
+# openai-bundled and openai-primary-runtime are local-source marketplaces
+# pointing at machine-specific cache paths — see config.local.toml.
 
 [marketplaces.caveman]
-last_updated = "2026-07-07T08:36:10Z"
-last_revision = "0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0"
+last_updated = "2026-08-21T09:10:40Z"
+last_revision = "2f49f0e1a352aa810e70056b7930aeb0b3d219b4"
 source_type = "git"
 source = "https://github.com/JuliusBrussee/caveman.git"
 
 [marketplaces.claude-plugins-official]
-last_updated = "2026-07-13T06:01:34Z"
-last_revision = "108f8f429d6e334578bf51d14776b6753a386214"
+last_updated = "2026-08-21T09:10:44Z"
+last_revision = "67a666efc8524ff7abaa266f84e514aa77aee48f"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
@@ -61,29 +56,34 @@ startup_timeout_sec = 20
 
 [mcp_servers.node_repl]
 args = []
-command = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node_repl"
+command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
 startup_timeout_sec = 120
 
 [mcp_servers.node_repl.env]
 NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS = "1000"
-NODE_REPL_NODE_MODULE_DIRS = "/Applications/Codex.app/Contents/Resources/cua_node/lib/node_modules"
-NODE_REPL_NODE_PATH = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
-NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
+NODE_REPL_NODE_MODULE_DIRS = "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
+NODE_REPL_NODE_PATH = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex:/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
 CODEX_HOME = "/Users/akoken/.config/codex"
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "41e1151f1e50f096c7561da32bb01123e74b6ecdd38f081e34da30091fc4f193,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f"
 BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
-NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
-NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
-NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = "Control desktop apps on macOS through Computer Use."
+BROWSER_USE_TINYSKY_ENABLED = "1"
+NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = ""
+NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = ""
 BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.721.30844"
-CODEX_CLI_PATH = "/Applications/Codex.app/Contents/Resources/codex"
+BROWSER_USE_CODEX_APP_VERSION = "26.901.41123"
+NODE_REPL_TRUSTED_SERVICES = '{"browser":"/Users/akoken/.config/codex/plugins/cache/openai-bundled/browser/26.901.41123/scripts/browser-service.mjs"}'
+#NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
+#NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
+#NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = "Control desktop apps on macOS through Computer Use."
+#BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
+#BROWSER_USE_CODEX_APP_VERSION = "26.810.41047"
+CODEX_CLI_PATH = "/Applications/ChatGPT.app/Contents/Resources/codex"
 
-[mcp_servers.computer-use]
-command = "./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient"
-args = ["mcp"]
-cwd = "."
-enabled = false
+#[mcp_servers.computer-use]
+#command = "./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient"
+#args = ["mcp"]
+#cwd = "."
+#enabled = false
 
 [plugins."documents@openai-primary-runtime"]
 enabled = true
@@ -124,42 +124,13 @@ enabled = true
 [plugins."browser@openai-bundled"]
 enabled = true
 
-[projects."/Users/akoken/Developer/repos/dentist"]
-trust_level = "trusted"
+[plugins."codex-app-tools@openai-bundled"]
+enabled = true
 
-[projects."/Users/akoken/Developer/repos/dotfiles"]
-trust_level = "trusted"
+[plugins."unified-computer-use@openai-bundled"]
+enabled = true
 
-[projects."/Users/akoken/Developer/repos/minigrep"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/catmon"]
-trust_level = "trusted"
-
-[projects."/Users/akoken"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/dpi-pass"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/model-test"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/nova"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/firstmate"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/obsidian"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/aura"]
-trust_level = "trusted"
-
-[projects."/Users/akoken/Developer/repos/firstmate/projects/aura"]
-trust_level = "trusted"
-
+# Per-machine trusted-project entries live in config.local.toml.
 [[skills.config]]
 enabled = true
 path = "skills/code-review-expert"
@@ -287,28 +258,12 @@ status_line_use_colors = true
 [tui.model_availability_nux]
 "gpt-5.5" = 4
 "gpt-5.6-sol" = 4
+gpt-6-astra = 2
 
 [memories]
 generate_memories = true
 use_memories = true
-
-[hooks.state]
-
-[hooks.state."/Users/akoken/Developer/repos/catmon/.codex/hooks.json:pre_tool_use:0:0"]
-trusted_hash = "sha256:30122407ead6e481c88bc576415162040c83ada6ff86cb19723ac6e02bc73761"
-
-[hooks.state."/Users/akoken/.codex/hooks.json:session_start:0:0"]
-trusted_hash = "sha256:2f4250823b1e146b23dd5260dc6b50152ec970e501f9ec0b3876e35e7e4beeca"
-
-[hooks.state."/Users/akoken/.codex/hooks.json:user_prompt_submit:0:0"]
-trusted_hash = "sha256:a90fd0b3055edc43e7b5ca1a5cdf36fa93576d9df968f2c3ccbd489309af49d3"
-
-[hooks.state."/Users/akoken/Developer/repos/firstmate/.codex/hooks.json:stop:0:0"]
-trusted_hash = "sha256:6874d92dd2befa3254ab2c99d3559399f98d3c155f533ce19c9872115504946b"
-
-[hooks.state."/Users/akoken/Developer/repos/firstmate/.codex/hooks.json:pre_tool_use:0:0"]
-trusted_hash = "sha256:a920c3e99340de2feaf624585635e43b8541c9fdd5aeb5c0d9dd2479ef05b411"
-
+# [hooks.state] trusted hashes are machine/repo-specific — see config.local.toml.
 [desktop]
 ambient-suggestions-enabled = false
 codeFontSize = 13
@@ -319,6 +274,7 @@ enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "max"]
 dock-icon-preference = "codex-system"
 git-branch-prefix = "akoken/"
 git-always-force-push = false
+git-pull-request-merge-method = "squash"
 
 [desktop.appearanceDarkChromeTheme]
 accent = "#339cff"
@@ -336,6 +292,7 @@ diffRemoved = "#fa423e"
 skill = "#ad7bf9"
 
 [shell_environment_policy.set]
-BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "41e1151f1e50f096c7561da32bb01123e74b6ecdd38f081e34da30091fc4f193,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f"
-NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.config/codex"
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "9230e2bd8b24b7ac7a0ba6774c64bf0d78ecdabbdd91d0ed627b02a587bae2df"
+
+[apps.connector_openai_codex_document_control]
+enabled = false

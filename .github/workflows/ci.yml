@@ -10,7 +10,7 @@ jobs:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Lint shell scripts
         run: |
           # bin/ mixes shell scripts with native binaries (e.g. git-graph),
@@ -22,9 +22,42 @@ jobs:
     name: Gitleaks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  brewfile:
+    name: Brewfile check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: brew bundle check
+        run: brew bundle check --file=Brewfile --verbose --no-upgrade
+
+  docker-smoke:
+    name: Docker install.sh smoke (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Build test image
+        run: docker build -t dotfiles-ci --force-rm .
+      - name: backup / link (twice, idempotency) / clean / copy / --dry-run
+        run: |
+          docker run --rm dotfiles-ci bash -lc '
+            set -e
+            cd dotfiles
+            ./install.sh backup
+            ./install.sh link
+            ./install.sh link
+            test -L "$HOME/.zshenv"
+            test -L "$HOME/bin"
+            test -f "$HOME/.config/codex/config.toml"
+            ./install.sh clean
+            test ! -L "$HOME/.zshenv"
+            test ! -L "$HOME/bin"
+            ./install.sh copy
+            ./install.sh --dry-run link
+          '

@@ -3,6 +3,14 @@
 # Extract archives - use: extract <file>
 # Credits to http://dotfiles.org/~pseup/.bashrc
 
+case "${1:-}" in
+-h | --help | "")
+  echo "Usage: $(basename "$0") <archive>"
+  echo "Extract any archive format automatically."
+  exit 0
+  ;;
+esac
+
 if [ -f "$1" ] ; then
     case "$1" in
         *.tar.bz2) tar xjf "$1" ;;

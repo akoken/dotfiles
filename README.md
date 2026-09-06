@@ -13,6 +13,7 @@ Personal dotfiles for my macOS development environment.
 - [Quick Start](#quick-start)
 - [Repository Structure](#repository-structure)
 - [Install Script](#install-script)
+- [Codex Configuration](#codex-configuration)
 - [ZSH Configuration](#zsh-configuration)
 - [Neovim](#neovim)
 - [Tmux](#tmux)
@@ -39,47 +40,85 @@ cd ~/dotfiles
 
 ```
 dotfiles/
-├── Brewfile                  # Homebrew packages, casks, and VS Code extensions
+├── Brewfile                  # Homebrew packages, casks, and taps
 ├── Dockerfile                # Linux test environment
 ├── install.sh                # Setup & installation script
 ├── bin/                      # Custom shell scripts (symlinked to ~/bin)
 └── config/
-    ├── aerospace/            # Tiling window manager
-    ├── bat/                  # bat themes
-    ├── copilot/              # Copilot agents and skills
-    ├── delta/                # Git diff pager themes
-    ├── ghostty/              # Ghostty terminal config + shaders
-    ├── git/                  # Global gitconfig, gitignore, commit template
-    ├── nvim/                 # Neovim (lazy.nvim + kickstart-based)
-    ├── oh-my-posh/           # Prompt theme
-    ├── ripgrep/              # ripgrep defaults
-    ├── starship/             # Starship prompt config
-    ├── tmux/                 # Tmux config + plugins + scripts
-    ├── wezterm/              # WezTerm terminal config
-    └── zsh/                  # Zsh config (zshrc, aliases, functions, env)
+    ├── aerospace/  # Tiling window manager
+    ├── bat/        # bat themes
+    ├── claude/     # Claude Code skills
+    ├── codex/      # Codex CLI config, agents, skills (see below)
+    ├── copilot/    # Copilot agents and skills
+    ├── delta/      # Git diff pager themes
+    ├── ghostty/    # Ghostty terminal config + shaders
+    ├── git/        # Global gitconfig, gitignore, commit template
+    ├── herdr/      # Herdr terminal multiplexer config
+    ├── nvim/       # Neovim (lazy.nvim + kickstart-based)
+    ├── oh-my-posh/ # Prompt theme
+    ├── opencode/   # OpenCode agents, skills, and provider config
+    ├── ripgrep/    # ripgrep defaults
+    ├── skills/     # Shared agent skills (Codex/OpenCode/Copilot)
+    ├── starship/   # Starship prompt config
+    ├── tmux/       # Tmux config + plugins + scripts
+    ├── wezterm/    # WezTerm terminal config
+    └── zsh/        # Zsh config (zshrc, aliases, functions, env)
 ```
+
+> [!Note]
+>
+> This Brewfile does not manage Mac App Store apps (no `mas` entries) — App
+> Store installs are out of scope and stay manual.
 
 ## Install Script
 
 ```bash
-./install.sh {backup|clean|link|copy|git|homebrew|shell|macos|all}
+./install.sh [--dry-run] [--non-interactive] {backup|clean|link|copy|codex-sync|hooks|git|homebrew|shell|macos|all|help}
 ```
 
 | Command      | Description |
 |--------------|-------------|
 | `backup`     | Back up existing dotfiles to `~/dotfiles-backup/` |
-| `clean`      | Remove symlinks created by `link` |
+| `clean`      | Remove symlinks created by `link` (including `~/.zshenv` and `~/bin`) |
 | `link`       | Create symlinks from `config/` → `~/.config/` and `bin/` → `~/bin` |
 | `copy`       | Copy configs instead of symlinking (useful for containers) |
+| `codex-sync` | Regenerate `~/.config/codex/config.toml` from `config.toml` + `config.local.toml` |
+| `hooks`      | Install `githooks/pre-commit` via `git config core.hooksPath` |
 | `git`        | Set up Git identity and credential helper |
 | `homebrew`   | Install Homebrew and run `brew bundle` from the [Brewfile](./Brewfile) |
-| `shell`      | Set Zsh as the default shell |
+| `shell`      | Set Zsh as the default shell and pre-install Zinit |
 | `macos`      | Apply macOS system preferences (Finder, keyboard, Safari, etc.) |
 | `all`        | Run `link` → `homebrew` → `shell` → `git` → `macos` |
+| `help`       | Show usage |
+
+| Flag                | Description |
+|---------------------|-------------|
+| `--dry-run`          | Print what would change without touching the filesystem |
+| `--non-interactive`  | Skip prompts (currently: the git identity prompts in `setup_git`) |
 
 > [!Note]
 >
-> `backup` and `clean` must be run manually — they are not included in `all`.
+> `backup`, `clean`, and `hooks` must be run manually — they are not included in `all`.
+
+## Codex Configuration
+
+`config/codex/config.toml` holds only portable settings. Machine-specific
+state — the trusted-project list, hook trust hashes, and the absolute
+`notify` path — lives in `config/codex/config.local.toml`, which is
+gitignored (see `config/codex/config.local.toml.example` for its shape).
+
+Codex CLI has no native "load a second overlay file automatically" mechanism
+for this (its own profile files, like `config/codex/llama_cpp.config.toml`,
+only load when explicitly selected with `--profile`, e.g. via a shell alias
+— not automatically on every run). So `install.sh link` gives
+`config/codex` a real target directory instead of the usual whole-directory
+symlink: everything else in `config/codex` is symlinked per-entry, and
+`config.toml` at the target is generated from `config.toml` +
+`config.local.toml`. It's only generated once by `link` (so it won't clobber
+trusted-project/hook-trust entries Codex writes back into the live file);
+run `./install.sh codex-sync` to force a refresh after editing either
+source — and copy anything Codex wrote back into `config.local.toml` first,
+or `codex-sync` will drop it.
 
 ## ZSH Configuration
 
@@ -168,6 +207,7 @@ Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
 | `git-graph`          | Visual git log graph |
 | `ip`                 | Print your public IP address |
 | `jwt`                | Decode a JWT token |
+| `sbx-sync`           | Sync Codex/Claude config into a sandbox environment |
 | `update`             | Update Homebrew packages and Neovim plugins|
 | `wgh`                | Clean up ghost windows in AeroSpace |
 | `wtfport`            | Find which process is listening on a given port |

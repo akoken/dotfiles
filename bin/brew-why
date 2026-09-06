@@ -2,6 +2,14 @@
 
 # List out all installed apps along with all the apps each app is dependent on.
 
+case "${1:-}" in
+-h | --help)
+  echo "Usage: $(basename "$0")"
+  echo "List installed Homebrew formulae and what depends on each one."
+  exit 0
+  ;;
+esac
+
 # Trap SIGINT (Ctrl-C) to exit cleanly
 trap 'echo; exit 130' INT
 

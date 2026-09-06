@@ -1,8 +1,10 @@
-FROM ubuntu
+FROM ubuntu:24.04
 
-# Install dependencies
-RUN apt-get update
-RUN apt-get install -y build-essential file zsh git sudo ruby curl vim neovim language-pack-en
+# Install dependencies in a single layer so a failed/retried install doesn't
+# leave a stale apt cache baked into an earlier layer.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential file zsh git sudo ruby curl vim neovim language-pack-en \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a test user
 RUN useradd -ms /bin/bash user && \

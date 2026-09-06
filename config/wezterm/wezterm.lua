@@ -11,7 +11,7 @@
 local dark_opacity = 0.9
 local light_opacity = 0.9
 
-local wallpapers_glob = "/Users/akoken/Documents/Wallpapers/active/**"
+local wallpapers_glob = os.getenv("HOME") .. "/Documents/Wallpapers/active/**"
 
 local b = require("utils/background")
 local cs = require("utils/color_scheme")

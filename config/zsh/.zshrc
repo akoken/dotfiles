@@ -4,8 +4,8 @@ source "$ZDOTDIR/.zsh_functions"
 # Configuration
 ########################################################
 
-prepend_path /usr/local/opt/grep/libexec/gnubin
-prepend_path /usr/local/sbin
+prepend_path "${HOMEBREW_PREFIX:-/usr/local}/opt/grep/libexec/gnubin"
+prepend_path "${HOMEBREW_PREFIX:-/usr/local}/sbin"
 prepend_path $DOTFILES/bin
 prepend_path $HOME/bin
 prepend_path $HOME/.local/bin
@@ -43,7 +43,9 @@ setopt COMPLETE_ALIASES
 # Set the directory we want to store zinit and plugins
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 
-# Download Zinit, if it's not there yet
+# Download Zinit, if it's not there yet. `install.sh shell` pre-installs it
+# so a fresh interactive shell doesn't have to hit the network on first
+# start; this stays as a fallback for anyone who skipped that step.
 if [ ! -d "$ZINIT_HOME" ]; then
    mkdir -p "$(dirname $ZINIT_HOME)"
    git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
@@ -131,9 +133,9 @@ for file in "$ZDOTDIR/.zsh_prompt" "$ZDOTDIR/.zsh_aliases"; do
 done
 
 # Shell integrations
-eval "$(fzf --zsh)"
-eval "$(oh-my-posh init zsh --config $HOME/.config/oh-my-posh/zen.toml)"
-eval "$(direnv hook zsh)"
+[[ -x "$(command -v fzf)" ]] && eval "$(fzf --zsh)"
+[[ -x "$(command -v oh-my-posh)" ]] && eval "$(oh-my-posh init zsh --config "$HOME/.config/oh-my-posh/zen.toml")"
+[[ -x "$(command -v direnv)" ]] && eval "$(direnv hook zsh)"
 
 # prefer zoxide over z.sh
 if [[ -x "$(command -v zoxide)" ]]; then
@@ -147,7 +149,7 @@ else
 fi
 
 # pnpm
-export PNPM_HOME="/Users/akoken/Library/pnpm"
+export PNPM_HOME="$HOME/Library/pnpm"
 case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;

@@ -11,6 +11,11 @@ permission:
     "*": deny
 ---
 
+<!-- Canonical intent source: config/codex/agents/code-reviewer.toml,
+     config/copilot/agents/code-reviewer.agent.md, and this file must
+     describe the same agent behavior; only the frontmatter/tool syntax
+     differs per tool. -->
+
 # Code Reviewer Agent
 
 You are the **Code Reviewer** in a multi-agent pipeline:
