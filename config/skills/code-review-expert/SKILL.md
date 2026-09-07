@@ -1,147 +1,209 @@
 ---
 name: code-review-expert
-description: "Expert code review of current git changes with a senior engineer lens. Detects SOLID violations, security risks, and proposes actionable improvements. Use when reviewing code changes or pull requests."
+description: "Evidence-first review of a diff, branch, or PR with a senior engineer lens. Checks correctness, security, code quality, SOLID/design, test quality, and removal candidates; produces an evidence-cited verdict (APPROVE / REQUEST_CHANGES). Use when reviewing a diff, a branch, or a pull request."
 ---
 
 # Code Review Expert
 
 ## Overview
 
-Perform a structured review of the current git changes with focus on SOLID, architecture, removal candidates, and security risks. Default to review-only output unless the user asks to implement changes.
+Review the diff on its own terms, admit only evidence-anchored findings, and end with a verdict computed from blocker status — not from severity or vibes. Default to review-only output unless the user asks to implement changes.
 
-## Severity Levels
+## Scope and Diff Source
 
-| Level | Name | Description | Action |
-|-------|------|-------------|--------|
-| **P0** | Critical | Security vulnerability, data loss risk, correctness bug | Must block merge |
-| **P1** | High | Logic error, significant SOLID violation, performance regression | Should fix before merge |
-| **P2** | Medium | Code smell, maintainability concern, minor SOLID violation | Fix in this PR or create follow-up |
-| **P3** | Low | Style, naming, minor suggestion | Optional improvement |
+Determine the diff source and state it in the report:
 
-## Workflow
+1. **Branch vs base (default).** Run `git fetch origin`, detect the base via `git symbolic-ref refs/remotes/origin/HEAD` (fall back to `main` if unset), then `git diff origin/<base>...HEAD`.
+2. **On the base branch, or no distinct branch to diff.** Review staged plus unstaged changes: `git diff HEAD` (add `git diff --stat` for an overview).
+3. **User names a target.** A commit range (`git diff A..B`), or a PR number via `gh pr diff <number>` when `gh` is available and authenticated. When reviewing a PR number, also fetch `gh pr view <number> --json title,body,baseRefName,url` and `gh pr checks <number>` — the PR body feeds the Review Contract below, and CI status feeds Blocker Computation branch 4.
 
-### 1) Preflight context
-
-- Use `git status -sb`, `git diff --stat`, and `git diff` to scope changes.
-- If needed, use `rg` or `grep` to find related modules, usages, and contracts.
-- Identify entry points, ownership boundaries, and critical paths (auth, payments, data writes, network).
+Never checkout, branch, stash, or delete anything — this skill is read-only against the working tree and refs.
 
 **Edge cases:**
-- **No changes**: If `git diff` is empty, inform user and ask if they want to review staged changes or a specific commit range.
-- **Large diff (>500 lines)**: Summarize by file first, then review in batches by module/feature area.
-- **Mixed concerns**: Group findings by logical feature, not just file order.
+- **Empty diff**: tell the user and ask whether to review staged changes, a commit range, or a PR instead.
+- **Large diff (>500 changed lines)**: triage per the Coverage Accounting section below instead of skimming everything equally.
 
-### 2) SOLID + architecture smells
+## Review Contract
 
-- Load `references/solid-checklist.md` for specific prompts.
-- Look for:
-  - **SRP**: Overloaded modules with unrelated responsibilities.
-  - **OCP**: Frequent edits to add behavior instead of extension points.
-  - **LSP**: Subclasses that break expectations or require type checks.
-  - **ISP**: Wide interfaces with unused methods.
-  - **DIP**: High-level logic tied to low-level implementations.
-- When you propose a refactor, explain *why* it improves cohesion/coupling and outline a minimal, safe split.
-- If refactor is non-trivial, propose an incremental plan instead of a large rewrite.
+The review contract is whatever defines scope:
 
-### 3) Removal candidates + iteration plan
+- A linked issue, PR body, or a requirement the user stated in this conversation.
+- If none exists, say so explicitly in the report and review the diff on its own terms — do not invent a contract.
 
-- Load `references/removal-plan.md` for template.
-- Identify code that is unused, redundant, or feature-flagged off.
-- Distinguish **safe delete now** vs **defer with plan**.
-- Provide a follow-up plan with concrete steps and checkpoints (tests/metrics).
+**Admissibility.** A finding earns a place in the findings table only through at least one of these anchors:
 
-### 4) Security and reliability scan
+1. A line the diff adds or changes.
+2. An unmet stated requirement (an issue acceptance criterion, DoD item, or explicit user ask), including a silent omission.
+3. A claim in the PR body, commit message, or user's stated intent that the diff contradicts.
 
-- Load `references/security-checklist.md` for coverage.
-- Check for:
-  - XSS, injection (SQL/NoSQL/command), SSRF, path traversal
-  - AuthZ/AuthN gaps, missing tenancy checks
-  - Secret leakage or API keys in logs/env/files
-  - Rate limits, unbounded loops, CPU/memory hotspots
-  - Unsafe deserialization, weak crypto, insecure defaults
-  - **Race conditions**: concurrent access, check-then-act, TOCTOU, missing locks
-- Call out both **exploitability** and **impact**.
+A real, useful concern with none of these anchors is not a review finding. Route it to **Out-of-scope observations** instead of manufacturing an in-diff fix demand. Cap that section at five items; summarize any overflow count.
 
-### 5) Code quality scan
+## Blocker Computation
 
-- Load `references/code-quality-checklist.md` for coverage.
-- Check for:
-  - **Error handling**: swallowed exceptions, overly broad catch, missing error handling, async errors
-  - **Performance**: N+1 queries, CPU-intensive ops in hot paths, missing cache, unbounded memory
-  - **Boundary conditions**: null/undefined handling, empty collections, numeric boundaries, off-by-one
-- Flag issues that may cause silent failures or production incidents.
+Compute `Blocker?` independently for every admitted finding, through exactly these branches:
 
-### 6) Output format
+1. A reachable correctness, security, or regression defect introduced by the diff.
+2. A failed stated requirement (acceptance criterion, DoD item, explicit user ask).
+3. An undisclosed partial implementation, or a claim the diff contradicts.
+4. A failing required gate — CI, tests, typecheck, or lint — that is not pre-existing on the base branch. Before blaming the diff, check whether the failure already exists at the merge-base:
+   ```bash
+   BASE=$(git merge-base origin/<base> HEAD)
+   git worktree add /tmp/review-base-check "$BASE"
+   (cd /tmp/review-base-check && <test/typecheck/lint command>)
+   git worktree remove --force /tmp/review-base-check
+   ```
+   A failure that reproduces at the merge-base is pre-existing — note it, but it is never this diff's blocker.
 
-Structure your review as follows:
+`Blocker?` is **Yes** only when at least one branch matches; otherwise **No**. Severity (below) is classified independently and never sets blocker status — a real Critical-severity finding can still be non-blocking, and a real Minor one can still block.
+
+**No early stop.** A computed blocker does not end the review. Keep working the full planned pass across every check dimension before reporting.
+
+**Defect-class propagation.** When one defect class appears in a changed file, check sibling implementations *within files the diff touches* for the same class of bug before finalizing findings. A defect found only by scanning an untouched file routes to Out-of-scope observations with `Blocker? No` — propagation into untouched files never creates a blocker.
+
+## Check Dimensions
+
+Run every dimension below on every review; state explicitly when a dimension doesn't apply (e.g. "no SQL/shell sinks touched").
+
+### (a) Correctness
+
+Read the changed code line by line. For each non-trivial changed function, ask: **what input makes this wrong?** Trace the 1-2 inputs most likely to break it. Check logic errors (wrong operator, inverted condition, off-by-one), null/undefined/empty handling, error handling (swallowed exceptions, unawaited rejections, error paths returning success), async correctness (missing `await`, races between read and write), boundary values, resource leaks, and unexpected state mutation. If you cannot point to the line that fails, it is not a finding.
+
+**Severity calibration:** a defect on an input the stated requirement does not require handling *and* that no current caller can produce (e.g. an invalid-input guard for a brand-new utility with no callers yet) is Style, not Minor — reserve Minor and Critical for paths that are actually reachable today.
+
+### (b) Security
+
+Load `references/security-checklist.md`. Covers injection, SSRF, path traversal, prototype pollution, AuthN/AuthZ and IDOR, JWT/token security, secrets and PII, supply chain, CORS/headers, race conditions (TOCTOU, database concurrency, distributed systems), cryptography, and data integrity. Report exploitability and impact together.
+
+### (c) Code Quality
+
+Load `references/code-quality-checklist.md`. Covers error-handling anti-patterns, performance (N+1 queries, missing caching, CPU-hot paths, memory), and boundary conditions (null handling, empty collections, numeric/string edges).
+
+### (d) SOLID and Design
+
+Load `references/solid-checklist.md`. Covers SRP/OCP/LSP/ISP/DIP smells and common code smells beyond SOLID. Any refactor proposal must be an incremental, minimal-diff plan — never a large rewrite pitch.
+
+### (e) Test Quality
+
+Running the suite only tells you it passes; this asks whether the tests are worth running:
+
+- New behavior has tests at all — zero tests on new logic is a defect, not a gap to note in passing.
+- Tests cover non-happy-path branches: error case, empty case, boundary — not just the golden path.
+- Assertions are meaningful — flag tautological assertions (`expect(true).toBe(true)`), tests that assert the mock instead of the behavior, and over-mocking that mocks away the exact thing under test.
+- No test was deleted or weakened to make a failing suite pass instead of fixing the underlying code.
+- No new flakiness: real timers/sleeps, order-dependence, or network reliance introduced by a new test.
+
+### (f) Removal Candidates
+
+Load `references/removal-plan.md`. Identify code the diff leaves unused, redundant, or feature-flagged off. Distinguish **safe delete now** from **defer with a plan**, and give the deferred ones a concrete follow-up plan with checkpoints.
+
+### Common Findings Quick Reference
+
+Default severity by category — always run through Blocker Computation independently; no row here creates a blocker on its own:
+
+| Pattern | Default severity |
+|---|---|
+| Logic bug reachable on the happy path (unhandled null/empty/error case) | Critical |
+| New behavior shipped with zero tests | Critical |
+| Test deleted or weakened to silence a failure | Critical |
+| Untrusted input reaching a shell, SQL, or path sink | Critical |
+| Missing `await` / unhandled promise rejection | Critical |
+| Tautological or over-mocked test | Minor |
+| Happy-path-only test coverage on risky logic | Minor |
+| Resource leak on an error path | Minor |
+| Stale reference or incomplete migration | Minor |
+| Deferred work with no follow-up filed | Minor |
+| Naming or formatting inconsistency | Style |
+
+## Coverage Accounting
+
+Every report declares, unconditionally — including clean reviews and small diffs:
+
+```
+reviewed N of M changed files · prioritized: [...] · deprioritized: [... / none]
+```
+
+For a diff small enough to read in full, use `prioritized: all changed files; deprioritized: none`. For a large diff, prioritize logic-bearing source over docs, lockfiles, and generated output; run the full check-dimension pass on the highest-risk files first, then report the exact partial coverage honestly — never claim full coverage you didn't do, and never silently skip the declaration.
+
+## Verdict
+
+### Severity Scale
+
+| Level | Meaning |
+|---|---|
+| **Critical** | Correctness/security defect on a reachable path, missing test for risky new behavior, test deleted to silence a failure, undocumented breaking change, non-pre-existing gate failure |
+| **Minor** | Defect on a rare/unreachable path, weak or happy-path-only test coverage, resource leak, stale reference, incomplete migration, deferred debt with no follow-up filed |
+| **Style** | Convention preference, optional improvement, cosmetic inconsistency |
+
+Severity never determines `Blocker?` — that comes only from Blocker Computation above.
+
+### Verdict Rules
+
+| Condition | Verdict |
+|---|---|
+| One or more findings with `Blocker? Yes` | **REQUEST_CHANGES.** List each blocker. |
+| No findings with `Blocker? Yes` | **APPROVE.** Non-blocking Critical/Minor findings and observations do not change this. |
+
+### Output Template
+
+Always render the findings table, even for a clean review. On a clean review, replace the placeholder row with one non-finding **inspection row**: `—` for number and severity, `No` for `Blocker?`, name the changed implementation and its corresponding test (or the highest-risk changed artifact if no test applies), and state what behavior was inspected. Never replace the table with bare "no findings" prose.
 
 ```markdown
-## Code Review Summary
+## Code Review — [scope: branch/PR/diff description]
 
-**Files reviewed**: X files, Y lines changed
-**Overall assessment**: [APPROVE / REQUEST_CHANGES / COMMENT]
+**Verdict:** APPROVE / REQUEST_CHANGES
+**Scope contract:** [linked issue / PR body / user-stated intent / "none — reviewed diff on its own terms"]
+**Diff source:** [git diff origin/<base>...HEAD / staged+unstaged / commit range / gh pr diff <N>]
+**Coverage:** reviewed N of M changed files · prioritized: [...] · deprioritized: [... / none]
 
----
+### Findings
 
-## Findings
+| # | Location | Severity | Blocker? | Finding | Suggested fix |
+|---|---|---|---|---|---|
+| 1 | `path/to/file.ts:42` | Critical | Yes | Description | Concrete fix |
+| 2 | `path/to/file.ts:88` | Style | No | Description | Optional |
+[Clean review: render the inspection row here instead.]
 
-### P0 - Critical
-(none or list)
+### Out-of-scope observations (max 5)
 
-### P1 - High
-- **[file:line]** Brief title
-  - Description of issue
-  - Suggested fix
+| # | Context | Blocker? | Observation | Follow-up guidance |
+|---|---|---|---|---|
+| ... | ... | No | ... | Track separately; no change required in this review. |
+[If none: "None."]
 
-### P2 - Medium
-...
+### Blockers
 
-### P3 - Low
-...
-
----
-
-## Removal/Iteration Plan
-(if applicable)
-
-## Additional Suggestions
-(optional improvements, not blocking)
+[If any: numbered list of every Blocker? Yes finding, each with its fix.]
+[If none: "No computed blockers."]
 ```
 
-**Inline comments**: Use this format for file-specific findings:
-```
-::code-comment{file="path/to/file.ts" line="42" severity="P1"}
-Description of the issue and suggested fix.
-::
-```
+### Next Steps
 
-**Clean review**: If no issues found, explicitly state:
-- What was checked
-- Any areas not covered (e.g., "Did not verify database migrations")
-- Residual risks or recommended follow-up tests
-
-### 7) Next steps confirmation
-
-After presenting findings, ask user how to proceed:
+After presenting findings, ask how to proceed:
 
 ```markdown
 ---
 
 ## Next Steps
 
-I found X issues (P0: _, P1: _, P2: _, P3: _).
+Found X issues (Critical: _, Minor: _, Style: _).
 
 **How would you like to proceed?**
 
-1. **Fix all** - I'll implement all suggested fixes
-2. **Fix P0/P1 only** - Address critical and high priority issues
-3. **Fix specific items** - Tell me which issues to fix
-4. **No changes** - Review complete, no implementation needed
-
-Please choose an option or provide specific instructions.
+1. **Fix all** — implement every suggested fix
+2. **Fix Critical only** — address blocking issues first
+3. **Fix specific items** — tell me which to fix
+4. **No changes** — review complete, no implementation needed
 ```
 
-**Important**: Do NOT implement any changes until user explicitly confirms. This is a review-first workflow.
+**Do not implement any changes until the user explicitly confirms.** This is a review-first workflow.
+
+## Operating Principles
+
+- **Evidence first.** Every finding cites a concrete `path:line` or diff excerpt. No line, no finding.
+- **Never rubber-stamp.** Run every check; "CI is probably fine" is not evidence — read `gh pr checks` or the actual test output.
+- **Blockers are not a stopping condition.** Finish the full pass before reporting, even after finding a blocker.
+- **Distinguish pre-existing failures from regressions.** A gate failing on the base branch before the diff is not this diff's blocker.
+- **Read code as code, not only as policy.** A diff can match every stated requirement and still ship a null-deref or a command injection — trace the riskiest changed paths by hand.
 
 ## Resources
 
@@ -149,7 +211,7 @@ Please choose an option or provide specific instructions.
 
 | File | Purpose |
 |------|---------|
-| `solid-checklist.md` | SOLID smell prompts and refactor heuristics |
-| `security-checklist.md` | Web/app security and runtime risk checklist |
+| `security-checklist.md` | Web/app security, race conditions, JWT, and runtime risk checklist |
 | `code-quality-checklist.md` | Error handling, performance, boundary conditions |
+| `solid-checklist.md` | SOLID smell prompts and refactor heuristics |
 | `removal-plan.md` | Template for deletion candidates and follow-up plan |
