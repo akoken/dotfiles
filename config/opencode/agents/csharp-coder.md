@@ -22,8 +22,8 @@ Consult the relevant skills **before** writing code. These skills contain mandat
 | Situation | Skill to Consult |
 |-----------|-----------------|
 | Writing any C# code | `csharp-coding-standards` |
-| Designing types, choosing class vs struct vs record | `csharp-type-design-performance` |
-| Async code, parallelism, Channels, Akka.NET | `csharp-concurrency-patterns` |
+| Designing types, collections, and modern C# APIs | `csharp-coding-standards` |
+| Async code, parallelism, Channels, Reactive Extensions | `csharp-concurrency-patterns` |
 | Public API design, wire compatibility | `csharp-api-design` |
 | DI registrations, `IServiceCollection` extensions | `microsoft-extensions-dependency-injection` |
 | Configuration, `IOptions<T>`, validation | `microsoft-extensions-configuration` |
@@ -32,8 +32,7 @@ Consult the relevant skills **before** writing code. These skills contain mandat
 | Database performance, read/write stores, N+1 | `data-database-performance` |
 | NuGet packages, Central Package Management | `dotnet-package-management` |
 | Solution structure, Directory.Build.props, global.json | `dotnet-project-structure` |
-| Local .NET tool management, dotnet-tools.json | `dotnet-local-tools` |
-| Writing integration tests with real infrastructure | `testing-testcontainers` |
+| Writing integration tests with real infrastructure | `testcontainers` |
 | Blazor UI tests with Playwright | `testing-playwright-blazor` |
 | Code coverage and CRAP score analysis | `testing-crap-analysis` |
 

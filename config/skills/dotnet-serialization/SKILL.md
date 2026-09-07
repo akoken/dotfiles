@@ -37,7 +37,6 @@ Use this skill when:
 |----------|-------------------|-----|
 | **REST APIs** | System.Text.Json (source gen) | Standard, AOT-compatible |
 | **gRPC** | Protocol Buffers | Native format, excellent versioning |
-| **Actor messaging** | MessagePack or Protobuf | Compact, fast, version-safe |
 | **Event sourcing** | Protobuf or MessagePack | Must handle old events forever |
 | **Caching** | MessagePack | Compact, fast |
 | **Configuration** | JSON (System.Text.Json) | Human-readable |
@@ -99,7 +98,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 ## Protocol Buffers (Protobuf)
 
-Best for: Actor systems, gRPC, event sourcing, any long-lived wire format.
+Best for: gRPC, event sourcing, any long-lived wire format.
 
 ### Setup
 
@@ -165,7 +164,7 @@ message Order {
 
 ## MessagePack
 
-Best for: High-performance scenarios, compact payloads, actor messaging.
+Best for: High-performance scenarios, compact payloads.
 
 ### Setup
 
@@ -347,27 +346,6 @@ For hot paths, prefer MessagePack or Protobuf.
 
 ---
 
-## Akka.NET Serialization
-
-For Akka.NET actor systems, use schema-based serialization:
-
-```hocon
-akka {
-  actor {
-    serializers {
-      messagepack = "Akka.Serialization.MessagePackSerializer, Akka.Serialization.MessagePack"
-    }
-    serialization-bindings {
-      "MyApp.Messages.IMessage, MyApp" = messagepack
-    }
-  }
-}
-```
-
-See [Akka.NET Serialization Docs](https://getakka.net/articles/networking/serialization.html).
-
----
-
 ## Best Practices
 
 ### DO
@@ -408,5 +386,3 @@ JsonConvert.SerializeObject(order);  // Slow, not AOT-compatible
 - **System.Text.Json Source Generation**: https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/source-generation
 - **Protocol Buffers**: https://protobuf.dev/
 - **MessagePack-CSharp**: https://github.com/MessagePack-CSharp/MessagePack-CSharp
-- **Akka.NET Serialization**: https://getakka.net/articles/networking/serialization.html
-- **Wire Compatibility**: https://getakka.net/community/contributing/wire-compatibility.html

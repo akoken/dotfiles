@@ -9,7 +9,7 @@ Use real disposable infrastructure when correctness depends on a database engine
 
 ## Workflow
 
-1. Inspect the target framework, test framework version, package management, Docker availability, and existing fixture conventions.
+1. Inspect the target framework, test framework version, package management, Docker availability (`docker info`), and existing fixture conventions. If the daemon is unavailable, report that prerequisite before running tests.
 2. Prefer the official module package and module-specific builder (`Testcontainers.MsSql` with `MsSqlBuilder`, for example). Use `ContainerBuilder` only when no suitable module exists.
 3. Pin every container image to an explicit tag or digest. Never use `latest`.
 4. Choose isolation deliberately:
@@ -19,7 +19,7 @@ Use real disposable infrastructure when correctness depends on a database engine
 5. Start containers through xUnit fixtures or explicit async lifecycle management. Always dispose them.
 6. Run the production migration/schema path before assertions when the test covers persistence.
 7. Use random host-port bindings and obtain endpoints from the container object.
-8. Wait for service readiness, not merely container process startup.
+8. Wait for service readiness, not merely container process startup. Bound startup with cancellation/timeouts and retain container logs when readiness fails.
 9. Run the focused integration tests locally, then verify the same command in Docker-capable CI.
 
 Completion requires a pinned image, deterministic isolation, disposal, a real readiness condition, and a passing test against the actual service.

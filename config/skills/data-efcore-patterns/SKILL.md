@@ -26,7 +26,7 @@ Read only the needed section of [references/full-guide.md](references/full-guide
 - execution strategies and retryable transactions;
 - `ExecuteUpdate` / `ExecuteDelete`;
 - N+1, tracking conflicts, async, or loop queries;
-- scoped contexts, background services, factories, or actors;
+- scoped contexts, background services, or factories;
 - in-memory versus Testcontainers-backed testing.
 
 Use `rg -n '^## Pattern|^## Common|^## DbContext|^## Testing' references/full-guide.md` to locate the branch.
@@ -35,7 +35,7 @@ Use `rg -n '^## Pattern|^## Common|^## DbContext|^## Testing' references/full-gu
 
 - Do not edit generated migration files casually; use EF tooling and inspect the generated result.
 - Do not use the in-memory provider as evidence for relational translation or constraint behavior.
-- Do not hold a scoped DbContext in a singleton or long-lived actor.
+- Do not hold a scoped DbContext in a singleton or long-lived service.
 - Do not wrap an execution strategy incorrectly around a transaction; the retry boundary must own the full unit of work.
 - Do not use whole-entity `Update` for disconnected partial updates without considering overwritten columns and concurrency tokens.
 - Use the `data-database-performance` skill for cross-ORM query-shape and batching decisions.

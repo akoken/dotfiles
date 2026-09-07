@@ -188,9 +188,8 @@ public object Deserialize(byte[] data, string manifest) => manifest switch
 
 **Phase 2: Enable write-side (opt-out, next minor version)**
 
-```csharp
-// Config to enable new format (off by default initially)
-akka.cluster.use-heartbeat-v2 = on
+```json
+{ "FeatureFlags": { "WriteHeartbeatV2": true } }
 ```
 
 **Phase 3: Make default (future version)**
@@ -209,7 +208,7 @@ Prefer schema-based formats over reflection-based:
 | Newtonsoft.Json | Reflection-based | Poor - type names in payload |
 | BinaryFormatter | Reflection-based | Terrible - never use |
 
-See `dotnet/serialization` skill for details.
+See `dotnet-serialization` skill for details.
 
 ---
 
@@ -358,8 +357,6 @@ public void Configure(
 
 ## Resources
 
-- [Making Public API Changes](https://getakka.net/community/contributing/api-changes-compatibility.html)
-- [Wire Format Changes](https://getakka.net/community/contributing/wire-compatibility.html)
 - [Extend-Only Design](https://aaronstannard.com/extend-only-design/)
 - [OSS Compatibility Standards](https://aaronstannard.com/oss-compatibility-standards/)
 - [Semantic Versioning](https://semver.org/)

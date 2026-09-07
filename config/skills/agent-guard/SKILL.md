@@ -1,6 +1,6 @@
 ---
 name: agent-guard
-description: Use for stronger secret leak prevention with Agent Guard and gitleaks: scan staged changes, working trees, or paths; install repo-local pre-commit hooks; mask command output; check PII; or compare/upgrade from lightweight secret scanning before commits, PRs, pushes, or agent runs.
+description: "Use for secret leak prevention with Agent Guard/gitleaks or the lightweight Python fallback: scan staged changes, working trees, paths, or explicit files; install repo-local pre-commit hooks; mask command output; check PII; or compare/upgrade secret scanning before commits, PRs, pushes, or agent runs."
 ---
 
 ## Binary
@@ -8,8 +8,10 @@ description: Use for stronger secret leak prevention with Agent Guard and gitlea
 Use the vendored binary directly:
 
 ```bash
-/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard check
+"${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/bin/agent-guard" check
 ```
+
+`CODEX_HOME` is set in `config/zsh/.zshenv`; all four harness skill dirs resolve to the shared `config/skills/agent-guard`.
 
 Required tools: `sh`, `awk`, `git`, `jq`, and `gitleaks`.
 
@@ -18,43 +20,52 @@ Required tools: `sh`, `awk`, `git`, `jq`, and `gitleaks`.
 1. Run dependency check first when using this skill in a new machine or shell:
 
 ```bash
-/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard check
+"${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/bin/agent-guard" check
 ```
 
 2. Prefer staged scans before commits:
 
 ```bash
-/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard scan-staged
+"${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/bin/agent-guard" scan-staged
 ```
 
 3. Use a working-tree scan after agent edits or before a PR:
 
 ```bash
-/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard scan-working-tree
+"${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/bin/agent-guard" scan-working-tree
 ```
 
 4. Use path scans for explicit directories or files:
 
 ```bash
-/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard scan-path .
+"${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/bin/agent-guard" scan-path .
 ```
 
-5. For commands that may print secrets, run through the redacting wrapper:
+5. If `gitleaks` is unavailable and the scan cannot run, use the lightweight fallback without printing secret values:
 
 ```bash
-/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard exec -- printenv
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/scripts/guard.py" --format md
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/scripts/guard.py" --files path/to/file --format md
 ```
 
-6. For text that may contain PII:
+Fallback exit codes: `0` is clean, `1` means findings are present. Report rule names, paths, line numbers, and redacted snippets only.
+
+6. For commands that may print secrets, run through the redacting wrapper:
 
 ```bash
-printf '%s\n' "$TEXT" | /Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/bin/agent-guard pii-filter
+"${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/bin/agent-guard" exec -- printenv
 ```
 
-7. To install the stable native git pre-commit hook in the current repo, use the vendored installer from inside that repo:
+7. For text that may contain PII:
 
 ```bash
-/Users/akoken/Developer/repos/dotfiles/config/codex/skills/agent-guard/install.sh git-hooks
+printf '%s\n' "$TEXT" | "${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/bin/agent-guard" pii-filter
+```
+
+8. To install the stable native git pre-commit hook in the current repo, use the vendored installer from inside that repo:
+
+```bash
+"${CODEX_HOME:-$HOME/.config/codex}/skills/agent-guard/install.sh" git-hooks
 ```
 
 Only run hook installation when the user explicitly asks for it. It sets `core.hooksPath=githooks` and refuses to overwrite an incompatible existing hook setup.

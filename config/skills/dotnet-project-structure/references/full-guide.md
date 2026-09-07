@@ -254,15 +254,15 @@ Central Package Management (CPM) provides a single source of truth for all NuGet
 
   <!-- Define version variables for related packages -->
   <PropertyGroup>
-    <AkkaVersion>1.5.35</AkkaVersion>
+    <ExtensionsVersion>9.0.0</ExtensionsVersion>
     <AspireVersion>9.1.0</AspireVersion>
   </PropertyGroup>
 
   <!-- Application Dependencies -->
   <ItemGroup Label="App Dependencies">
-    <PackageVersion Include="Akka" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Cluster" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Persistence" Version="$(AkkaVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(ExtensionsVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="$(ExtensionsVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="$(ExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
   </ItemGroup>
 
@@ -287,8 +287,8 @@ Central Package Management (CPM) provides a single source of truth for all NuGet
 ```xml
 <!-- In MyApp.csproj -->
 <ItemGroup>
-  <PackageReference Include="Akka" />
-  <PackageReference Include="Akka.Cluster" />
+  <PackageReference Include="Microsoft.Extensions.Logging" />
+  <PackageReference Include="Microsoft.Extensions.Configuration" />
   <PackageReference Include="Microsoft.Extensions.Hosting" />
 </ItemGroup>
 
@@ -305,7 +305,7 @@ Central Package Management (CPM) provides a single source of truth for all NuGet
 1. **Single source of truth** - All versions in one file
 2. **No version drift** - All projects use same versions
 3. **Easy updates** - Change once, applies everywhere
-4. **Grouped packages** - Version variables for related packages (e.g., all Akka packages)
+4. **Grouped packages** - Version variables for related packages (e.g., Microsoft.Extensions packages)
 
 ---
 

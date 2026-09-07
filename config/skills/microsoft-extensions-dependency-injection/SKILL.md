@@ -15,7 +15,7 @@ Use this skill when:
 
 ## Reference Files
 
-- [advanced-patterns.md](advanced-patterns.md): Testing with DI extensions, Akka.NET actor scope management, conditional/factory/keyed registration patterns
+- [advanced-patterns.md](advanced-patterns.md): Testing with DI extensions, conditional/factory/keyed registration patterns
 
 ---
 
@@ -143,7 +143,7 @@ src/
 
 ## Testing Benefits
 
-The `Add*` pattern lets you **reuse production configuration in tests** and only override what's different. Works with WebApplicationFactory, Akka.Hosting.TestKit, and standalone ServiceCollection.
+The `Add*` pattern lets you **reuse production configuration in tests** and only override what's different. Works with WebApplicationFactory and standalone ServiceCollection.
 
 See [advanced-patterns.md](advanced-patterns.md) for complete testing examples.
 
@@ -179,39 +179,6 @@ public static class DomainServiceCollectionExtensions
 
 ---
 
-## Akka.Hosting Integration
-
-The same pattern works for Akka.NET actor configuration:
-
-```csharp
-public static class OrderActorExtensions
-{
-    public static AkkaConfigurationBuilder AddOrderActors(
-        this AkkaConfigurationBuilder builder)
-    {
-        return builder
-            .WithActors((system, registry, resolver) =>
-            {
-                var orderProps = resolver.Props<OrderActor>();
-                var orderRef = system.ActorOf(orderProps, "orders");
-                registry.Register<OrderActor>(orderRef);
-            });
-    }
-}
-
-// Usage in Program.cs
-builder.Services.AddAkka("MySystem", (builder, sp) =>
-{
-    builder
-        .AddOrderActors()
-        .AddInventoryActors()
-        .AddNotificationActors();
-});
-```
-
-See `akka-hosting-actor-patterns` skill for complete Akka.Hosting patterns.
-
----
 
 ## Anti-Patterns
 
@@ -282,9 +249,9 @@ services.AddScoped<IUserRepository, UserRepository>();
 services.AddTransient<CreateUserRequestValidator>();
 ```
 
-**Scoped services require a scope.** ASP.NET Core creates one per HTTP request. In background services and actors, create scopes manually.
+**Scoped services require a scope.** ASP.NET Core creates one per HTTP request. In background services, create scopes manually.
 
-See [advanced-patterns.md](advanced-patterns.md) for actor scope management patterns.
+Create and dispose a scope per background operation; await async disposal when scoped services require it.
 
 ---
 
@@ -341,6 +308,4 @@ public class GoodBackgroundService : BackgroundService
 ## Resources
 
 - **Microsoft.Extensions.DependencyInjection**: https://learn.microsoft.com/en-us/dotnet/core/extensions/dependency-injection
-- **Akka.Hosting**: https://github.com/akkadotnet/Akka.Hosting
-- **Akka.DependencyInjection**: https://getakka.net/articles/actors/dependency-injection.html
 - **Options Pattern**: See `microsoft-extensions-configuration` skill

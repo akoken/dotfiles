@@ -1,6 +1,6 @@
 ---
 name: csharp-concurrency-patterns
-description: Choosing the right concurrency abstraction in .NET - from async/await for I/O to Channels for producer/consumer to Akka.NET for stateful entity management. Avoid locks and manual synchronization unless absolutely necessary. Use when implementing concurrent or asynchronous operations in .NET.
+description: Choosing the right concurrency abstraction in .NET - from async/await for I/O to Channels for producer/consumer. Avoid locks and manual synchronization unless absolutely necessary. Use when implementing concurrent or asynchronous operations in .NET.
 ---
 
 # .NET Concurrency: Choosing the Right Tool
@@ -9,14 +9,14 @@ description: Choosing the right concurrency abstraction in .NET - from async/awa
 
 Use this skill when:
 - Deciding how to handle concurrent operations in .NET
-- Evaluating whether to use async/await, Channels, Akka.NET, or other abstractions
+- Evaluating whether to use async/await, Channels, Reactive Extensions, or other abstractions
 - Tempted to use locks, semaphores, or other synchronization primitives
 - Need to process streams of data with backpressure, batching, or debouncing
 - Managing state across multiple concurrent entities
 
 ## Reference Files
 
-- [advanced-concurrency.md](advanced-concurrency.md): Akka.NET Streams, Reactive Extensions, Akka.NET Actors (entity-per-actor, state machines, cluster sharding), and async local function patterns
+- [advanced-concurrency.md](advanced-concurrency.md): Reactive Extensions and async local function patterns
 
 ## The Philosophy
 
@@ -24,10 +24,10 @@ Use this skill when:
 
 Most concurrency problems can be solved with `async/await`. Only reach for more sophisticated tools when you have a specific need that async/await can't address cleanly.
 
-**Try to avoid shared mutable state.** The best way to handle concurrency is to design it away. Immutable data, message passing, and isolated state (like actors) eliminate entire categories of bugs.
+**Try to avoid shared mutable state.** The best way to handle concurrency is to design it away. Immutable data, message passing, and isolated state eliminate entire categories of bugs.
 
 **Locks should be the exception, not the rule.** When you can't avoid shared mutable state:
-1. **First choice:** Redesign to avoid it (immutability, message passing, actor isolation)
+1. **First choice:** Redesign to avoid it (immutability, message passing, single-owner state)
 2. **Second choice:** Use `System.Collections.Concurrent` (ConcurrentDictionary, etc.)
 3. **Third choice:** Use `Channel<T>` to serialize access through message passing
 4. **Last resort:** Use `lock` for simple, short-lived critical sections
@@ -51,22 +51,13 @@ What are you trying to do?
 ├─► UI event handling (debounce, throttle, combine)?
 │   └─► Use Reactive Extensions (Rx)
 │
-├─► Server-side stream processing (backpressure, batching)?
-│   └─► Use Akka.NET Streams
-│
-├─► State machines with complex transitions?
-│   └─► Use Akka.NET Actors (Become pattern)
-│
-├─► Manage state for many independent entities?
-│   └─► Use Akka.NET Actors (entity-per-actor)
-│
 ├─► Coordinate multiple async operations?
 │   └─► Use Task.WhenAll / Task.WhenAny
 │
 └─► None of the above fits?
     └─► Ask yourself: "Do I really need shared mutable state?"
         ├─► Yes → Consider redesigning to avoid it
-        └─► Truly unavoidable → Use Channels or Actors to serialize access
+        └─► Truly unavoidable → Use Channels to serialize access
 ```
 
 ---
@@ -173,11 +164,9 @@ public class OrderProcessor
 
 ---
 
-## Level 4+: Akka.NET Streams, Reactive Extensions, Actors
+## Level 4: Reactive Extensions
 
-For advanced scenarios requiring stream processing, UI event composition, or stateful entity management, see [advanced-concurrency.md](advanced-concurrency.md).
-
-**Akka.NET Streams** excel at server-side batching, throttling, and backpressure. **Reactive Extensions** are ideal for UI event composition. **Akka.NET Actors** handle entity-per-actor patterns, state machines with `Become()`, and distributed systems via Cluster Sharding.
+For UI event composition and async local function patterns, see [advanced-concurrency.md](advanced-concurrency.md).
 
 ---
 
@@ -195,7 +184,7 @@ public void UpdateOrder(string id, Action<Order> update)
     lock (_lock) { if (_orders.TryGetValue(id, out var order)) update(order); }
 }
 
-// GOOD: Use an actor or Channel to serialize access
+// GOOD: Use a single-reader Channel to serialize access
 ```
 
 ### Manual Thread Management
@@ -244,9 +233,6 @@ var results = new ConcurrentBag<Result>();
 | Parallel CPU work | `Parallel.ForEachAsync` | Image processing, calculations |
 | Work queue | `Channel<T>` | Background job processing |
 | UI events with debounce/throttle | Reactive Extensions | Search-as-you-type, auto-save |
-| Server-side batching/throttling | Akka.NET Streams | Event aggregation, rate limiting |
-| State machines | Akka.NET Actors | Payment flows, order lifecycles |
-| Entity state management | Akka.NET Actors | Order management, user sessions |
 | Fire multiple async ops | `Task.WhenAll` | Loading dashboard data |
 | Race multiple async ops | `Task.WhenAny` | Timeout with fallback |
 | Periodic work | `PeriodicTimer` | Health checks, polling |
@@ -262,11 +248,7 @@ async/await (start here)
     │
     ├─► Need producer/consumer? → Channel<T>
     │
-    ├─► Need UI event composition? → Reactive Extensions
-    │
-    ├─► Need server-side stream processing? → Akka.NET Streams
-    │
-    └─► Need state machines or entity management? → Akka.NET Actors
+    └─► Need UI event composition? → Reactive Extensions
 ```
 
-**Only escalate when you have a concrete need.** Don't reach for actors or streams "just in case".
+**Only escalate when you have a concrete need.** Don't reach for complex abstractions "just in case".

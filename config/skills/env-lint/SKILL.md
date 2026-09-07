@@ -7,18 +7,20 @@ description: Use when checking .env, .env.local, .env.production, or other envir
 
 Never print environment variable values. Report key names only.
 
+`CODEX_HOME` is set in `config/zsh/.zshenv`; all four harness skill dirs resolve to the shared `config/skills/env-lint`.
+
 ## Workflow
 
 1. Run the default key-parity check:
 
 ```bash
-python3 /Users/akoken/Developer/repos/dotfiles/config/codex/skills/env-lint/scripts/envlint.py --format md
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/env-lint/scripts/envlint.py" --format md
 ```
 
 2. For explicit files:
 
 ```bash
-python3 /Users/akoken/Developer/repos/dotfiles/config/codex/skills/env-lint/scripts/envlint.py --example .env.example --env .env.local --format md
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/env-lint/scripts/envlint.py" --example .env.example --env .env.local --format md
 ```
 
 3. Interpret exit codes:

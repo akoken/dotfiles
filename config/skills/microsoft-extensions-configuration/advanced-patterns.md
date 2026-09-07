@@ -147,129 +147,38 @@ public class DatabaseSettingsValidator : IValidateOptions<DatabaseSettings>
 ## Complete Example - Production Settings Class
 
 ```csharp
-using System.ComponentModel.DataAnnotations;
-using Microsoft.Extensions.Options;
-
-public class AkkaSettings
+public sealed class WorkerSettings
 {
-    public const string SectionName = "AkkaSettings";
-
-    [Required]
-    public string ActorSystemName { get; set; } = "MySystem";
-
-    public AkkaExecutionMode ExecutionMode { get; set; } = AkkaExecutionMode.LocalTest;
-
-    public bool LogConfigOnStart { get; set; } = false;
-
-    public RemoteOptions RemoteOptions { get; set; } = new();
-
-    public ClusterOptions ClusterOptions { get; set; } = new();
-
-    public ClusterBootstrapOptions ClusterBootstrapOptions { get; set; } = new();
+    public const string SectionName = "Worker";
+    public string QueueName { get; set; } = "jobs";
+    public int MaxConcurrency { get; set; } = 4;
+    public bool UseLocalQueue { get; set; } = true;
 }
 
-public enum AkkaExecutionMode
+public sealed class WorkerSettingsValidator(IHostEnvironment environment)
+    : IValidateOptions<WorkerSettings>
 {
-    LocalTest,   // No remoting, no clustering
-    Clustered    // Full cluster with sharding, distributed pub/sub
-}
-
-public class AkkaSettingsValidator : IValidateOptions<AkkaSettings>
-{
-    private readonly IHostEnvironment _environment;
-
-    public AkkaSettingsValidator(IHostEnvironment environment)
-    {
-        _environment = environment;
-    }
-
-    public ValidateOptionsResult Validate(string? name, AkkaSettings options)
+    public ValidateOptionsResult Validate(string? name, WorkerSettings options)
     {
         var failures = new List<string>();
-
-        // Basic validation
-        if (string.IsNullOrWhiteSpace(options.ActorSystemName))
-        {
-            failures.Add("ActorSystemName is required");
-        }
-
-        // Mode-specific validation
-        if (options.ExecutionMode == AkkaExecutionMode.Clustered)
-        {
-            ValidateClusteredMode(options, failures);
-        }
-
-        // Environment-specific validation
-        if (_environment.IsProduction() && options.ExecutionMode == AkkaExecutionMode.LocalTest)
-        {
-            failures.Add("LocalTest execution mode is not allowed in production");
-        }
+        if (string.IsNullOrWhiteSpace(options.QueueName))
+            failures.Add("QueueName is required");
+        if (options.MaxConcurrency is < 1 or > 64)
+            failures.Add("MaxConcurrency must be between 1 and 64");
+        if (environment.IsProduction() && options.UseLocalQueue)
+            failures.Add("Local queues are not allowed in production");
 
         return failures.Count > 0
             ? ValidateOptionsResult.Fail(failures)
             : ValidateOptionsResult.Success;
     }
-
-    private void ValidateClusteredMode(AkkaSettings options, List<string> failures)
-    {
-        if (string.IsNullOrEmpty(options.RemoteOptions.PublicHostName))
-        {
-            failures.Add("RemoteOptions.PublicHostName is required in Clustered mode");
-        }
-
-        if (options.RemoteOptions.Port is null or < 0)
-        {
-            failures.Add("RemoteOptions.Port must be >= 0 in Clustered mode");
-        }
-
-        if (options.ClusterBootstrapOptions.Enabled)
-        {
-            ValidateClusterBootstrap(options.ClusterBootstrapOptions, failures);
-        }
-        else if (options.ClusterOptions.SeedNodes?.Length == 0)
-        {
-            failures.Add("Either ClusterBootstrap must be enabled or SeedNodes must be specified");
-        }
-    }
-
-    private void ValidateClusterBootstrap(ClusterBootstrapOptions options, List<string> failures)
-    {
-        if (string.IsNullOrEmpty(options.ServiceName))
-        {
-            failures.Add("ClusterBootstrapOptions.ServiceName is required");
-        }
-
-        if (options.RequiredContactPointsNr <= 0)
-        {
-            failures.Add("ClusterBootstrapOptions.RequiredContactPointsNr must be > 0");
-        }
-
-        switch (options.DiscoveryMethod)
-        {
-            case DiscoveryMethod.Config:
-                if (options.ConfigServiceEndpoints?.Length == 0)
-                {
-                    failures.Add("ConfigServiceEndpoints required for Config discovery");
-                }
-                break;
-
-            case DiscoveryMethod.AzureTableStorage:
-                if (options.AzureDiscoveryOptions == null)
-                {
-                    failures.Add("AzureDiscoveryOptions required for Azure discovery");
-                }
-                break;
-        }
-    }
 }
 
 // Registration
-builder.Services.AddOptions<AkkaSettings>()
-    .BindConfiguration(AkkaSettings.SectionName)
-    .ValidateDataAnnotations()
+builder.Services.AddOptions<WorkerSettings>()
+    .BindConfiguration(WorkerSettings.SectionName)
     .ValidateOnStart();
-
-builder.Services.AddSingleton<IValidateOptions<AkkaSettings>, AkkaSettingsValidator>();
+builder.Services.AddSingleton<IValidateOptions<WorkerSettings>, WorkerSettingsValidator>();
 ```
 
 ## Testing Configuration Validators

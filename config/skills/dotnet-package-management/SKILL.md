@@ -101,24 +101,10 @@ Group related packages with shared version variables:
 
   <!-- Shared version variables -->
   <PropertyGroup Label="SharedVersions">
-    <AkkaVersion>1.5.59</AkkaVersion>
-    <AkkaHostingVersion>1.5.59</AkkaHostingVersion>
     <AspireVersion>9.0.0</AspireVersion>
     <OpenTelemetryVersion>1.11.0</OpenTelemetryVersion>
     <XunitVersion>2.9.2</XunitVersion>
   </PropertyGroup>
-
-  <!-- Akka.NET packages - all use same version -->
-  <ItemGroup Label="Akka.NET">
-    <PackageVersion Include="Akka" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Cluster" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Cluster.Sharding" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Cluster.Tools" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Persistence" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Streams" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Akka.Hosting" Version="$(AkkaHostingVersion)" />
-    <PackageVersion Include="Akka.Cluster.Hosting" Version="$(AkkaHostingVersion)" />
-  </ItemGroup>
 
   <!-- Aspire packages -->
   <ItemGroup Label="Aspire">
@@ -147,7 +133,7 @@ Group related packages with shared version variables:
 ```
 
 **Benefits:**
-- Update all Akka packages by changing one variable
+- Update related OpenTelemetry packages by changing one variable
 - Clear organization with labeled ItemGroups
 - Prevents version mismatches in related packages
 
@@ -350,7 +336,7 @@ When you must override CPM for one project (rare):
 <PackageReference Include="Newtonsoft.Json" VersionOverride="12.0.3" />
 ```
 
-**Warning**: This is detected by Slopwatch (see `dotnet/slopwatch` skill) as potential slop.
+**Warning**: This is detected by Slopwatch (see `dotnet-slopwatch` skill) as potential slop.
 
 ---
 
@@ -426,12 +412,12 @@ Then commit `packages.lock.json` files.
 
 ```xml
 <!-- BAD: Related packages with different versions -->
-<PackageVersion Include="Akka" Version="1.5.59" />
-<PackageVersion Include="Akka.Cluster" Version="1.5.58" />  <!-- Mismatch! -->
+<PackageVersion Include="OpenTelemetry" Version="1.11.0" />
+<PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.10.0" />  <!-- Mismatch! -->
 
 <!-- GOOD: Use shared variable -->
-<PackageVersion Include="Akka" Version="$(AkkaVersion)" />
-<PackageVersion Include="Akka.Cluster" Version="$(AkkaVersion)" />
+<PackageVersion Include="OpenTelemetry" Version="$(OpenTelemetryVersion)" />
+<PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="$(OpenTelemetryVersion)" />
 ```
 
 ---
