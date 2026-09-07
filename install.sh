@@ -411,9 +411,9 @@ setup_symlinks() {
     info "Symlink already exists at $target_path - Skipping."
     return 0
   elif [ -e "$target_path" ]; then
-    # If target exists but is not a symlink
-    warning "Target path exists but is not a symlink: $target_path"
-    return 1
+    # Like existing config targets, a copied or user-owned bin is not an error.
+    warning "Target path exists but is not a symlink: $target_path - Skipping."
+    return 0
   fi
 
   # Create symlink

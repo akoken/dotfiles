@@ -30,12 +30,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   brewfile:
-    name: Brewfile check
+    name: Brewfile syntax (no installs)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: brew bundle check
-        run: brew bundle check --file=Brewfile --verbose --no-upgrade
+      - name: Parse all Brewfile entries
+        # Validate the Bundle DSL without requiring packages on a fresh runner.
+        # This checks parsing, not package availability or installation state.
+        run: brew bundle list --file=Brewfile --all
 
   docker-smoke:
     name: Docker install.sh smoke (Linux)
@@ -60,4 +62,8 @@ jobs:
             test ! -L "$HOME/bin"
             ./install.sh copy
             ./install.sh --dry-run link
+            ./install.sh link
+            test -d "$HOME/bin"
+            test ! -L "$HOME/bin"
+            diff -r bin "$HOME/bin"
           '
