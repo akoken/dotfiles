@@ -430,4 +430,3 @@ Prefer schema-based formats over reflection-based:
 See the format-specific sections above for contract and source-generation details.
 
 ---
-
