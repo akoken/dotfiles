@@ -38,6 +38,8 @@ cd ~/dotfiles
 
 ## Repository Structure
 
+`config/skills/` is the single source for all four harness skill directories; `python3 githooks/skills-lint.py` checks skill metadata, references, portable paths, and harness symlinks, and runs after agent-guard in pre-commit.
+
 ```
 dotfiles/
 ├── Brewfile                  # Homebrew packages, casks, and taps
@@ -58,7 +60,7 @@ dotfiles/
     ├── oh-my-posh/ # Prompt theme
     ├── opencode/   # OpenCode agents, skills, and provider config
     ├── ripgrep/    # ripgrep defaults
-    ├── skills/     # Shared agent skills (Codex/OpenCode/Copilot)
+    ├── skills/     # Shared agent skills (Claude/Codex/Copilot/OpenCode)
     ├── starship/   # Starship prompt config
     ├── tmux/       # Tmux config + plugins + scripts
     ├── wezterm/    # WezTerm terminal config

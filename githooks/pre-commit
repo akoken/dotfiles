@@ -2,4 +2,5 @@
 set -u
 
 root="$(git rev-parse --show-toplevel)" || exit 1
-exec "$root/config/skills/agent-guard/bin/agent-guard" scan-staged
+"$root/config/skills/agent-guard/bin/agent-guard" scan-staged || exit $?
+python3 "$root/githooks/skills-lint.py"
