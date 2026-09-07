@@ -43,7 +43,7 @@ No release is reliable unless inputs are pinned, the build is reproducible enoug
    - candidate
    - hotfix branch expiry and merge-back rule
 8. Define rollback target by artifact identity, not just "previous deployment".
-9. Pair release cuts with `staff-production-readiness` when the release affects users, production data, shared infrastructure, or external commitments.
+9. Pair release cuts with `production-readiness` when the release affects users, production data, shared infrastructure, or external commitments.
 
 ## Output Shape
 

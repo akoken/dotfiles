@@ -7,21 +7,23 @@ description: Use when diagnosing flaky tests, nondeterministic failures, intermi
 
 Adapted from `mturac/pluginpool-flaky-detector`. Helper code is vendored under `scripts/` with its MIT license.
 
+`CODEX_HOME` is set in `config/zsh/.zshenv`; all four harness skill dirs resolve to the shared `config/skills/flaky-detector`.
+
 ## Workflow
 
 1. Ask for or infer the narrowest test command worth repeating.
 2. Prefer a small run count first unless the user requests more:
 
 ```bash
-python3 /Users/akoken/Developer/repos/dotfiles/config/codex/skills/flaky-detector/scripts/flaky.py --cmd "pytest -v" --runs 10 --format md
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/flaky-detector/scripts/flaky.py" --cmd "pytest -v" --runs 10 --format md
 ```
 
 3. Select parser when useful:
 
 ```bash
-python3 /Users/akoken/Developer/repos/dotfiles/config/codex/skills/flaky-detector/scripts/flaky.py --cmd "dotnet test" --runs 5 --format md
-python3 /Users/akoken/Developer/repos/dotfiles/config/codex/skills/flaky-detector/scripts/flaky.py --cmd "go test ./..." --parser gotest --runs 10 --format md
-python3 /Users/akoken/Developer/repos/dotfiles/config/codex/skills/flaky-detector/scripts/flaky.py --cmd "npm test -- --runInBand" --parser jest --runs 10 --format md
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/flaky-detector/scripts/flaky.py" --cmd "dotnet test" --runs 5 --format md
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/flaky-detector/scripts/flaky.py" --cmd "go test ./..." --parser gotest --runs 10 --format md
+python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/flaky-detector/scripts/flaky.py" --cmd "npm test -- --runInBand" --parser jest --runs 10 --format md
 ```
 
 4. Use `--parallel N` only when the suite is known to be parallel-clean.

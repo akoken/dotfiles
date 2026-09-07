@@ -1,11 +1,10 @@
 # Advanced DI Patterns
 
-Testing with DI extensions, Akka.NET actor scope management, and advanced registration patterns.
+Testing with DI extensions, advanced registration patterns.
 
 ## Contents
 
 - [Testing Benefits](#testing-benefits)
-- [Akka.NET Actor Scope Management](#akkanet-actor-scope-management)
 - [Common Patterns](#common-patterns)
 
 ## Testing Benefits
@@ -52,38 +51,6 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
 }
 ```
 
-### Akka.Hosting.TestKit
-
-```csharp
-public class OrderActorSpecs : Akka.Hosting.TestKit.TestKit
-{
-    protected override void ConfigureAkka(AkkaConfigurationBuilder builder, IServiceProvider provider)
-    {
-        // Reuse production Akka configuration
-        builder.AddOrderActors();
-    }
-
-    protected override void ConfigureServices(IServiceCollection services)
-    {
-        // Reuse production service configuration
-        services.AddOrderServices();
-
-        // Override only external dependencies
-        services.RemoveAll<IPaymentProcessor>();
-        services.AddSingleton<IPaymentProcessor, FakePaymentProcessor>();
-    }
-
-    [Fact]
-    public async Task OrderActor_ProcessesPayment()
-    {
-        var orderActor = ActorRegistry.Get<OrderActor>();
-        orderActor.Tell(new ProcessOrder(orderId));
-
-        ExpectMsg<OrderProcessed>();
-    }
-}
-```
-
 ### Standalone Unit Tests
 
 ```csharp
@@ -114,81 +81,6 @@ public class UserServiceTests
     }
 }
 ```
-
-## Akka.NET Actor Scope Management
-
-**Actors don't have automatic DI scopes.** If you need scoped services inside an actor, inject `IServiceProvider` and create scopes manually.
-
-### Pattern: Scope Per Message
-
-```csharp
-public sealed class AccountProvisionActor : ReceiveActor
-{
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IActorRef _mailingActor;
-
-    public AccountProvisionActor(
-        IServiceProvider serviceProvider,
-        IRequiredActor<MailingActor> mailingActor)
-    {
-        _serviceProvider = serviceProvider;
-        _mailingActor = mailingActor.ActorRef;
-
-        ReceiveAsync<ProvisionAccount>(HandleProvisionAccount);
-    }
-
-    private async Task HandleProvisionAccount(ProvisionAccount msg)
-    {
-        // Create scope for this message processing
-        using var scope = _serviceProvider.CreateScope();
-
-        // Resolve scoped services
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-        var orderRepository = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
-        var emailComposer = scope.ServiceProvider.GetRequiredService<IPaymentEmailComposer>();
-
-        // Do work with scoped services
-        var user = await userManager.FindByIdAsync(msg.UserId);
-        var order = await orderRepository.CreateAsync(msg.Order);
-
-        // DbContext commits when scope disposes
-    }
-}
-```
-
-### Why This Pattern Works
-
-1. **Each message gets fresh DbContext** - No stale entity tracking
-2. **Proper disposal** - Connections released after each message
-3. **Isolation** - One message's errors don't affect others
-4. **Testable** - Can inject mock IServiceProvider
-
-### Singleton Services in Actors
-
-For stateless services, inject directly (no scope needed):
-
-```csharp
-public sealed class NotificationActor : ReceiveActor
-{
-    private readonly IEmailLinkGenerator _linkGenerator;  // Singleton - OK!
-    private readonly IActorRef _mailingActor;
-
-    public NotificationActor(
-        IEmailLinkGenerator linkGenerator,  // Direct injection
-        IRequiredActor<MailingActor> mailingActor)
-    {
-        _linkGenerator = linkGenerator;
-        _mailingActor = mailingActor.ActorRef;
-
-        Receive<SendWelcomeEmail>(Handle);
-    }
-}
-```
-
-### Akka.DependencyInjection Reference
-
-- **Akka.DependencyInjection**: https://getakka.net/articles/actors/dependency-injection.html
-- **Akka.Hosting**: https://github.com/akkadotnet/Akka.Hosting
 
 ## Common Patterns
 

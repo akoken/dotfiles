@@ -520,24 +520,16 @@ public class MyBackgroundService : BackgroundService
 }
 ```
 
-### Actors / Long-Lived Objects (Factory Pattern)
+### Long-Lived Services (Factory Pattern)
 
 ```csharp
-public class OrderActor : ReceiveActor
+public sealed class OrderReader(IDbContextFactory<ApplicationDbContext> dbFactory)
 {
-    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
-
-    public OrderActor(IDbContextFactory<ApplicationDbContext> dbFactory)
+    public async Task<Order?> GetOrderAsync(int orderId, CancellationToken ct)
     {
-        _dbFactory = dbFactory;
-
-        ReceiveAsync<GetOrder>(async msg =>
-        {
-            // Create fresh context for each operation
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            var order = await db.Orders.FindAsync(msg.OrderId);
-            Sender.Tell(order);
-        });
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Orders.AsNoTracking()
+            .SingleOrDefaultAsync(order => order.Id == orderId, ct);
     }
 }
 

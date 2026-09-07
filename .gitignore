@@ -40,3 +40,6 @@ node_modules/
 # Herdr
 /config/herdr/*
 !config/herdr/config.toml
+
+# Keep the vendored executable despite global [Bb]in/ ignores.
+!config/skills/agent-guard/bin/

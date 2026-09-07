@@ -34,6 +34,18 @@ Run slopwatch to validate the changes don't introduce "slop."
 
 ---
 
+## Preflight
+
+Before first use, check `command -v slopwatch` and `dotnet tool list -g` for `Slopwatch.Cmd`. If the repository's `.config/dotnet-tools.json` lists that package, prefer `dotnet tool restore` and invoke it with `dotnet tool run slopwatch -- <arguments>` so the pinned local version is used.
+
+If no local manifest entry or installed global tool exists, run:
+
+```bash
+dotnet tool install --global Slopwatch.Cmd
+```
+
+After a successful install or restore, tell the user which tool was installed/restored and whether it is local or global. If the global tool is already installed but absent from PATH, add the .NET global-tool directory to this shell's PATH and check the command again; do not reinstall it. Stop and report any restore/install failure before running analysis.
+
 ## Installation
 
 ### As a Local Tool (Recommended)

@@ -17,8 +17,8 @@ Consult the relevant skills before writing code:
 | Situation | Skill to Consult |
 |-----------|------------------|
 | Writing any C# code | `csharp-coding-standards` |
-| Designing types, choosing class vs struct vs record | `csharp-type-design-performance` |
-| Async code, parallelism, channels, or actor-style concurrency | `csharp-concurrency-patterns` |
+| Designing types, collections, and modern C# APIs | `csharp-coding-standards` |
+| Async code, parallelism, channels, or Reactive Extensions | `csharp-concurrency-patterns` |
 | Public API design and wire compatibility | `csharp-api-design` |
 | DI registrations and `IServiceCollection` extensions | `microsoft-extensions-dependency-injection` |
 | Configuration, `IOptions<T>`, validation | `microsoft-extensions-configuration` |

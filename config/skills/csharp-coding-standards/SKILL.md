@@ -1,6 +1,6 @@
 ---
 name: csharp-coding-standards
-description: Write modern, high-performance C# code using records, pattern matching, value objects, async/await, Span and Memory types, and best-practice API design patterns. Emphasizes functional-style programming with C# 12+ features. Use when writing C# code to ensure modern best practices.
+description: Use when designing C# domain types/value objects, writing public APIs or libraries, handling performance-critical or async-heavy code, refactoring toward modern C# 12+ patterns, or reviewing C# against these standards.
 ---
 
 # Modern C# Coding Standards
@@ -8,7 +8,8 @@ description: Write modern, high-performance C# code using records, pattern match
 ## When to Use This Skill
 
 Use this skill when:
-- Writing new C# code or refactoring existing code
+- Designing domain types/value objects, public APIs, or libraries
+- Refactoring toward modern C# 12+ patterns
 - Designing public APIs for libraries or services
 - Optimizing performance-critical code paths
 - Implementing domain models with strong typing
@@ -21,6 +22,7 @@ Use this skill when:
 - [performance-and-api-design.md](performance-and-api-design.md): Span<T>/Memory<T> examples and API design principles
 - [composition-and-error-handling.md](composition-and-error-handling.md): Composition over inheritance, Result type, testing patterns
 - [anti-patterns-and-reflection.md](anti-patterns-and-reflection.md): Reflection avoidance and common anti-patterns
+- [type-design-and-collections.md](type-design-and-collections.md): Static pure functions, enumeration, ValueTask, and collection return rules
 
 ## Core Principles
 
@@ -205,6 +207,8 @@ public async IAsyncEnumerable<Order> StreamOrdersAsync(
 Use `Span<T>` for synchronous zero-allocation operations, `Memory<T>` for async, and `ArrayPool<T>` for large temporary buffers.
 
 See [performance-and-api-design.md](performance-and-api-design.md) for complete Span/Memory examples and the API design section.
+
+See [type-design-and-collections.md](type-design-and-collections.md) when choosing type shapes, collection contracts, enumeration behavior, or `Task` versus `ValueTask`.
 
 ---
 

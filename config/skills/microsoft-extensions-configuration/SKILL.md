@@ -16,7 +16,7 @@ Use this skill when:
 
 ## Reference Files
 
-- [advanced-patterns.md](advanced-patterns.md): Validators with dependencies, named options, complete production example (AkkaSettings), and testing validators
+- [advanced-patterns.md](advanced-patterns.md): Validators with dependencies, named options, complete production example (WorkerSettings), and testing validators
 
 ## Why Configuration Validation Matters
 
