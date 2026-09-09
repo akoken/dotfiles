@@ -10,6 +10,7 @@ prepend_path $DOTFILES/bin
 prepend_path $HOME/bin
 prepend_path $HOME/.local/bin
 prepend_path $HOME/.venv-vllm-metal/bin
+prepend_path $HOME/.dotnet/tools
 
 # display how long all tasks over 10 seconds take
 export REPORTTIME=10
