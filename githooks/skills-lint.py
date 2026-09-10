@@ -118,6 +118,9 @@ def lint(root):
         for link in sorted(directory.rglob('*')):
             if link.is_symlink() and not (link / 'SKILL.md').is_file():
                 report(link, 1, 'dangling skill symlink or target lacks SKILL.md')
+        for name in sorted(skills):
+            if not (directory / name).is_symlink():
+                report(directory, 1, f'missing harness link for skill: {name}')
     return findings
 
 

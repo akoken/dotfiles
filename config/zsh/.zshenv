@@ -3,6 +3,12 @@
 export XDG_CONFIG_HOME="$HOME/.config"
 #export COPILOT_HOME="$XDG_CONFIG_HOME/copilot"
 export CODEX_HOME="$XDG_CONFIG_HOME/codex"
+# ~/.claude stays as a compatibility symlink to this directory (install.sh link).
+export CLAUDE_CONFIG_DIR="$XDG_CONFIG_HOME/claude"
+# Claude Code keys its Keychain entry by CLAUDE_CONFIG_DIR (service name gets a
+# path-hash suffix). An empty CLAUDE_SECURESTORAGE_CONFIG_DIR keeps the default
+# "Claude Code-credentials" entry, so shell and GUI launchers share one login.
+export CLAUDE_SECURESTORAGE_CONFIG_DIR=""
 
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 # HISTFILE/HISTSIZE/SAVEHIST live in .zshrc: macOS's /etc/zshrc re-assigns all

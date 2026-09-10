@@ -28,7 +28,8 @@ class SkillsLintTests(unittest.TestCase):
         for harness in MODULE.HARNESSES:
             directory = self.root / 'config' / harness / 'skills'
             directory.mkdir(parents=True)
-            (directory / 'example').symlink_to('../../skills/example')
+            for name in ('example', 'agent-guard'):
+                (directory / name).symlink_to(f'../../skills/{name}')
 
     def write_skill(self, body='', metadata='name: example\ndescription: Example skill.'):
         (self.skill / 'SKILL.md').write_text(f'---\n{metadata}\n---\n{body}')
@@ -90,6 +91,12 @@ Run `scripts/missing.py`.
         findings = self.findings()
         self.assertIn('skills/dangling:1: dangling', findings)
         self.assertIn('skills/wrong:1: dangling', findings)
+
+    def test_shared_skill_missing_from_harness(self):
+        (self.root / 'config/copilot/skills/example').unlink()
+        findings = self.findings()
+        self.assertIn('config/copilot/skills:1: missing harness link for skill: example', findings)
+        self.assertNotIn('config/claude/skills:1: missing harness link', findings)
 
 
 if __name__ == '__main__':

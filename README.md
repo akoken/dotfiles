@@ -38,7 +38,21 @@ cd ~/dotfiles
 
 ## Repository Structure
 
-`config/skills/` is the single source for all four harness skill directories; `python3 githooks/skills-lint.py` checks skill metadata, references, portable paths, and harness symlinks, and runs after agent-guard in pre-commit.
+### Claude Code config dir
+
+Claude Code is pointed at `$XDG_CONFIG_HOME/claude` through `CLAUDE_CONFIG_DIR` (set in `config/zsh/.zshenv`), mirroring the Codex layout: a real directory holding machine state, per-entry symlinks from `config/claude/`, per-skill links in `skills/`, and `~/.claude` kept as a compatibility symlink for launchers that do not source the shell environment. `CLAUDE_SECURESTORAGE_CONFIG_DIR=""` keeps the Keychain entry name unchanged so both paths share one login. One-time migration on a machine that still has a real `~/.claude`:
+
+```bash
+rm ~/.config/claude                      # only if it is the old whole-dir symlink
+mv ~/.claude ~/.config/claude
+ln -s ~/.config/claude ~/.claude
+mv ~/.claude.json ~/.config/claude/.claude.json
+ln -s ~/.config/claude/.claude.json ~/.claude.json
+sed -i '' "s#$HOME/\.claude/#$HOME/.config/claude/#g" ~/.config/claude/settings.json
+./install.sh link
+```
+
+`config/skills/` is the single source for all four harness skill directories. After adding a skill there, run `./install.sh skills` (also part of `link`) to create the `config/<harness>/skills/` links and the `~/.claude/skills/` links; `python3 githooks/skills-lint.py` checks skill metadata, references, portable paths, and harness symlinks, and runs after agent-guard in pre-commit.
 
 ```
 dotfiles/
