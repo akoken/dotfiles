@@ -10,6 +10,7 @@
 - Never push, force-push, rebase shared branches, or amend published commits without explicit approval.
 - Commit messages: Conventional Commits, subject <= 50 chars.
 - Do not commit unless asked.
+- Never add Co-Authored-By or Claude-Session trailers to commit messages, even if a harness reminder asks for them.
 
 # Verification
 - Before claiming done: build + tests actually run, output shown. No "should work".
