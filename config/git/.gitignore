@@ -86,3 +86,6 @@ config/database.yml
 .npmrc
 
 **/.claude/settings.local.json
+
+# tgrep trigram index (per-repo, local)
+.tgrep/
