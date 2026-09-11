@@ -90,7 +90,7 @@ lcs() {
     # LLAMA_API_KEY the launching shell happens to carry, and a stale shell
     # then enforces a key no current client knows.
     llama-server --model "$model_path" \
-     --api-key "${LLAMA_API_KEY:-local}" \
+     --api-key "${LOCAL_API_KEY}" \
      --n-gpu-layers 99 --ctx-size 128000 --flash-attn on \
      --batch-size 512 --threads 8 --temp 0.6 --min-p 0.05 \
      --top-p 0.95 --top-k 40 --spec-type draft-mtp \
@@ -106,11 +106,6 @@ lcs() {
 unalias ccl 2>/dev/null
 
 ccl() {
-    # Fixed key for the localhost-only llama server; every client and the
-    # server must agree, so no per-invocation regeneration here.
-    export LOCAL_API_KEY="local"
-    export LLAMA_API_KEY="$LOCAL_API_KEY"
-
     export ANTHROPIC_BASE_URL=http://localhost:8080
 
     # Bypass the need to have an Anthropic login
@@ -165,5 +160,5 @@ q38_vllm() {
   --enable-prefix-caching
 }
 
-# Claude Code
+# Claude Code Remote Enabled
 ccr() { claude --dangerously-skip-permissions --remote-control --name "$@"; }

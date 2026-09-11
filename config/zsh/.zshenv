@@ -48,13 +48,18 @@ export DOTNET_NOLOGO=true
 # Fixed key for the localhost-only llama server. Every client and the server
 # must agree on it; a generated per-shell key kept drifting, so keep it static.
 export LOCAL_API_KEY="local"
-export LLAMA_API_KEY="$LOCAL_API_KEY"
 
 # Copilot CLI (Local)
 export COPILOT_PROVIDER_BASE_URL="http://localhost:8080/v1"
 export COPILOT_PROVIDER_API_KEY="$LOCAL_API_KEY"
 
+# Claude Code
 export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
 export DISABLE_TELEMETRY=
+
+# Firstmate
 export OTEL_LOG_USER_PROMPTS=0
 export NO_MISTAKES_TELEMETRY=0
+
+# Caveman
+export CAVEMAN_DEFAULT_MODE=full
