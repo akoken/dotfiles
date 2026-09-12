@@ -45,14 +45,6 @@ export GIT_EDITOR='nvim'
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=true
 
-# Fixed key for the localhost-only llama server. Every client and the server
-# must agree on it; a generated per-shell key kept drifting, so keep it static.
-export LOCAL_API_KEY="local"
-
-# Copilot CLI (Local)
-export COPILOT_PROVIDER_BASE_URL="http://localhost:8080/v1"
-export COPILOT_PROVIDER_API_KEY="$LOCAL_API_KEY"
-
 # Claude Code
 export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
 export DISABLE_TELEMETRY=

@@ -134,13 +134,16 @@ ccl() {
     claude --model "$model_name" "$@"
 }
 
+# Copilot CLI against a local llama.cpp server (BYOK mode). env-prefixed so the
+# provider vars stay scoped to this invocation instead of leaking into the shell
+# and hijacking later plain `copilot`/`cop` runs.
 cpl() {
-    export COPILOT_PROVIDER_TYPE="openai"
-    export COPILOT_PROVIDER_BASE_URL="http://127.0.0.1:8080/v1"
-    export COPILOT_MODEL="Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf"
-    export COPILOT_PROVIDER_WIRE_API="completions"
-
-    copilot
+    env \
+        COPILOT_PROVIDER_TYPE="openai" \
+        COPILOT_PROVIDER_BASE_URL="http://127.0.0.1:8080/v1" \
+        COPILOT_PROVIDER_WIRE_API="completions" \
+        COPILOT_MODEL="Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf" \
+        copilot "$@"
 }
 
 # q36_mlx/q38_mlx assume a ~/mlx_projects checkout and a ~/dflash-serve venv
