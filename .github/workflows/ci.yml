@@ -46,24 +46,40 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build test image
         run: docker build -t dotfiles-ci --force-rm .
-      - name: backup / link (twice, idempotency) / clean / copy / --dry-run
+      - name: backup / link (twice, idempotency) / clean / copy / refusal
         run: |
           docker run --rm dotfiles-ci bash -lc '
             set -e
             cd dotfiles
             ./install.sh backup
+            ./install.sh --dry-run link
             ./install.sh link
             ./install.sh link
             test -L "$HOME/.zshenv"
             test -L "$HOME/bin"
-            test -f "$HOME/.config/codex/config.toml"
+            # agent homes are real directories with per-entry links inside
+            test -d "$HOME/.claude" && test ! -L "$HOME/.claude"
+            test -L "$HOME/.claude/CLAUDE.md"
+            test -L "$HOME/.claude/skills/agent-guard"
+            test -d "$HOME/.codex" && test ! -L "$HOME/.codex"
+            test -L "$HOME/.codex/skills"
+            test -f "$HOME/.codex/config.toml" && test ! -L "$HOME/.codex/config.toml"
+            test -d "$HOME/.copilot" && test ! -L "$HOME/.copilot"
+            test -L "$HOME/.copilot/agents"
+            test ! -e "$HOME/.config/claude"
+            test ! -e "$HOME/.config/codex"
+            test ! -e "$HOME/.config/copilot"
             ./install.sh clean
             test ! -L "$HOME/.zshenv"
             test ! -L "$HOME/bin"
+            test ! -e "$HOME/.claude/CLAUDE.md"
+            test ! -e "$HOME/.codex/config.toml"
             ./install.sh copy
-            ./install.sh --dry-run link
-            ./install.sh link
             test -d "$HOME/bin"
             test ! -L "$HOME/bin"
             diff -r bin "$HOME/bin"
+            test -f "$HOME/.claude/CLAUDE.md" && test ! -L "$HOME/.claude/CLAUDE.md"
+            # link never overwrites real files in an agent home: it must refuse
+            if ./install.sh link; then echo "link should have refused"; exit 1; fi
+            test -f "$HOME/.claude/CLAUDE.md" && test ! -L "$HOME/.claude/CLAUDE.md"
           '

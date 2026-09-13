@@ -11,39 +11,13 @@ fi
 
 REMOTE_HOME="$(sbx exec "$SANDBOX" -- sh -lc 'printf "%s" "$HOME"')"
 
-ensure_codex_env() {
-  sbx exec "$SANDBOX" -- sh -lc '
-    mkdir -p "$HOME/.config/codex"
-
-    touch "$HOME/.profile" "$HOME/.zshenv"
-
-    grep -qxF '\''export CODEX_HOME="$HOME/.config/codex"'\'' "$HOME/.profile" 2>/dev/null || \
-      echo '\''export CODEX_HOME="$HOME/.config/codex"'\'' >> "$HOME/.profile"
-
-    grep -qxF '\''export CODEX_HOME="$HOME/.config/codex"'\'' "$HOME/.zshenv" 2>/dev/null || \
-      echo '\''export CODEX_HOME="$HOME/.config/codex"'\'' >> "$HOME/.zshenv"
-  '
-}
-
-ensure_codex_links() {
-  sbx exec "$SANDBOX" -- sh -lc '
-    mkdir -p "$HOME/.codex"
-
-    rm -rf "$HOME/.codex/skills"
-    ln -s "$HOME/.config/codex/skills" "$HOME/.codex/skills"
-
-    rm -f "$HOME/.codex/config.toml"
-    ln -s "$HOME/.config/codex/config.toml" "$HOME/.codex/config.toml"
-  '
-}
-
 disable_unsupported_codex_mcp() {
   sbx exec "$SANDBOX" -- sh -lc '
     python3 - <<PY
 from pathlib import Path
 import re
 
-p = Path.home() / ".config/codex/config.toml"
+p = Path.home() / ".codex/config.toml"
 
 if p.exists():
     s = p.read_text()
@@ -135,16 +109,14 @@ sync_dir_via_workspace_tar() {
 
 case "$AGENT" in
   codex)
-    sync_dir_via_workspace_tar "$HOME/.config/codex" "$REMOTE_HOME/.config/codex" "codex-config"
-    ensure_codex_env
+    # ~/.codex is Codex's native home on both ends: machine state plus the
+    # repo links install.sh created. Linked entries travel as symlinks, so the
+    # sandbox needs the dotfiles repo at the same path.
+    sync_dir_via_workspace_tar "$HOME/.codex" "$REMOTE_HOME/.codex" "codex-home"
     disable_unsupported_codex_mcp
-    ensure_codex_links
 
     sbx exec "$SANDBOX" -- sh -lc '
-      export CODEX_HOME="$HOME/.config/codex"
-
       echo "HOME=$HOME"
-      echo "CODEX_HOME=$CODEX_HOME"
 
       echo "Skills path:"
       ls -la "$HOME/.codex/skills"
@@ -158,9 +130,8 @@ case "$AGENT" in
     ;;
 
   claude)
+    # ~/.claude is Claude Code's native home (real directory, repo links inside).
     sync_dir_via_workspace_tar "$HOME/.claude" "$REMOTE_HOME/.claude" "claude-home"
-    sync_dir_via_workspace_tar "$HOME/.config/claude" "$REMOTE_HOME/.config/claude" "claude-config"
-    sync_dir_via_workspace_tar "$HOME/.config/claude-code" "$REMOTE_HOME/.config/claude-code" "claude-code-config"
 
     sbx exec "$SANDBOX" -- sh -lc '
       command -v claude

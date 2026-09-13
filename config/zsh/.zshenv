@@ -1,14 +1,10 @@
 [[ -f "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env"
 
 export XDG_CONFIG_HOME="$HOME/.config"
-#export COPILOT_HOME="$XDG_CONFIG_HOME/copilot"
-export CODEX_HOME="$XDG_CONFIG_HOME/codex"
-# ~/.claude stays as a compatibility symlink to this directory (install.sh link).
-export CLAUDE_CONFIG_DIR="$XDG_CONFIG_HOME/claude"
-# Claude Code keys its Keychain entry by CLAUDE_CONFIG_DIR (service name gets a
-# path-hash suffix). An empty CLAUDE_SECURESTORAGE_CONFIG_DIR keeps the default
-# "Claude Code-credentials" entry, so shell and GUI launchers share one login.
-export CLAUDE_SECURESTORAGE_CONFIG_DIR=""
+# Agent tools (Claude Code, Codex, Copilot) keep their native homes (~/.claude,
+# ~/.codex, ~/.copilot); install.sh links repo content into them. Do not set
+# CLAUDE_CONFIG_DIR / CODEX_HOME / COPILOT_HOME here: third-party tools derive
+# keychain names and paths from the defaults and break when a home is moved.
 
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 # HISTFILE/HISTSIZE/SAVEHIST live in .zshrc: macOS's /etc/zshrc re-assigns all

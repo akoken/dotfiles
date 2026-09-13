@@ -4,7 +4,7 @@
 #
 # Copy this file to config.local.toml (already gitignored) and fill in real
 # values, or just let Codex populate config.local.toml itself: trusting a
-# project or a hook writes back into $XDG_CONFIG_HOME/codex/config.toml,
+# project or a hook writes back into ~/.codex/config.toml,
 # which is generated — copy new entries here so `install.sh codex-sync`
 # doesn't drop them on the next regenerate.
 
