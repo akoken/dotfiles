@@ -136,10 +136,14 @@ case "$AGENT" in
     # ~/.codex is Codex's native home on both ends. Only config is synced:
     # the repo links install.sh created (dereferenced into real copies) and
     # config.toml; machine state - sessions, sqlite databases, logs, history,
-    # auth - stays out, and the sandbox keeps its own.
+    # auth, caches, plugins, memories, runtime sockets and locks - stays out,
+    # and the sandbox keeps its own.
     sync_dir_via_workspace_tar "$HOME/.codex" "$REMOTE_HOME/.codex" "codex-home" merge \
       './sessions' './archived_sessions' './log' './logs' './history.jsonl' './auth.json' \
-      './sqlite' './*.sqlite' './*.sqlite-shm' './*.sqlite-wal'
+      './sqlite' './*.sqlite' './*.sqlite-shm' './*.sqlite-wal' \
+      './session_index.jsonl' './*history*' './dictation-history' './shell_snapshots' \
+      './tmp' './ipc' './installation_id' './.codex-global-state.json*' './..codex-global-state*' \
+      './cache' './plugins' './memories' './process_manager' './thread-writer-locks'
     disable_unsupported_codex_mcp
 
     sbx exec "$SANDBOX" -- sh -lc '

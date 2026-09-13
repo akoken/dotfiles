@@ -392,8 +392,24 @@ claude_entries() {
   done < <(tracked_entries claude)
 }
 
+# claude_link and claude_skills_link both need a usable ~/.claude. The gate
+# runs once per invocation so `link` reports each conflict a single time,
+# while a standalone `skills` run still evaluates (and records) it.
+CLAUDE_HOME_GATE=""
+
+claude_home_ready() {
+  if [ -z "$CLAUDE_HOME_GATE" ]; then
+    if ensure_agent_home "$claude_home" "$config_home/claude" claude; then
+      CLAUDE_HOME_GATE=ok
+    else
+      CLAUDE_HOME_GATE=refused
+    fi
+  fi
+  [ "$CLAUDE_HOME_GATE" = ok ]
+}
+
 claude_link() {
-  ensure_agent_home "$claude_home" "$config_home/claude" claude || return 0
+  claude_home_ready || return 0
   local entry
   while IFS= read -r -d '' entry; do
     link_agent_entry "$entry" "$claude_home/$(basename "$entry")"
@@ -482,7 +498,8 @@ harness_skills_link() {
 # Per-skill absolute links into ~/.claude/skills, plus pruning of links that
 # point into config/skills but whose skill no longer exists there.
 claude_skills_link() {
-  if [ -L "$claude_home" ] || [ -L "$claude_skills_dir" ]; then
+  claude_home_ready || return 0
+  if [ -L "$claude_skills_dir" ]; then
     conflict "~${claude_skills_dir#"$HOME"} must be a real directory inside a real ~${claude_home#"$HOME"} (old layout)."
     return 0
   fi
