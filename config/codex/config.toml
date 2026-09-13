@@ -1,5 +1,5 @@
-model = "gpt-6-astra"
-model_reasoning_effort = "low"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
 personality = "pragmatic"
 
 # `notify` is an absolute, machine-specific app path — see config.local.toml
@@ -54,30 +54,9 @@ args = [
 command = "npx"
 startup_timeout_sec = 20
 
-[mcp_servers.node_repl]
-args = []
-command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
-startup_timeout_sec = 120
-
-[mcp_servers.node_repl.env]
-NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS = "1000"
-NODE_REPL_NODE_MODULE_DIRS = "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
-NODE_REPL_NODE_PATH = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
-NODE_REPL_TRUSTED_CODE_PATHS = "/Users/akoken/.codex:/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
-CODEX_HOME = "/Users/akoken/.codex"
-BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
-BROWSER_USE_TINYSKY_ENABLED = "1"
-NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = ""
-NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = ""
-BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-BROWSER_USE_CODEX_APP_VERSION = "26.901.41123"
-NODE_REPL_TRUSTED_SERVICES = '{"browser":"/Users/akoken/.codex/plugins/cache/openai-bundled/browser/26.901.41123/scripts/browser-service.mjs"}'
-#NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = "Control the in-app browser in conjunction with the Browser Plugin."
-#NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = "Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative."
-#NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = "Control desktop apps on macOS through Computer Use."
-#BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
-#BROWSER_USE_CODEX_APP_VERSION = "26.810.41047"
-CODEX_CLI_PATH = "/Applications/ChatGPT.app/Contents/Resources/codex"
+[mcp_servers.cua_repl]
+command = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
+enabled = false
 
 #[mcp_servers.computer-use]
 #command = "./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient"
@@ -115,19 +94,10 @@ enabled = false
 [plugins."rust-analyzer-lsp@claude-plugins-official"]
 enabled = true
 
-[plugins."sites@openai-bundled"]
-enabled = true
-
 [plugins."visualize@openai-bundled"]
 enabled = true
 
-[plugins."browser@openai-bundled"]
-enabled = true
-
 [plugins."codex-app-tools@openai-bundled"]
-enabled = true
-
-[plugins."unified-computer-use@openai-bundled"]
 enabled = true
 
 # Per-machine trusted-project entries live in config.local.toml.
@@ -139,7 +109,7 @@ status_line_use_colors = true
 [tui.model_availability_nux]
 "gpt-5.5" = 4
 "gpt-5.6-sol" = 4
-gpt-6-astra = 2
+gpt-6-astra = 4
 
 [memories]
 generate_memories = true
