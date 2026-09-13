@@ -48,10 +48,19 @@ detect_sandbox_workdir() {
   '
 }
 
+# sync_dir_via_workspace_tar <src> <dest> <name> <mode> [tar --exclude patterns...]
+#   replace: the sandbox dir is wiped and replaced by the archive (symlinks
+#            travel as symlinks).
+#   merge:   symlinks are dereferenced on the host and only the top-level
+#            entries present in the archive are replaced in the sandbox, so
+#            state the sandbox wrote itself (auth, sessions) survives.
 sync_dir_via_workspace_tar() {
   local src="$1"
   local dest="$2"
   local name="$3"
+  local mode="$4"
+  shift 4
+  local extra_excludes=("$@")
 
   local real_src
   local sandbox_workdir
@@ -86,6 +95,9 @@ sync_dir_via_workspace_tar() {
 
   rm -f "$host_archive"
 
+  local tar_flags=(-cf "$host_archive")
+  [[ "$mode" == merge ]] && tar_flags=(-h "${tar_flags[@]}")
+
   TAR_CMD="$(command -v gtar || command -v tar)"
   COPYFILE_DISABLE=1 "$TAR_CMD" \
     --exclude='._*' \
@@ -94,25 +106,40 @@ sync_dir_via_workspace_tar() {
     --exclude='.codex' \
     --exclude='.tmp' \
     --exclude='vendor_imports' \
+    ${extra_excludes[@]+"${extra_excludes[@]/#/--exclude=}"} \
     -C "$real_src" \
-    -cf "$host_archive" .
+    "${tar_flags[@]}" .
 
-  sbx exec "$SANDBOX" -- sh -lc "
-    rm -rf '$dest'
-    mkdir -p '$dest'
-    tar -C '$dest' -xf '$sandbox_archive'
-    rm -f '$sandbox_archive'
-  "
+  if [[ "$mode" == merge ]]; then
+    sbx exec "$SANDBOX" -- sh -lc "
+      mkdir -p '$dest'
+      tar -tf '$sandbox_archive' | sed -n 's#^\./\([^/][^/]*\).*#\1#p' | sort -u | while IFS= read -r top; do
+        rm -rf \"$dest/\$top\"
+      done
+      tar -C '$dest' -xf '$sandbox_archive'
+      rm -f '$sandbox_archive'
+    "
+  else
+    sbx exec "$SANDBOX" -- sh -lc "
+      rm -rf '$dest'
+      mkdir -p '$dest'
+      tar -C '$dest' -xf '$sandbox_archive'
+      rm -f '$sandbox_archive'
+    "
+  fi
 
   rm -f "$host_archive"
 }
 
 case "$AGENT" in
   codex)
-    # ~/.codex is Codex's native home on both ends: machine state plus the
-    # repo links install.sh created. Linked entries travel as symlinks, so the
-    # sandbox needs the dotfiles repo at the same path.
-    sync_dir_via_workspace_tar "$HOME/.codex" "$REMOTE_HOME/.codex" "codex-home"
+    # ~/.codex is Codex's native home on both ends. Only config is synced:
+    # the repo links install.sh created (dereferenced into real copies) and
+    # config.toml; machine state - sessions, sqlite databases, logs, history,
+    # auth - stays out, and the sandbox keeps its own.
+    sync_dir_via_workspace_tar "$HOME/.codex" "$REMOTE_HOME/.codex" "codex-home" merge \
+      './sessions' './archived_sessions' './log' './logs' './history.jsonl' './auth.json' \
+      './sqlite' './*.sqlite' './*.sqlite-shm' './*.sqlite-wal'
     disable_unsupported_codex_mcp
 
     sbx exec "$SANDBOX" -- sh -lc '
@@ -131,7 +158,7 @@ case "$AGENT" in
 
   claude)
     # ~/.claude is Claude Code's native home (real directory, repo links inside).
-    sync_dir_via_workspace_tar "$HOME/.claude" "$REMOTE_HOME/.claude" "claude-home"
+    sync_dir_via_workspace_tar "$HOME/.claude" "$REMOTE_HOME/.claude" "claude-home" replace
 
     sbx exec "$SANDBOX" -- sh -lc '
       command -v claude

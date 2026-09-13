@@ -3,7 +3,7 @@ name: test-gap
 description: Use after tests with coverage, during PR review, or when comparing changed git diff lines against coverage.xml, lcov.info, or coverage.json to find untested changed lines.
 ---
 
-`CODEX_HOME` is set in `config/zsh/.zshenv`; all four harness skill dirs resolve to the shared `config/skills/test-gap`.
+Codex reads user skills from `~/.codex/skills` (`CODEX_HOME` overrides it); all four harness skill dirs resolve to the shared `config/skills/test-gap`.
 
 ## Workflow
 
@@ -11,14 +11,14 @@ description: Use after tests with coverage, during PR review, or when comparing 
 2. Run the gap check:
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/test-gap/scripts/gap.py" --format md
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/test-gap/scripts/gap.py" --format md
 ```
 
 3. Use explicit base/report when needed:
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/test-gap/scripts/gap.py" --base main --report coverage.xml --format md
-python3 "${CODEX_HOME:-$HOME/.config/codex}/skills/test-gap/scripts/gap.py" --base develop --report lcov.info --format md
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/test-gap/scripts/gap.py" --base main --report coverage.xml --format md
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/test-gap/scripts/gap.py" --base develop --report lcov.info --format md
 ```
 
 4. If no coverage report exists, tell the user which coverage formats are supported:
