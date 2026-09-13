@@ -11,39 +11,13 @@ fi
 
 REMOTE_HOME="$(sbx exec "$SANDBOX" -- sh -lc 'printf "%s" "$HOME"')"
 
-ensure_codex_env() {
-  sbx exec "$SANDBOX" -- sh -lc '
-    mkdir -p "$HOME/.config/codex"
-
-    touch "$HOME/.profile" "$HOME/.zshenv"
-
-    grep -qxF '\''export CODEX_HOME="$HOME/.config/codex"'\'' "$HOME/.profile" 2>/dev/null || \
-      echo '\''export CODEX_HOME="$HOME/.config/codex"'\'' >> "$HOME/.profile"
-
-    grep -qxF '\''export CODEX_HOME="$HOME/.config/codex"'\'' "$HOME/.zshenv" 2>/dev/null || \
-      echo '\''export CODEX_HOME="$HOME/.config/codex"'\'' >> "$HOME/.zshenv"
-  '
-}
-
-ensure_codex_links() {
-  sbx exec "$SANDBOX" -- sh -lc '
-    mkdir -p "$HOME/.codex"
-
-    rm -rf "$HOME/.codex/skills"
-    ln -s "$HOME/.config/codex/skills" "$HOME/.codex/skills"
-
-    rm -f "$HOME/.codex/config.toml"
-    ln -s "$HOME/.config/codex/config.toml" "$HOME/.codex/config.toml"
-  '
-}
-
 disable_unsupported_codex_mcp() {
   sbx exec "$SANDBOX" -- sh -lc '
     python3 - <<PY
 from pathlib import Path
 import re
 
-p = Path.home() / ".config/codex/config.toml"
+p = Path.home() / ".codex/config.toml"
 
 if p.exists():
     s = p.read_text()
@@ -74,10 +48,19 @@ detect_sandbox_workdir() {
   '
 }
 
+# sync_dir_via_workspace_tar <src> <dest> <name> <mode> [tar --exclude patterns...]
+#   replace: the sandbox dir is wiped and replaced by the archive (symlinks
+#            travel as symlinks).
+#   merge:   symlinks are dereferenced on the host and only the top-level
+#            entries present in the archive are replaced in the sandbox, so
+#            state the sandbox wrote itself (auth, sessions) survives.
 sync_dir_via_workspace_tar() {
   local src="$1"
   local dest="$2"
   local name="$3"
+  local mode="$4"
+  shift 4
+  local extra_excludes=("$@")
 
   local real_src
   local sandbox_workdir
@@ -112,6 +95,9 @@ sync_dir_via_workspace_tar() {
 
   rm -f "$host_archive"
 
+  local tar_flags=(-cf "$host_archive")
+  [[ "$mode" == merge ]] && tar_flags=(-h "${tar_flags[@]}")
+
   TAR_CMD="$(command -v gtar || command -v tar)"
   COPYFILE_DISABLE=1 "$TAR_CMD" \
     --exclude='._*' \
@@ -120,31 +106,48 @@ sync_dir_via_workspace_tar() {
     --exclude='.codex' \
     --exclude='.tmp' \
     --exclude='vendor_imports' \
+    ${extra_excludes[@]+"${extra_excludes[@]/#/--exclude=}"} \
     -C "$real_src" \
-    -cf "$host_archive" .
+    "${tar_flags[@]}" .
 
-  sbx exec "$SANDBOX" -- sh -lc "
-    rm -rf '$dest'
-    mkdir -p '$dest'
-    tar -C '$dest' -xf '$sandbox_archive'
-    rm -f '$sandbox_archive'
-  "
+  if [[ "$mode" == merge ]]; then
+    sbx exec "$SANDBOX" -- sh -lc "
+      mkdir -p '$dest'
+      tar -tf '$sandbox_archive' | sed -n 's#^\./\([^/][^/]*\).*#\1#p' | sort -u | while IFS= read -r top; do
+        rm -rf \"$dest/\$top\"
+      done
+      tar -C '$dest' -xf '$sandbox_archive'
+      rm -f '$sandbox_archive'
+    "
+  else
+    sbx exec "$SANDBOX" -- sh -lc "
+      rm -rf '$dest'
+      mkdir -p '$dest'
+      tar -C '$dest' -xf '$sandbox_archive'
+      rm -f '$sandbox_archive'
+    "
+  fi
 
   rm -f "$host_archive"
 }
 
 case "$AGENT" in
   codex)
-    sync_dir_via_workspace_tar "$HOME/.config/codex" "$REMOTE_HOME/.config/codex" "codex-config"
-    ensure_codex_env
+    # ~/.codex is Codex's native home on both ends. Only config is synced:
+    # the repo links install.sh created (dereferenced into real copies) and
+    # config.toml; machine state - sessions, sqlite databases, logs, history,
+    # auth, caches, plugins, memories, runtime sockets and locks - stays out,
+    # and the sandbox keeps its own.
+    sync_dir_via_workspace_tar "$HOME/.codex" "$REMOTE_HOME/.codex" "codex-home" merge \
+      './sessions' './archived_sessions' './log' './logs' './history.jsonl' './auth.json' \
+      './sqlite' './*.sqlite' './*.sqlite-shm' './*.sqlite-wal' \
+      './session_index.jsonl' './*history*' './dictation-history' './shell_snapshots' \
+      './tmp' './ipc' './installation_id' './.codex-global-state.json*' './..codex-global-state*' \
+      './cache' './plugins' './memories' './process_manager' './thread-writer-locks'
     disable_unsupported_codex_mcp
-    ensure_codex_links
 
     sbx exec "$SANDBOX" -- sh -lc '
-      export CODEX_HOME="$HOME/.config/codex"
-
       echo "HOME=$HOME"
-      echo "CODEX_HOME=$CODEX_HOME"
 
       echo "Skills path:"
       ls -la "$HOME/.codex/skills"
@@ -158,9 +161,8 @@ case "$AGENT" in
     ;;
 
   claude)
-    sync_dir_via_workspace_tar "$HOME/.claude" "$REMOTE_HOME/.claude" "claude-home"
-    sync_dir_via_workspace_tar "$HOME/.config/claude" "$REMOTE_HOME/.config/claude" "claude-config"
-    sync_dir_via_workspace_tar "$HOME/.config/claude-code" "$REMOTE_HOME/.config/claude-code" "claude-code-config"
+    # ~/.claude is Claude Code's native home (real directory, repo links inside).
+    sync_dir_via_workspace_tar "$HOME/.claude" "$REMOTE_HOME/.claude" "claude-home" replace
 
     sbx exec "$SANDBOX" -- sh -lc '
       command -v claude

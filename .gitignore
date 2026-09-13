@@ -15,7 +15,10 @@ config/nvim/lazy-lock.json
 config/.copilot/config.json
 *.bak
 
-# Codex
+# Codex. Codex's home is ~/.codex (install.sh links tracked entries into it);
+# this blanket rule is a safety net for machines that still point CODEX_HOME
+# at the repo dir and would otherwise stage sessions, auth.json and sqlite
+# state. Codex also writes skills/.system into the linked skills dir.
 /config/codex/*
 !/config/codex/*config.toml
 !/config/codex/agents/
