@@ -49,94 +49,21 @@ Every agent tool keeps its own native default directory as a real directory, and
 | Copilot CLI | `~/.copilot` | each tracked entry of `config/copilot/` (`agents`, `skills`) | `~/.copilot` |
 | OpenCode | `~/.config/opencode` (its native location already) | whole-directory symlink to `config/opencode/`, like every other `config/*` dir | `~/.local/share/opencode` |
 
-`install.sh link` (and `install.sh skills`) never deletes or overwrites anything inside a home. If a home is a symlink, a real file or directory sits where a link belongs, or an old `~/.config/{claude,codex,copilot}` is still present, the run reports every conflict, changes nothing there, and exits non-zero. Resolve them with the migration below and re-run.
+`install.sh link` (and `install.sh skills`) never deletes or overwrites anything inside a home. If a home is a symlink, a real file or directory sits where a link belongs, or an old `~/.config/{claude,codex,copilot}` is still present, the run reports every conflict with the exact path involved, changes nothing there, and exits non-zero; move the named path aside and re-run.
 
 `config/skills/` is the single source for all four harness skill directories. After adding a skill there, run `./install.sh skills` (also part of `link`) to create the `config/<harness>/skills/` links and the `~/.claude/skills/` links; `python3 githooks/skills-lint.py` checks skill metadata, references, portable paths, and harness symlinks, and runs after agent-guard in pre-commit.
 
-#### One-time migration from the old layout
+#### Fresh-device setup
 
-The old layout pointed Claude Code at `~/.config/claude` through `CLAUDE_CONFIG_DIR` (with `~/.claude` and `~/.claude.json` as compatibility symlinks), pointed Codex at `~/.config/codex` through `CODEX_HOME` (a whole-directory symlink into the repo, or a real directory with per-entry links), and linked `~/.config/copilot` to the repo while Copilot CLI kept reading `~/.copilot`. Every step below moves data or removes a symlink; nothing is deleted, and each block checks the layout it expects before touching anything.
-
-Before you start: pull the dotfiles, quit Claude Code, Codex (CLI and app) and Copilot, and open a new shell so `CLAUDE_CONFIG_DIR`, `CLAUDE_SECURESTORAGE_CONFIG_DIR` and `CODEX_HOME` are no longer exported (or `unset` them in the current one).
-
-Claude Code:
-
-```bash
-( set -e
-  [ -L ~/.claude ] && [ -d ~/.config/claude ] && [ ! -L ~/.config/claude ] \
-    || { echo "unexpected Claude layout, nothing changed"; exit 1; }
-  rm ~/.claude                                   # compatibility symlink only
-  mv ~/.config/claude ~/.claude
-  [ -L ~/.claude.json ] && rm ~/.claude.json      # compatibility symlink only
-  [ -e ~/.claude.json ] || mv ~/.claude/.claude.json ~/.claude.json
-  # hooks and the status line were rewritten to ~/.config/claude/ by the old
-  # migration; -i.pre-migration keeps a copy of each edited file next to it
-  for f in ~/.claude/settings.json ~/.claude/statusline-command.sh; do
-    [ -f "$f" ] && sed -i.pre-migration "s#$HOME/\.config/claude/#$HOME/.claude/#g" "$f"
-  done
-  grep -rls "$HOME/.config/claude" ~/.claude --include='*.json' --include='*.sh' \
-    | grep -v '\.pre-migration$' || true       # anything listed still needs the same edit
-)
-```
-
-The Keychain entry is already the unsuffixed `Claude Code-credentials` (the old layout kept it that way with `CLAUDE_SECURESTORAGE_CONFIG_DIR=""`), so the login survives.
-
-Codex:
-
-```bash
-( set -e
-  [ -e ~/.config/codex ] || { echo "no old Codex layout, nothing changed"; exit 1; }
-  src="$(cd ~/.config/codex && pwd -P)"          # repo dir (old whole-dir symlink) or the real dir
-  stamp="$(date +%Y%m%d-%H%M%S)"
-  # whatever the GUI app wrote into ~/.codex while the shell used CODEX_HOME is
-  # parked, not deleted
-  [ -e ~/.codex ] && mv ~/.codex ~/.codex.pre-migration-"$stamp"
-  mkdir ~/.codex
-  for entry in "$src"/* "$src"/.[!.]*; do
-    { [ -e "$entry" ] || [ -L "$entry" ]; } || continue
-    name="$(basename "$entry")"
-    [ -L "$entry" ] && continue                  # repo links: install.sh recreates them
-    case "$name" in config.toml|config.local.toml|config.local.toml.example) continue ;; esac
-    git -C "$src" ls-files --error-unmatch -- "$name" >/dev/null 2>&1 && continue   # tracked repo content stays
-    mv "$entry" ~/.codex/
-  done
-  cp "$src/config.toml" ~/.codex/config.toml.pre-migration   # the live file Codex was writing into
-  if [ -L ~/.config/codex ]; then rm ~/.config/codex; else mv ~/.config/codex ~/.config/codex.pre-migration-"$stamp"; fi
-  echo "state moved into ~/.codex; previous ~/.codex parked as ~/.codex.pre-migration-$stamp"
-)
-```
-
-Then fix up the config sources in the repo:
-
-```bash
-cd "$DOTFILES"
-# absolute paths that pointed into the repo's config/codex now live under ~/.codex
-sed -i.pre-migration "s#$DOTFILES/config/codex/#$HOME/.codex/#g" config/codex/config.local.toml
-# Codex may have written machine-local entries straight into the tracked file:
-# move notify, [projects.*], [hooks.state.*] and local marketplaces into
-# config.local.toml (a copy of the live file is at ~/.codex/config.toml.pre-migration)
-git diff -- config/codex/config.toml
-git checkout -- config/codex/config.toml
-```
-
-Copilot:
-
-```bash
-[ -L ~/.config/copilot ] && rm ~/.config/copilot   # old whole-dir symlink; ~/.copilot already holds Copilot CLI state
-# if ~/.copilot/agents or ~/.copilot/skills already exist as real directories,
-# move them aside (e.g. ~/.copilot/skills.local) or fold them into config/copilot
-```
-
-Finally:
+On a new machine, after cloning the repo, `./install.sh link` alone sets up Claude Code, Codex and Copilot CLI:
 
 ```bash
 ./install.sh link
-readlink ~/.claude/CLAUDE.md ~/.claude/skills/agent-guard ~/.codex/skills ~/.copilot/agents
 ```
 
-`link` recreates every repo link inside the three homes, prunes links left behind by entries the repo no longer has, and generates `~/.codex/config.toml` from `config.toml` + `config.local.toml`. Once Claude Code, Codex and Copilot all start cleanly, the parked `~/.codex.pre-migration-*`, `~/.config/codex.pre-migration-*` and `*.pre-migration` files can be deleted.
+This creates `~/.claude`, `~/.codex` and `~/.copilot` as real directories (if they don't already exist) and, inside each, one symlink per tracked entry of `config/claude`, `config/codex` and `config/copilot` (plus every `~/.claude/skills/<name>` link). It also generates `~/.codex/config.toml` from `config/codex/config.toml` (+ `config/codex/config.local.toml` if present) - see [Codex Configuration](#codex-configuration). Re-running `link` is a no-op once everything is in place.
 
-To roll back: check out the previous dotfiles commit (it restores the old `.zshenv` exports), then reverse the moves: `mv ~/.claude ~/.config/claude && ln -s ~/.config/claude ~/.claude`, `mv ~/.claude.json ~/.config/claude/.claude.json && ln -s ~/.config/claude/.claude.json ~/.claude.json`, restore each `*.pre-migration` file over its edited copy, move the entries back out of `~/.codex` into the old Codex directory and rename the parked `~/.codex.pre-migration-*` back to `~/.codex`, and re-run `./install.sh link` from the old commit.
+The one manual, machine-local step: if you keep machine-specific Codex settings (notify path, trusted projects, hook trust), copy `config/codex/config.local.toml.example` to `config/codex/config.local.toml` and fill it in *before* running `link`, so the generated `~/.codex/config.toml` picks it up (or run `./install.sh codex-sync` afterwards to regenerate).
 
 ```
 dotfiles/
