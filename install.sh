@@ -309,7 +309,7 @@ codex_generate_config() {
     if [ -f "$overlay" ]; then
       echo
       echo "# ---- machine-local overlay: config.local.toml ----"
-      awk 'f{print} /^\[/{f=1; print}' "$overlay"
+      awk 'f{print;next} /^\[/{f=1; print}' "$overlay"
     fi
   } >"$out"
 }
