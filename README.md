@@ -107,7 +107,7 @@ dotfiles/
 |--------------|-------------|
 | `backup`     | Back up existing dotfiles to `~/dotfiles-backup/` |
 | `clean`      | Remove symlinks created by `link` (including `~/.zshenv` and `~/bin`) |
-| `link`       | Create symlinks from `config/` → `~/.config/`, `bin/` → `~/bin`, and tracked `config/{claude,codex,copilot}` entries → `~/.claude`, `~/.codex`, `~/.copilot` (refuses, without touching anything, when a real file or an old-layout symlink is in the way) |
+| `link`       | Create symlinks from `config/` → `~/.config/`, `bin/` → `~/bin`, `config/git/.gitconfig`, `config/git/.gitignore` and `config/AGENTS.md` → `~/`, and tracked `config/{claude,codex,copilot}` entries → `~/.claude`, `~/.codex`, `~/.copilot` (refuses, without touching anything, when a real file or an old-layout symlink is in the way) |
 | `copy`       | Copy configs instead of symlinking (useful for containers) |
 | `codex-sync` | Regenerate `~/.codex/config.toml` from `config.toml` + `config.local.toml` |
 | `skills`     | Link `config/skills/` into every `config/<harness>/skills/` and `~/.claude/skills/` (also run by `link`) |

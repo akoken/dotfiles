@@ -24,6 +24,7 @@ COLOR_NONE="\033[0m"
 linkables=(
   "git/.gitconfig"
   "git/.gitignore"
+  "AGENTS.md"
 )
 
 # Configuration home
