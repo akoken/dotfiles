@@ -16,7 +16,7 @@ jobs:
           # bin/ mixes shell scripts with native binaries (e.g. git-graph),
           # so pick out only the shell scripts by file type.
           mapfile -t scripts < <(file bin/* | awk -F': ' '/shell script/{print $1}')
-          shellcheck -S warning install.sh githooks/pre-commit "${scripts[@]}"
+          shellcheck -S warning install.sh githooks/pre-commit tests/*.sh "${scripts[@]}"
 
   gitleaks:
     name: Gitleaks
@@ -38,6 +38,16 @@ jobs:
         # Validate the Bundle DSL without requiring packages on a fresh runner.
         # This checks parsing, not package availability or installation state.
         run: brew bundle list --file=Brewfile --all
+
+  codex-config:
+    name: Codex config.toml overlay merge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Generate config.toml from an overlay in a temp HOME and parse it
+        # Runs on the runner (not the Docker image) so python3's tomllib can
+        # validate the generated file.
+        run: bash tests/codex-config-overlay.sh
 
   docker-smoke:
     name: Docker install.sh smoke (Linux)
