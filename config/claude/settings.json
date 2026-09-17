@@ -1,5 +1,17 @@
 {
-  "model": "opus[1m]",
+  "env": {
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000",
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
+    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "0"
+  },
+  "model": "claude-fable-5-1[1m]",
   "hooks": {
     "SessionStart": [
       {
@@ -51,6 +63,15 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f package.json ]; then [ -d node_modules ] || npm ci; [ -d cli/dist ] || npm run build --workspace cli; fi; case \"$PATH\" in *\"~/.dotnet\"*) echo \"WARN: unexpanded tilde in PATH\";; esac",
+            "timeout": 300
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -61,6 +82,18 @@
             "command": "\"/usr/bin/env\" node \"$HOME/.claude/hooks/caveman-mode-tracker.js\"",
             "timeout": 5,
             "statusMessage": "Tracking caveman mode..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r .tool_input.file_path); case \"$f\" in *test*|*spec*) [ -d .github/workflows ] && { grep -rq \"$(basename \"$f\")\" .github/workflows/ || echo \"WARN: test file not registered in CI workflows\"; };; esac; exit 0",
+            "timeout": 10
           }
         ]
       }
@@ -83,26 +116,15 @@
       }
     }
   },
+  "feedbackSurveyRate": 0,
   "effortLevel": "high",
+  "awaySummaryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark-ansi",
   "editorMode": "normal",
   "verbose": false,
   "autoCompactEnabled": true,
   "agentPushNotifEnabled": true,
-  "awaySummaryEnabled": false,
-  "env": {
-    "DISABLE_TELEMETRY": "1",
-    "DISABLE_ERROR_REPORTING": "1",
-    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000",
-    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
-    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
-    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "0"
-  },
   "bash": {
     "deniedCommands": [
       "rm -rf",
@@ -111,6 +133,5 @@
       "DROP TABLE",
       "truncate"
     ]
-  },
-  "feedbackSurveyRate": 0
+  }
 }
