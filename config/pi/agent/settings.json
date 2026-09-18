@@ -1,0 +1,15 @@
+{
+  "lastChangelogVersion": "0.85.1",
+  "theme": "dark",
+  "terminal": {
+    "showTerminalProgress": true
+  },
+  "steeringMode": "all",
+  "enableInstallTelemetry": false,
+  "defaultProjectTrust": "ask",
+  "tuiMode": "fullscreen",
+  "quietStartup": true,
+  "defaultProvider": "openrouter",
+  "defaultModel": "x-ai/grok-4.5",
+  "defaultThinkingLevel": "high"
+}
