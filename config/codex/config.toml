@@ -38,14 +38,6 @@ last_revision = "67a666efc8524ff7abaa266f84e514aa77aee48f"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
-[mcp_servers.MCP_DOCKER]
-args = [
-    "mcp",
-    "gateway",
-    "run",
-]
-command = "docker"
-
 [mcp_servers.context7]
 args = [
     "-y",
