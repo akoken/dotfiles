@@ -214,8 +214,34 @@ ensure_agent_home() {
 # shell still exporting the old variables would keep writing to. Reported, and
 # the whole tool is skipped, so the migration is done deliberately instead of
 # leaving two half-used homes.
+#
+# One exception: the Codex standalone installer owns
+# $XDG_CONFIG_HOME/codex/packages and bakes that absolute path into
+# ~/.local/bin/codex, so it is an install root rather than an old home.
+# Moving it aside breaks the `codex` binary. A codex dir that holds nothing
+# but that subtree is therefore left alone; any other entry beside it is
+# still old-layout state and still a conflict.
+CODEX_INSTALL_ROOT_ENTRIES="packages .DS_Store"
+
+codex_install_root_only() {
+  local dir="$1" entry name
+  [ -d "$dir" ] || return 1
+  for entry in "$dir"/* "$dir"/.[!.]*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    name="$(basename "$entry")"
+    case " $CODEX_INSTALL_ROOT_ENTRIES " in
+    *" $name "*) ;;
+    *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
 refuse_old_layout_dir() {
   local old="$1" tool="$2"
+  if [ "$tool" = codex ] && [ ! -L "$old" ] && codex_install_root_only "$old"; then
+    return 0
+  fi
   if [ -L "$old" ] || [ -e "$old" ]; then
     conflict "~${old#"$HOME"} exists; move it aside (or remove it if it is only the old compatibility symlink) before re-running 'install.sh link'."
     return 1
