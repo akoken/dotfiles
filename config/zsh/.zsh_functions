@@ -70,11 +70,17 @@ _local_coding_model_file() {
 
 lcs() {
     if [[ -z "$1" ]]; then
-        echo "Usage: lcs <model-path>" >&2
+        echo "Usage: lcs <model-path> [ctx-size]" >&2
         return 1
     fi
 
     local model_path="${1/#\~/$HOME}"
+    local ctx_size="${2:-128000}"
+
+    if [[ "$ctx_size" != <1-> ]]; then
+        echo "lcs: ctx-size must be a positive integer, got '$ctx_size'" >&2
+        return 1
+    fi
     local model_name="${model_path##*/}"
     local model_state_file="$(_local_coding_model_file)"
 
@@ -91,16 +97,18 @@ lcs() {
     # then enforces a key no current client knows.
     llama-server --model "$model_path" \
      --api-key "${LOCAL_API_KEY}" \
-     --n-gpu-layers 99 --ctx-size 128000 --flash-attn on \
+     --n-gpu-layers 99 --ctx-size "$ctx_size" --flash-attn on \
      --batch-size 512 --threads 8 --temp 0.6 --min-p 0.05 \
      --top-p 0.95 --top-k 40 --spec-type draft-mtp \
      --spec-draft-n-max 2 --host 127.0.0.1 --port 8081
 
-    local status=$?
+    # `status` is zsh's read-only alias of `$?`; assigning to it aborts the
+    # function before the cleanup below runs.
+    local rc=$?
 
     command rm -f "$model_state_file"
 
-    return $status
+    return $rc
 }
 
 unalias ccl 2>/dev/null
