@@ -7,10 +7,18 @@
 - When doing bug fixes, always start with reproducing the bug in an E2E setting as closely aligned with how an end user would experience it as possible.This makes sure you find the real problem so your fix will actually solve it.
 - Apply that same high standard to engineering excellence: lint, test failures, and test flakiness.If you see one,even if it is not caused by what you are working on right now,still get it fixed.
 - Don't bother running full test suites; that'll be handled in CI. Try to minimize CPU-consuming efforts to the bare minimum, as we'll likely have many operations happening concurrently.
+- Never assumptions, only evidence.
 
 # Tool Preferences
 - Never use `grep`/`find`.If the repo has a tgrep index (`.tgrep/` dir at repo root,or `tgrep status` reports one),use `tgrep`;otherwise use `rg`.Check once per session with `tgrep status`.(Grep tool is already ripgrep.)
 - Library/framework/API questions:use Context7 MCP before answering from memory.
+
+# Agent Memory (Hindsight)
+- When the `hindsight` MCP is available (single bank `akoken`,local at `http://localhost:8888`):
+- At task start,`recall` relevant memory for the task,tagged `project:<repo-name>`;widen to untagged/all when cross-project context helps.
+- `retain` only durable,evidence-backed learnings: user preferences,decisions and their rationale,non-obvious gotchas,root causes.Never routine progress,secrets,tokens,or credentials.
+- Always tag with `project:<repo-name>`;use `scope:global` for cross-project preferences.
+- Deletion tools are disabled by design;do not work around it.Tell the user when a memory is wrong so they can fix it in the UI (`http://localhost:9999`).
 
 # /Graphify
 - **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph.Trigger: `/graphify`
