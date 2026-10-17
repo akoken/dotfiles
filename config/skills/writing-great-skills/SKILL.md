@@ -57,6 +57,32 @@ Check every line for **relevance**: does it still bear on what the skill does?
 
 Then hunt **no-ops** sentence by sentence, not just line by line: run the no-op test on each sentence in isolation, and when one fails, delete the whole sentence rather than trim words from it. Be aggressive — most prose that fails should go, not be rewritten.
 
+Finally hunt **orphans**: every file in the skill folder must be reached by a **context pointer** from `SKILL.md`, and every pointer must say _when_ it is relevant ("see `AUTH.md` for token refresh when the API returns 401", not "see `GUIDE.md` for details"). An unreferenced file is sediment the agent can never load; link it with a when-clause or delete it.
+
+## Before applying an edit
+
+Validate a proposed skill change before it lands, and show the check output rather than describing it:
+
+- Every code block parses: `python3 -c 'import ast,sys; ast.parse(sys.stdin.read())'` for Python, `node --check` for JavaScript, `bash -n` for shell.
+- Every command flag exists in that command's current `--help`; never invent flags from memory.
+- Every referenced file path exists.
+- A **model-invoked** skill's `description:` carries a trigger clause ("Use when…"); check the frontmatter, not the body.
+- No sentence explains a concept the agent already holds (the **no-op** test above).
+
+Present changes as before/after pairs with the one-line _why_, and get approval before editing a skill you do not own.
+
+## Reading eval results
+
+When an eval runs a skill with and without its context (`claude plugin eval` with the with-without ablation, or any judge-scored run), classify each weak criterion before touching the skill:
+
+- **Universal failure** - every model fails with the skill: the instruction is missing, ambiguous, or contradicted elsewhere in the bundle. Fix first.
+- **Capability gradient** - the small model fails, larger ones pass: the instruction is too implicit; make it explicit and simpler, do not add more.
+- **Regression** - the without-skill run scores higher: the skill is confusing the agent. Fix before anything else, whatever model it hits.
+- **Already high baseline** - the agent scores well without the skill: the criterion is a no-op; drop that content rather than tune it.
+- **Single-model anomaly** - one model, one run: note it, re-run with more repetitions before acting.
+
+A scenario is a `task.md` (the prompt, any fixtures it needs) plus a `criteria.json` rubric; Tessl's published skill-optimizer bundle holds 28 worked examples of the shape: https://github.com/tesslio/product-plugins/tree/main/skill-optimizer/evals.
+
 ## Leading words
 
 A **leading word** is a compact concept already living in the model's pretraining that the agent thinks with while running the skill (e.g. _lesson_, _fog of war_, _tracer bullets_). Repeated throughout the text (though not necessarily - a strong leading word might only be needed once), it accumulates a distributed definition and anchors a whole region of behaviour in the fewest tokens, by recruiting priors the model already holds.

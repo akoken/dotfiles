@@ -8,6 +8,12 @@ import re
 from urllib.parse import unquote, urlsplit
 
 HARNESSES = ('claude', 'codex', 'copilot', 'opencode')
+REVIEW_SKILLS = ('code-review-expert2', 'pr-review2')
+REVIEW_SHARED_FILES = (
+    'references/review-protocol.md', 'references/mutation-testing.md',
+    'references/security-routing.md', 'references/review-record.md',
+    'scripts/review_record.py', 'references/focused-reviews.md',
+)
 # Inline links (including images) and reference-style link definitions.
 LINK = re.compile(r'\[[^\]\n]*\]\(\s*(<[^>\n]+>|[^\s)]+)(?:\s+["\'][^\n]*?["\'])?\s*\)')
 LINK_DEFINITION = re.compile(r'^\s{0,3}\[[^\]\n]+\]:\s*(<[^>\n]+>|\S+)', re.M)
@@ -109,6 +115,18 @@ def lint(root):
             if name not in skills:
                 report(document, content.count('\n', 0, match.start()) + 1,
                        f'unknown skill: {name}')
+
+    if any(name in skills for name in REVIEW_SKILLS):
+        for name in REVIEW_SKILLS:
+            if name not in skills:
+                report(shared / name / 'SKILL.md', 1, 'missing paired review skill')
+        if all(name in skills for name in REVIEW_SKILLS):
+            for relative in REVIEW_SHARED_FILES:
+                left, right = (skills[name] / relative for name in REVIEW_SKILLS)
+                if not left.is_file() or not right.is_file():
+                    report(left if not left.is_file() else right, 1, 'missing shared review resource')
+                elif left.read_bytes() != right.read_bytes():
+                    report(right, 1, f'shared review resource differs from {REVIEW_SKILLS[0]}: {relative}')
 
     for harness in HARNESSES:
         directory = root / 'config' / harness / 'skills'

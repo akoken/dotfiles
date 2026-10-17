@@ -93,3 +93,21 @@ jobs:
             if ./install.sh link; then echo "link should have refused"; exit 1; fi
             test -f "$HOME/.claude/CLAUDE.md" && test ! -L "$HOME/.claude/CLAUDE.md"
           '
+
+  review-skills:
+    name: Shared review skill contracts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Validate skill inventory and shared review resource parity
+        run: python3 githooks/skills-lint.py
+      - name: Test shared skill lint decisions
+        run: python3 -m unittest discover -s githooks/tests -p 'test_skills_lint.py' -v
+      - name: Test review record decisions and CLI
+        run: python3 -m unittest discover -s githooks/tests -p 'test_review_record.py' -v
+      - name: Lint changed Python test syntax
+        run: python3 -m py_compile githooks/tests/test_review_record.py githooks/tests/test_skills_lint.py

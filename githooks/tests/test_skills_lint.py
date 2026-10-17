@@ -13,7 +13,7 @@ SPEC.loader.exec_module(MODULE)
 
 class SkillsLintTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(dir=MODULE_PATH.parents[1])
+        self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.skill = self.root / 'config/skills/example'
@@ -97,6 +97,38 @@ Run `scripts/missing.py`.
         findings = self.findings()
         self.assertIn('config/copilot/skills:1: missing harness link for skill: example', findings)
         self.assertNotIn('config/claude/skills:1: missing harness link', findings)
+
+
+    def add_review_pair(self):
+        for name in MODULE.REVIEW_SKILLS:
+            folder = self.root / 'config/skills' / name
+            folder.mkdir()
+            (folder / 'SKILL.md').write_text(f'---\nname: {name}\ndescription: Review.\n---\n')
+            for relative in MODULE.REVIEW_SHARED_FILES:
+                resource = folder / relative
+                resource.parent.mkdir(parents=True, exist_ok=True)
+                resource.write_text('Shared resource.\n')
+            for harness in MODULE.HARNESSES:
+                (self.root / 'config' / harness / 'skills' / name).symlink_to(f'../../skills/{name}')
+
+    def test_review_shared_resources_detect_drift_and_missing_pair(self):
+        self.add_review_pair()
+        self.assertEqual([], MODULE.lint(self.root))
+        for relative in ('references/review-protocol.md', 'references/focused-reviews.md'):
+            with self.subTest(relative=relative):
+                path = self.root / 'config/skills/pr-review2' / relative
+                original = path.read_bytes()
+                path.write_text('Different routing policy.\n')
+                self.assertIn('shared review resource differs', self.findings())
+                path.unlink()
+                self.assertIn('missing shared review resource', self.findings())
+                path.write_bytes(original)
+
+    def test_review_skill_cannot_be_installed_without_its_pair(self):
+        folder = self.root / 'config/skills/code-review-expert2'
+        folder.mkdir()
+        (folder / 'SKILL.md').write_text('---\nname: code-review-expert2\ndescription: Review.\n---\n')
+        self.assertIn('missing paired review skill', self.findings())
 
 
 if __name__ == '__main__':
