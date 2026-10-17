@@ -16,6 +16,7 @@
 # Agent Memory (Hindsight)
 - When the `hindsight` MCP is available (single bank `akoken`,local at `http://localhost:8888`):
 - At task start,`recall` relevant memory for the task,tagged `project:<repo-name>`;widen to untagged/all when cross-project context helps.
+- Call `recall` with `max_tokens: 1500` and `budget: "mid"`;the defaults return ~2.6x more payload,mostly restating reports already read.
 - `retain` only durable,evidence-backed learnings: user preferences,decisions and their rationale,non-obvious gotchas,root causes.Never routine progress,secrets,tokens,or credentials.
 - Always tag with `project:<repo-name>`;use `scope:global` for cross-project preferences.
 - Deletion tools are disabled by design;do not work around it.Tell the user when a memory is wrong so they can fix it in the UI (`http://localhost:9999`).
