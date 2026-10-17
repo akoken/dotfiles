@@ -19,7 +19,7 @@
     "OTEL_LOG_USER_PROMPTS": "1",
     "OTEL_METRICS_EXPORTER": "otlp"
   },
-  "model": "opus[1m]",
+  "model": "claude-opus-5-5",
   "hooks": {
     "PostToolUse": [
       {
@@ -114,7 +114,8 @@
   },
   "enabledPlugins": {
     "caveman@caveman": true,
-    "rust-analyzer-lsp@claude-plugins-official": true
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "spinner@akoken-mods": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
@@ -122,11 +123,39 @@
         "source": "github",
         "repo": "JuliusBrussee/caveman"
       }
+    },
+    "akoken-mods": {
+      "source": {
+        "source": "github",
+        "repo": "akoken/claude-spinner-mods"
+      }
     }
   },
   "feedbackSurveyRate": 0,
   "effortLevel": "high",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    },
+    "claude-fable-5-1": {
+      "effortLevel": "high"
+    }
+  },
   "awaySummaryEnabled": false,
+  "pluginConfigs": {
+    "spinner@akoken-mods": {
+      "options": {
+        "visible": true,
+        "footerButton": true,
+        "theme": "zoro",
+        "stage": true,
+        "celebrate": true,
+        "companion": true,
+        "reducedMotion": false,
+        "language": "en"
+      }
+    }
+  },
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark-ansi",
