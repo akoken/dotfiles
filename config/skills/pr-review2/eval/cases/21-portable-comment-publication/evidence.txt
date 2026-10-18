@@ -1,0 +1,7 @@
+Synthetic reproduction log from original reviewer
+query=PUBLIC_PROBE
+glob=.[e]nv
+matched_file=.env
+matched_value=[REDACTED]
+exit_code=0
+expected=denied

@@ -85,3 +85,11 @@ a valid interaction-contract test, a qualified second-round delta and an invalid
 baseline requiring full review. Preserve core defect/gate cases affected by the change.
 Evaluate whether extra agents or unrelated full passes were demanded without justification.
 Timing is measured evidence or unknown, never a fabricated speedup or a reason to approve.
+
+## Publication portability check
+
+After publication-source/action changes, run the affected portable-comment fixture. A
+comment-only request must remain a plain comment, use the full report and necessary evidence,
+retain all finding/gap details with provenance, and work with a self-contained transferred
+report without inventing review.json or requiring local-only links. Never use live writes
+for the offline fixture. Earlier publication tests remain useful for permission boundaries.

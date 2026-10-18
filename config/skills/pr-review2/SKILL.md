@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.3.0"
+  version: "2.3.1"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -184,12 +184,21 @@ A clean review names the changed implementation and test/other behavior inspecte
 inspection row is not a finding and does not increase counts. For incomplete reviews state
 what evidence remains and how to finish. Do not grant a positive verdict to partial work.
 
+Keep the full report portable: include each finding's causal evidence, reproducible steps
+and relevant redacted output excerpts, with source revision and execution limits. Local
+artifact paths can supplement this content, not replace it. A recipient on another machine
+must be able to understand and reproduce the findings from report.md alone. Missing required
+evidence stays explicit; do not claim all evidence is present merely because paths exist.
+The final chat response may be concise and link the full report; publication uses that full
+report and its necessary evidence, not just the chat summary.
+
 ## 6. Publication and cleanup
 
 Publication is optional. Only when explicitly authorized, read and follow
-[GitHub publication](references/github-publication.md). Use the current verdict at the
-verified head, and attach a PR to the current chat when the host provides that capability.
-No remote comment or review state changes by default.
+[GitHub publication](references/github-publication.md). Automatically assemble the body from
+the full report and necessary accessible evidence. A request to post a comment means a plain
+PR comment, not an APPROVE/REQUEST_CHANGES state. Use the current verdict at the verified
+head; return the posted URL and attach the PR when supported. No remote write by default.
 
 Clean up only this review's own clean detached worktree, without force. Leave the user's
 original branch/status unchanged. Preserve any generated edits/artifacts with their path.
