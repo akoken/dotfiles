@@ -85,6 +85,10 @@ independently actionable defects; group a bug class only when remedies and block
 match. A single cause can violate code, requirements and PR-body claims together; record
 those as supporting anchors/reasons on one finding, not multiple blockers. Keep truly
 independent documentation defects separate. Inspect variants in changed files before reporting.
+When one defect pattern recurs, name its class once on the finding, list every verified
+instance in the reviewed scope as a path:line anchor, and phrase the remedy as fixing every
+listed instance plus searching for further copies. The propagation sweep records that work:
+the search used, the files covered and the instances found.
 
 States: open, fixed-and-verified, rejected-with-evidence, deferred-with-rationale. Read author
 replies and check them against current code. A comment saying fixed is not verification.
@@ -134,7 +138,11 @@ which real defects the review can report.
    delta eligibility does not transfer an old required-check result to a new revision.
 4. After three review/fix rounds, if blockers remain or further automated churn would be
    needed, pause the automatic fix/review loop and request human reassessment. Report the
-   current blockers and evidence. The cap never grants approval or hides a serious defect.
+   current blockers and evidence, then add an approach reassessment: list the defect classes
+   that recurred across rounds with their finding IDs, state whether recent fixes patch
+   symptoms of one design choice, and name at least one alternative approach (for example
+   a specification's own algorithm or an established library) with its trade-off. The cap
+   never grants approval or hides a serious defect.
 
 Completeness requires all planned files/dimensions inspected, critical affected call paths
 traced, stable input revisions, and applicable required gates resolved. Skipped low-risk

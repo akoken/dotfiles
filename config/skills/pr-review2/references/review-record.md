@@ -44,6 +44,8 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   verified boolean, origin change/base/unknown, defect and reachable booleans; anchors,
   evidence, and blocking_reasons. Reasons are introduced_defect, unmet_requirement,
   contradicted_claim, introduced_gate_failure, plus aspirational_doc/missing_issue for AURA.
+  Optional class (nonempty string) names a recurring defect class; instances then lists
+  every verified instance as nonempty path:line anchors. Give both or neither.
   Use only verified admitted findings; unresolved suspicions belong in verification_gaps.
 - requirements: unique id, text, state met/unmet/partial/unverified, implementation and
   verification evidence arrays. Use an empty list only when there are no explicit criteria.
