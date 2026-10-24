@@ -24,6 +24,8 @@ material inconsistencies before posting; do not manufacture a missing JSON recor
 Prepare a UTF-8 body file containing:
 
 - A concise verdict/count summary and full Reviewed-at-HEAD SHA, review round and scope.
+  When no actionable finding remains, the summary says so first in one plain sentence,
+  for example "Nothing to fix: 0 new findings; 2 prior findings verified fixed."
 - Every report finding with its stable ID, severity, blocker status, file/line, trigger,
   expected/actual result, causal proof, relevant redacted output and remedy. Keep the
   original findings and limitations; do not silently drop an item for brevity.

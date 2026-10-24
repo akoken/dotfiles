@@ -135,6 +135,26 @@ class ReviewRecordTests(unittest.TestCase):
         with self.assertRaises(MODULE.InvalidRecord):
             self.evaluate(value)
 
+    def test_defect_class_lists_instances_without_changing_verdict(self):
+        value = record()
+        value['findings'] = [finding(**{'class': 'missing null check',
+                                        'instances': ['src/a.py:4', 'src/b.py:9', 'src/c.py:2']})]
+        value['claimed_verdict'] = 'REQUEST_CHANGES'
+        self.assertEqual(['finding:F1'], self.evaluate(value)['blockers'])
+        for changes in ({'class': ''}, {'class': ['missing null check']}, {'instances': []},
+                        {'instances': ['']}, {'instances': 'src/a.py:4'}, {'instances': None}):
+            with self.subTest(changes=changes):
+                value['findings'] = [finding(**dict({'class': 'missing null check',
+                                                     'instances': ['src/a.py:4']}, **changes))]
+                with self.assertRaises(MODULE.InvalidRecord):
+                    self.evaluate(value)
+        for field in ('class', 'instances'):
+            with self.subTest(only=field):
+                value['findings'] = [finding(**{field: {'class': 'missing null check',
+                                                        'instances': ['src/a.py:4']}[field]})]
+                with self.assertRaises(MODULE.InvalidRecord):
+                    self.evaluate(value)
+
     def test_deferral_does_not_resolve_and_fixed_needs_evidence(self):
         value = record()
         value['findings'] = [finding(status='deferred-with-rationale')]

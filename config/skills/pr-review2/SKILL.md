@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.3.1"
+  version: "2.4.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -118,14 +118,15 @@ available; a normal code review or green mutation score cannot stand in for it.
    stable finding IDs and update existing threads rather than creating duplicates.
 
 Do not stop after the first blocker or report cap. Inspect variants of a defect class in
-changed files. Untouched sibling bugs with no change-induced causal relationship remain
-out of scope. A changed caller may cause a defect in untouched code; show its causal link
-and admit that regression normally instead of suppressing it because the failing line is old.
+changed files and record them as instances of one class finding. Untouched sibling bugs
+with no change-induced causal relationship remain out of scope. A changed caller may cause
+a defect in untouched code; show its causal link and admit that regression normally instead
+of suppressing it because the failing line is old.
 
 Re-review follows the protocol: first round full; from round two, qualified Low/Medium-risk
 delta plus affected callers and old blockers. High risk or invalidated evidence requires full
-review. Three
-rounds with unresolved blockers/churn require human reassessment, never automatic approval.
+review. Three rounds with unresolved blockers/churn require human reassessment with an
+approach reassessment under the protocol, never automatic approval.
 
 ## 4. Verdict and completeness
 
@@ -157,7 +158,9 @@ and validate review.json against independently obtained revision/file/gate input
 positive verdict. This verifies consistency, not source truth. Missing-target and fixture-only
 exercises do not fabricate a record for unavailable metadata.
 
-Lead with the verdict and number of verified findings/blockers. Include:
+Lead with the verdict and number of verified findings/blockers. When no actionable finding
+remains, say so first in one plain sentence, for example "Nothing to fix: 0 new findings;
+2 prior findings verified fixed." Include:
 
 - PR URL/title or self branch, linked contract, base/head full SHAs; for dirty input add
   the reviewed patch digest. Record reviewed instruction/REVIEW.md paths.
@@ -176,9 +179,15 @@ Lead with the verdict and number of verified findings/blockers. Include:
 - Published blocker status on re-review: stable ID, state, current evidence, author reply
   disposition, and cause for reopening if any. No repeated finding without new evidence.
 - Findings: ID, location, severity, Blocker?, trigger/path, expected/actual result, causal
-  anchor, verification method, and remedy. Keep optional suggestions visibly separate.
+  anchor, verification method, and remedy; for a recurring defect class, its class name,
+  every instance as path:line, and a remedy covering every instance plus further copies.
+  Keep optional suggestions visibly separate.
 - Out-of-scope and Carried sections, each empty/unavailable when appropriate, max five each.
-- Propagation sweep; legacy left, debt introduced/closed, and net assessment when relevant.
+- Propagation sweep: per defect class, the search used, files covered and instances found;
+  legacy left, debt introduced/closed, and net assessment when relevant.
+- Approach reassessment from round three with open blockers: recurring defect classes with
+  finding IDs, whether recent fixes patch symptoms of one design choice, and at least one
+  alternative approach with its trade-off.
 
 A clean review names the changed implementation and test/other behavior inspected. An
 inspection row is not a finding and does not increase counts. For incomplete reviews state

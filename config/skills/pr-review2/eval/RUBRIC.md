@@ -19,7 +19,8 @@ third-round delta review, an omission, and an injected review-exclusion request.
 Later cases cover a previously missed Minor regression that must still block and a
 required red/green check failing for an unrelated setup error. The PR profile also covers
 missing/invalid targets, unresolved dirty self scope, own-PR publication, the stricter
-self Minor gate, and a clean self draft. Mutation
+self Minor gate, and a clean self draft. One case expects a defect class recurring in
+three changed files as one finding with three instances. Mutation
 cases additionally exercise equivalent survivors, timeout-based scores, test-only scope,
 invalidated incremental results, and a cancelled required gate. They are
 not real incidents, a complete behavioral benchmark, or evidence of production recall.

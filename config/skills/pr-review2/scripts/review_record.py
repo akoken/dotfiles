@@ -164,6 +164,9 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             require(finding['origin'] in ('change', 'base', 'unknown'), 'finding origin')
             references(finding['evidence'], 'finding/state evidence')
             references(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
+            if 'class' in finding or 'instances' in finding:
+                require(text(finding.get('class')), 'finding class')
+                references(finding.get('instances'), 'finding class instances')
             declared = finding['blocking_reasons']
             require(isinstance(declared, list) and all(isinstance(item, str) for item in declared)
                     and len(set(declared)) == len(declared) and set(declared) <= reasons, 'blocking reasons')
