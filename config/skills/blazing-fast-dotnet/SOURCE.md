@@ -4,12 +4,18 @@
 
 - Upstream repository: https://github.com/EgorBo/BlazingFastDotnet
 - Author: EgorBo (https://github.com/EgorBo)
-- Pinned commit: `4f82e2538265b3efe6adba809022ee71aae6a505`
-- File: https://github.com/EgorBo/BlazingFastDotnet/blob/4f82e2538265b3efe6adba809022ee71aae6a505/SKILL.md
+- Pinned commit: `9098c9afd643de42ed1db5ab5434e21702dd4db6`
+- File: https://github.com/EgorBo/BlazingFastDotnet/blob/9098c9afd643de42ed1db5ab5434e21702dd4db6/SKILL.md
 - Vendored on: 2026-10-23
+- Updated on: 2026-10-25
 
 ## License
 
-The upstream repository declares no license. All rights remain with the author.
-This copy is kept unmodified; to update it, re-fetch `SKILL.md` from upstream at a
-newer commit and update the pinned commit and date above.
+Upstream is MIT-licensed as of commit `03080b2` (Copyright (c) 2026 EgorBo). The
+upstream license text is at
+https://github.com/EgorBo/BlazingFastDotnet/blob/9098c9afd643de42ed1db5ab5434e21702dd4db6/LICENSE
+and is included verbatim as `LICENSE` in this directory, as the MIT License requires
+the copyright and permission notice to accompany copies.
+
+`SKILL.md` and `LICENSE` are kept unmodified; to update them, re-fetch both from
+upstream at a newer commit and update the pinned commit and dates above.
