@@ -23,6 +23,7 @@ alias cc='claude --dangerously-skip-permissions'
 
 # Codex Full Permission
 alias cdx='codex --yolo'
+alias cdxo='CODEX_HOME=$HOME/.codex-obss codex --yolo'
 
 alias lpath='echo $PATH | tr ":" "\n"' # list the PATH separated by new lines
 
