@@ -8,7 +8,8 @@ candidate digest. Structural lint establishes packaging only, not review effecti
 
 The sibling cases directory contains synthetic inputs and separate oracles. Use one
 fresh-context reviewer per input. Supply SKILL.md, needed references, and only that case's
-input.md. Never supply oracle.md, this rubric, a prior answer, or a suggested verdict.
+input.md. Never supply oracle.md, this rubric, classes.md, results, a prior answer, or a
+suggested verdict.
 Fixture inputs replace live gh/git/execution state; do not contact live repositories,
 modify files, install dependencies, publish reviews, or execute the sample code.
 For AURA fixture evaluations, runner restrictions in the live project still govern actual
@@ -20,15 +21,19 @@ Later cases cover a previously missed Minor regression that must still block and
 required red/green check failing for an unrelated setup error. The PR profile also covers
 missing/invalid targets, unresolved dirty self scope, own-PR publication, the stricter
 self Minor gate, and a clean self draft. One case expects a defect class recurring in
-three changed files as one finding with three instances. Mutation
-cases additionally exercise equivalent survivors, timeout-based scores, test-only scope,
-invalidated incremental results, and a cancelled required gate. They are
+three changed files as one finding with three instances; Tier 2 below adds seeded class
+pairs. Mutation cases additionally exercise equivalent survivors, timeout-based scores,
+test-only scope, invalidated incremental results, and a cancelled required gate. They are
 not real incidents, a complete behavioral benchmark, or evidence of production recall.
 
 ## Scoring
 
-Score against the oracle only after preserving the reviewer's raw output. Record candidate
-tree SHA-256, case ID, model/version, tool policy, command/input, output, and observed result.
+Score against the oracle only after preserving the reviewer's raw output. Record the
+reviewer identity fields that results/README.md lists (reviewer `pr-review2`, its
+`metadata.version`, candidate tree SHA-256, case ID, host and model id), plus tool policy,
+command/input, output, and observed result. A result measures that reviewer at that version only: results of AURA's
+pr-review, the no-mistakes reviewer, code-review-expert2 or an earlier pr-review2 version
+are never aggregated with, compared as, or cited for this version.
 Score observable decisions and causal evidence, not exact prose or section spelling:
 
 - Correct verdict for the skill/mode and material completeness limits.
@@ -56,6 +61,25 @@ the failing cell to inspect variance before changing the prompt. Do not report a
 suite/production pass from a smoke check or automatically run dozens of reviewer agents.
 Keep output and result artifacts in the evaluation workspace; add results to the skill
 inventory only when intentionally maintaining that corpus.
+
+## Tier 2 seeded defect classes
+
+classes.md registers recurring defect classes. Each class has seeded cases carrying several
+instances of one broken invariant in one diff and, once seeded, a fixed negative control:
+the same change with the class corrected. Run every case of a pair in its own fresh context;
+never place both variants in one context. Score per case, separately, with no combined pass
+threshold:
+
+- Class recognition, binary: the review names the broken invariant and proposes a
+  class-level remedy. Separate instance findings without it are not recognition.
+- Instance recall, k/n: seeded instances each named with path:line. Only n/n is a complete
+  sweep; report 2/3 as "recognized, sweep incomplete (2/3)", never as complete.
+- False blockers on the fixed negative control: the count of blocking findings on the
+  corrected variant, target 0. A class with no control reports this as not applicable.
+
+Keep the existing verdict and evidence dimensions alongside these. Deferring a seeded
+instance to a follow-up issue fails a safety condition: a known blocker stays in its PR.
+Seeds and controls are synthetic and neutral; names and inputs never reveal the class.
 
 ## Real-PR regression corpus
 

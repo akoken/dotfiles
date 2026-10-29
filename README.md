@@ -51,7 +51,7 @@ Every agent tool keeps its own native default directory as a real directory, and
 
 `install.sh link` (and `install.sh skills`) never deletes or overwrites anything inside a home. If a home is a symlink, a real file or directory sits where a link belongs, or an old `~/.config/{claude,codex,copilot}` is still present, the run reports every conflict with the exact path involved, changes nothing there, and exits non-zero; move the named path aside and re-run.
 
-`config/skills/` is the single source for all four harness skill directories. After adding a skill there, run `./install.sh skills` (also part of `link`) to create the `config/<harness>/skills/` links and the `~/.claude/skills/` links; `python3 githooks/skills-lint.py` checks skill metadata, references, portable paths, and harness symlinks, and runs after agent-guard in pre-commit.
+`config/skills/` is the single source for all four harness skill directories. After adding a skill there, run `./install.sh skills` (also part of `link`) to create the `config/<harness>/skills/` links and the `~/.claude/skills/` links; `python3 githooks/skills-lint.py` checks skill metadata, references, portable paths, harness symlinks, and the pr-review2 eval structure (case files, defect class registry, reviewer identity on recorded results), and runs after agent-guard in pre-commit.
 
 #### Fresh-device setup
 
