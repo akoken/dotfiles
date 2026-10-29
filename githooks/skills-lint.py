@@ -21,6 +21,14 @@ RESOURCE = re.compile(r'(?<![\w.-])(?:references|scripts)/[^\s`"\'<>\[\](){}]*')
 SKILL_REFERENCE = re.compile(
     r'`([a-z0-9]+(?:-[a-z0-9]+)*)`\s+skill\b|'
     r'\bskill\s+`([a-z0-9]+(?:-[a-z0-9]+)*)`', re.I)
+REVIEW_EVAL = 'pr-review2/eval'
+CLASS_KEY = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*')
+CLASS_COLUMNS = 6
+SEEDED_SECTIONS = ('Class recognition', 'Instance recall')
+CONTROL_SECTIONS = ('False blockers',)
+RESULT_FIELDS = ('reviewer', 'skill-version', 'candidate-sha256', 'case', 'host', 'model')
+RESULT_REVIEWER = 'pr-review2'
+ANCHOR = re.compile(r'^\s*- \S+:\d+', re.M)
 
 
 def frontmatter(text):
@@ -53,6 +61,110 @@ def frontmatter(text):
                 value = ''
         fields[key] = value
     return fields
+
+
+def section(text, heading):
+    """Return the body under a level-2 heading, or None when it is absent."""
+    match = re.search(rf'^## {re.escape(heading)}[ \t]*\n(.*?)(?=^## |\Z)', text, re.M | re.S)
+    return match.group(1) if match else None
+
+
+def case_list(cell):
+    return [] if cell == 'none' else [name.strip() for name in cell.split(',') if name.strip()]
+
+
+def lint_review_eval(evaluation, report):
+    """Check eval case files, the defect class registry and recorded result headers."""
+    case_root = evaluation / 'cases'
+    cases = {path.name: path for path in case_root.iterdir() if path.is_dir()} \
+        if case_root.is_dir() else {}
+    for name, case in sorted(cases.items()):
+        for required in ('input.md', 'oracle.md'):
+            path = case / required
+            if not path.is_file() or not path.read_text(encoding='utf-8').strip():
+                report(path, 1, f'eval case requires nonempty {required}')
+
+    registry = evaluation / 'classes.md'
+    if not registry.is_file():
+        report(registry, 1, 'missing defect class registry')
+    else:
+        keys = set()
+        for number, line in enumerate(registry.read_text(encoding='utf-8').splitlines(), 1):
+            if not line.startswith('|'):
+                continue
+            cells = [cell.strip() for cell in line.strip().strip('|').split('|')]
+            if cells[0] == 'Key' or set(''.join(cells)) <= set('-: '):
+                continue
+            if len(cells) != CLASS_COLUMNS:
+                report(registry, number, f'class row needs {CLASS_COLUMNS} columns')
+                continue
+            key, invariant, count, seeded, controls, target = cells
+            key = key.strip('`')
+            if not CLASS_KEY.fullmatch(key):
+                report(registry, number, f'class key must be <surface>.<broken-invariant>: {key}')
+                continue
+            if key in keys:
+                report(registry, number, f'duplicate class key: {key}')
+            keys.add(key)
+            if not invariant or not target:
+                report(registry, number, f'class {key} requires an invariant and a target')
+            if not count.isdigit() or int(count) < 1:
+                report(registry, number, f'class {key} requires a positive seeded instance count')
+            seeded_cases, control_cases = case_list(seeded), case_list(controls)
+            if not seeded_cases:
+                report(registry, number, f'class {key} requires a seeded case')
+            invariant_words = key.split('.', 1)[1].split('-')
+            leaks = (key, '-'.join(invariant_words), ' '.join(invariant_words))
+            roles = [(name, SEEDED_SECTIONS) for name in seeded_cases]
+            roles += [(name, CONTROL_SECTIONS) for name in control_cases]
+            for name, headings in roles:
+                if name not in cases:
+                    report(registry, number, f'class {key} names unknown eval case: {name}')
+                    continue
+                if any(word in name.split('-') for word in invariant_words if len(word) >= 4):
+                    report(registry, number, f'eval case name reveals class {key}: {name}')
+                case_input = cases[name] / 'input.md'
+                if case_input.is_file() and any(
+                        leak in case_input.read_text(encoding='utf-8').lower() for leak in leaks):
+                    report(case_input, 1, f'eval input reveals class {key}')
+                oracle = cases[name] / 'oracle.md'
+                if not oracle.is_file():
+                    continue
+                text = oracle.read_text(encoding='utf-8')
+                for heading in headings:
+                    if section(text, heading) is None:
+                        report(oracle, 1, f'oracle for class {key} requires section: {heading}')
+                recall = section(text, 'Instance recall')
+                if headings is SEEDED_SECTIONS and recall is not None and count.isdigit():
+                    found = len(ANCHOR.findall(recall))
+                    if found != int(count):
+                        report(oracle, 1, f'instance recall lists {found} path:line anchors; '
+                                          f'class {key} registers {count}')
+        if not keys:
+            report(registry, 1, 'defect class registry has no class rows')
+
+    results = evaluation / 'results'
+    for result in sorted(results.glob('*.md')) if results.is_dir() else ():
+        if result.name == 'README.md':
+            continue
+        header = {}
+        for line in result.read_text(encoding='utf-8').splitlines():
+            match = re.match(r'^([a-z0-9-]+):\s*(.*?)\s*$', line)
+            if not match:
+                break
+            header[match.group(1)] = match.group(2)
+        for field in RESULT_FIELDS:
+            if not header.get(field):
+                report(result, 1, f'result requires reviewer identity field: {field}')
+        if header.get('reviewer') and header['reviewer'] != RESULT_REVIEWER:
+            report(result, 1, f'result reviewer must be {RESULT_REVIEWER}')
+        version, digest = header.get('skill-version'), header.get('candidate-sha256')
+        if version and not re.fullmatch(r'\d+\.\d+\.\d+', version):
+            report(result, 1, 'result skill-version must be a metadata.version like 2.5.0')
+        if digest and not re.fullmatch(r'[0-9a-f]{64}', digest):
+            report(result, 1, 'result candidate-sha256 must be 64 lowercase hex digits')
+        if header.get('case') and header['case'] not in cases:
+            report(result, 1, f'result names unknown eval case: {header["case"]}')
 
 
 def lint(root):
@@ -127,6 +239,10 @@ def lint(root):
                     report(left if not left.is_file() else right, 1, 'missing shared review resource')
                 elif left.read_bytes() != right.read_bytes():
                     report(right, 1, f'shared review resource differs from {REVIEW_SKILLS[0]}: {relative}')
+
+    evaluation = shared / REVIEW_EVAL
+    if evaluation.is_dir():
+        lint_review_eval(evaluation, report)
 
     for harness in HARNESSES:
         directory = root / 'config' / harness / 'skills'

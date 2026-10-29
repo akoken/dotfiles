@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.4.0"
+  version: "2.5.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -123,6 +123,21 @@ with no change-induced causal relationship remain out of scope. A changed caller
 a defect in untouched code; show its causal link and admit that regression normally instead
 of suppressing it because the failing line is old.
 
+Recurring defect classes follow one trigger rule:
+
+- Name a class `<surface>.<broken-invariant>` after the invariant, not the instance
+  (`config.default-precedence`, not `missing-env-override`). Two findings are one class when
+  one shared fix point closes both.
+- At the second same-class finding in one PR, in this round or across rounds, name the
+  class and sweep the whole reviewed diff and affected callers for every instance of that
+  invariant before reporting. Report the found instances as path:line, the search used and
+  any scope the sweep did not cover; a partial sweep is reported as partial, not complete.
+- A third instance despite tests that already guard the class calls for a written design
+  note (input contract plus redesign) as the remedy instead of another instance fix.
+- A known blocker, including one found by a class sweep, blocks in the PR where it was
+  found; never defer it to a follow-up issue. Only test infrastructure that widens scope
+  beyond the change, such as a shared generator or a new eval case, may be a linked follow-up.
+
 Re-review follows the protocol: first round full; from round two, qualified Low/Medium-risk
 delta plus affected callers and old blockers. High risk or invalidated evidence requires full
 review. Three rounds with unresolved blockers/churn require human reassessment with an
@@ -215,6 +230,8 @@ original branch/status unchanged. Preserve any generated edits/artifacts with th
 ## Maintaining this skill
 
 Use [evaluation guide](eval/RUBRIC.md) after prompt/model/tool/protocol changes. Keep fixture
-oracles and fixes hidden from the reviewer. Seed fixtures are synthetic; real historical
-misses need expert-confirmed source evidence before joining the held-out real-PR corpus.
-Original v1 evaluation results do not establish v2 effectiveness.
+oracles, the class registry, results and fixes hidden from the reviewer. Seed fixtures are
+synthetic; real historical misses need expert-confirmed source evidence before joining the
+held-out real-PR corpus. Every result is bound to this skill's `metadata.version`; results
+of other reviewers, earlier versions, or the original v1 never establish this version's
+effectiveness.
