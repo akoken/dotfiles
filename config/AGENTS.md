@@ -37,7 +37,8 @@ When the user types `/graphify`,use the installed graphify skill or instructions
 - Project-level CLAUDE.md files should reference this section via `@~/AGENTS.md` import instead of restating it.
 
 # Agent Delegation Rules
-- Do NOT use Codex for aura tasks; use the designated Anthropic model worker.
+- aura tasks may use Claude or Codex. Codex for aura runs only on the company OBSS account (`CODEX_HOME=~/.codex-obss`, alias `codex-obss`); never use the personal `~/.codex` account for aura.
+- If the company Codex login is signed out or out of quota, use a Claude worker or wait; never fall back to the personal account.
 
 # CI Registration Checklist
 - When adding a new test file, register it in ALL relevant CI workflow files (`.github/workflows/*.yml`) in the SAME commit. Unregistered test files cause coverage-check CI failures.
