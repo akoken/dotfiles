@@ -2,7 +2,7 @@
 name: code-review-expert2
 description: "Review a diff, branch, commit range, or PR using verified findings, explicit coverage, risk-based re-review, and an incomplete-review verdict. Use for general code reviews; use pr-review2 for AURA merge-readiness or pre-PR self-review."
 metadata:
-  version: "2.4.0"
+  version: "2.5.0"
   derived-from: code-review-expert
 ---
 
@@ -136,8 +136,10 @@ input invalidates affected conclusions and may require INCOMPLETE.
 ## Evidence record and requirements
 
 Use [review record](references/review-record.md) for a real review: map each explicit
-acceptance criterion to implementation and verification evidence, record unresolved items,
-and validate the revision-bound review.json before a positive verdict. The validator checks
+acceptance criterion to implementation and verification evidence against its exact text,
+record unresolved items, accept an author-recorded run under the record's rule without
+adding evidence requirements the contract does not contain, and validate the revision-bound
+review.json before a positive verdict. The validator checks
 consistency, not source-code truth. Fixture-only or target-resolution exercises must report
 missing metadata honestly; never invent a record just to satisfy the schema.
 

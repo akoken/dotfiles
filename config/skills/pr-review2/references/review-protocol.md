@@ -49,7 +49,10 @@ Prefer the user's E2E entry point first; a narrower test can then isolate the ro
 When backporting a new test needs adaptation, record it and prove the behavioral trigger
 is unchanged. Do not weaken production/tests to manufacture red. If reproduction cannot
 run, keep the finding's static evidence but mark regression verification unverified; an
-explicit required reproduction remains an incomplete gate. Mutation evidence supplements
+explicit required reproduction remains an incomplete gate. A criterion that asks the author
+to run and record an observation is satisfied by that record under the review record's
+author-recorded rule, read against the criterion's exact text; the reviewer's inability to
+rerun or authenticate it is a disclosed limit, not an added gate. Mutation evidence supplements
 this check and does not replace proof that the regression test detects the original bug.
 
 Unresolved suspicions go under verification gaps, not verified findings. An unresolved
@@ -91,7 +94,9 @@ listed instance plus searching for further copies. The propagation sweep records
 the search used, the files covered and the instances found.
 
 States: open, fixed-and-verified, rejected-with-evidence, deferred-with-rationale. Read author
-replies and check them against current code. A comment saying fixed is not verification.
+replies and check them against current code. A comment saying fixed is not verification;
+an author-recorded observation that a criterion asks the author to produce is accepted only
+under the review record's author-recorded rule, never as proof of current code behavior.
 Deferral does not clear a computed blocker. Reopen a resolved/rejected finding only with
 new code or counterevidence; cite the reason. Update an existing finding instead of posting
 a duplicate thread. Never auto-resolve a human's thread without authorized publication.

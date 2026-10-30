@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.5.0"
+  version: "2.6.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -168,9 +168,10 @@ A review verdict is not permission to merge or a substitute for required human a
 ## 5. Evidence record and reviewable report
 
 Use [review record](references/review-record.md) for real peer/self reviews. Map each
-acceptance criterion to implementation and verification, preserve unmet/unverified criteria,
-and validate review.json against independently obtained revision/file/gate inputs before a
-positive verdict. This verifies consistency, not source truth. Missing-target and fixture-only
+acceptance criterion to implementation and verification against its exact text, preserve
+unmet/unverified criteria, accept an author-recorded run under the record's rule without
+adding evidence requirements the contract does not contain, and validate review.json against
+independently obtained revision/file/gate inputs before a positive verdict. This verifies consistency, not source truth. Missing-target and fixture-only
 exercises do not fabricate a record for unavailable metadata.
 
 Lead with the verdict and number of verified findings/blockers. When no actionable finding
