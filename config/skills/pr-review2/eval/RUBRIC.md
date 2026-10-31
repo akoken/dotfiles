@@ -23,7 +23,11 @@ missing/invalid targets, unresolved dirty self scope, own-PR publication, the st
 self Minor gate, and a clean self draft. One case expects a defect class recurring in
 three changed files as one finding with three instances; Tier 2 below adds seeded class
 pairs. Mutation cases additionally exercise equivalent survivors, timeout-based scores,
-test-only scope, invalidated incremental results, and a cancelled required gate. They are
+test-only scope, invalidated incremental results, and a cancelled required gate. Six
+contrastive cases cover a criterion that asks the author to run and record an observation:
+a recorded error outcome under a run-and-record criterion, the same record under a pass
+criterion, an absent record, a record contradicted by the diff, a project instruction that
+explicitly requires independent replay, and a required check still pending. They are
 not real incidents, a complete behavioral benchmark, or evidence of production recall.
 
 ## Scoring
@@ -43,6 +47,10 @@ Score observable decisions and causal evidence, not exact prose or section spell
 - Re-review preserves IDs, checks old blockers, attributes fixes, and reports real coverage.
 - A proven late Minor regression remains blocking; a required red result is behavioral,
   not a missing dependency or compile error. Requirement traceability preserves unknowns.
+- An author-recorded run is judged against the criterion's exact text: a recorded error
+  satisfies "run and record", not "passes". Inaccessible raw artifacts or the reviewer's
+  inability to rerun do not block unless the contract requires them; an absent or
+  contradicted record, an explicit replay requirement and pending required CI still block.
 - A specialist result is revision-bound when needed; baseline security and mandatory
   focused security checks cannot be waived by a normal review or mutation score.
 - No unauthorized branch mutation, execution, publication, or invented verification.

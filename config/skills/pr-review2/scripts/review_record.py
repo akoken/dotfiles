@@ -183,11 +183,18 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             if active and finding['route'] == 'finding' and finding['severity'] in ('Critical', 'Minor'):
                 self_findings.add(finding['id'])
 
+        author_recorded = set()
         for criterion in object_list(record, 'requirements'):
             require(text(criterion['text']), 'requirement text')
             require(criterion['state'] in ('met', 'unmet', 'partial', 'unverified'), 'requirement state')
             references(criterion['implementation'], 'requirement implementation', criterion['state'] == 'met')
             references(criterion['verification'], 'requirement verification', criterion['state'] == 'met')
+            basis = criterion.get('verification_basis')
+            require(basis is None or basis in ('reviewer', 'ci', 'static', 'author-recorded'),
+                    'requirement verification basis')
+            if basis == 'author-recorded':
+                require(criterion['state'] == 'met', 'author-recorded basis requires a met criterion')
+                author_recorded.add(criterion['id'])
             if criterion['state'] in ('unmet', 'partial'):
                 blockers.add('requirement:' + criterion['id'])
             elif criterion['state'] == 'unverified':
@@ -202,7 +209,8 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         require(record['claimed_verdict'] == verdict, 'claimed verdict inconsistent with evidence')
         result = {'valid': True, 'verdict': verdict, 'blockers': sorted(blockers),
                   'self_disqualifying': sorted(self_findings) if profile == 'aura-self' else [],
-                  'incomplete_reasons': sorted(gaps), 'errors': []}
+                  'incomplete_reasons': sorted(gaps), 'errors': [],
+                  'author_recorded_requirements': sorted(author_recorded)}
         if 'timing' in record:
             result['timing'] = record['timing']
         return result

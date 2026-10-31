@@ -16,6 +16,24 @@ Unmet/partial requirements enter the ordinary blocker calculation; unverified re
 prevent positive review. An explicitly authorized scope change must update the contract
 with its evidence before treating an omitted requirement as out of scope.
 
+A criterion can ask the author to perform a run and record its result, for example a billed,
+live, credentialed or host-specific probe. Bind acceptance to the criterion's exact text:
+"has run and its result is recorded" is satisfied by a recorded run whatever its outcome,
+including a recorded error, while "passes" requires the recorded outcome to be a pass. Accept
+the author's record as verification evidence, with verification_basis author-recorded, when
+it names its identity (date, build or version, inputs, outcome and stated limits), its stated
+result satisfies the criterion's own text, and no available evidence (diff, CI, another
+record or reply) contradicts it. verification_basis makes the source visible; it does not
+verify the evidence. Do not add evidence requirements the contract does not contain: absent
+raw artifacts or independent re-execution block only when the criterion, the issue or a
+project/user instruction explicitly requires them; otherwise name what was not inspected as
+a non-material gap. The criterion stays unverified when the record is incomplete (missing
+identity, ambiguous outcome), when later commits change the recorded behavior, or when a
+free in-scope check could confirm it and was not run. It is unmet or partial when the record
+is absent or does not satisfy the criterion's own text, and a contradicted claim when it
+conflicts with the diff or another record. Author prose about current code behavior is never
+an author-recorded observation; verify it against the code under the protocol.
+
 For bug fixes capture red/green evidence under the review protocol. Evidence references
 point to actual command output, source locations, reports or authorized requirements.
 No score, row count, JSON field or validator output proves that those observations are true.
@@ -48,8 +66,18 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   every verified instance as nonempty path:line anchors. Give both or neither.
   Use only verified admitted findings; unresolved suspicions belong in verification_gaps.
 - requirements: unique id, text, state met/unmet/partial/unverified, implementation and
-  verification evidence arrays. Use an empty list only when there are no explicit criteria.
-- verification_gaps: id, material boolean and evidence explaining what is unverified.
+  verification evidence arrays, and optional verification_basis reviewer/ci/static/
+  author-recorded naming the source of the verification evidence. Use an empty list only
+  when there are no explicit criteria. The validator lists author-recorded criteria in its
+  output so the report discloses them; it does not verify that evidence.
+- verification_gaps: id, material boolean and evidence explaining what is unverified. A
+  material gap names concretely the unresolved requirement or the material correctness or
+  security question it leaves open, for example a missing or pending required check or
+  specialist pass, a feasible in-scope check not run, a criterion whose stated evidence form
+  is absent, an incomplete, inconsistent or contradicted record, or an explicit requirement
+  for independent reproduction. Being unable to rerun or authenticate an author record that
+  the criterion only asked the author to produce is not material by itself; record it with
+  material false and say what was not inspected.
 - claimed_verdict: APPROVE, REQUEST_CHANGES or NEEDS_REVIEW, calculated by the reviewer.
 - timing: optional observational object described below; never a verdict input.
 

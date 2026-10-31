@@ -126,6 +126,31 @@ class ReviewRecordTests(unittest.TestCase):
         value['claimed_verdict'] = 'REQUEST_CHANGES'
         self.assertIn('requirement:R1', self.evaluate(value)['blockers'])
 
+    def test_author_recorded_criterion_is_met_and_disclosed(self):
+        value = record()
+        value['requirements'][0].update(
+            text='The paid probe has run once and its result is recorded in docs/probe.md',
+            implementation=['docs/probe.md:1-30'],
+            verification=['author-recorded:docs/probe.md:1-30', 'author-recorded:pr-comment:42'],
+            verification_basis='author-recorded')
+        value['verification_gaps'] = [{'id': 'raw-probe-artifacts', 'material': False,
+                                       'evidence': ['raw logs kept outside the repository']}]
+        result = self.evaluate(value)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(['R1'], result['author_recorded_requirements'])
+        value['verification_gaps'][0]['material'] = True
+        value['claimed_verdict'] = 'NEEDS_REVIEW'
+        self.assertIn('material gap: raw-probe-artifacts', self.evaluate(value)['incomplete_reasons'])
+        value = record()
+        value['requirements'][0].update(state='unverified', verification=[],
+                                        verification_basis='author-recorded')
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'author-recorded basis requires'):
+            self.evaluate(value)
+        value['requirements'][0].update(state='met', verification=['doc:probe.md'],
+                                        verification_basis='hearsay')
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'verification basis'):
+            self.evaluate(value)
+
     def test_minor_regression_blocks_even_without_declared_reason(self):
         value = record()
         value['findings'] = [finding()]
