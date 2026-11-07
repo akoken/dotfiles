@@ -14,6 +14,7 @@ Personal dotfiles for my macOS development environment.
 - [Repository Structure](#repository-structure)
 - [Install Script](#install-script)
 - [Codex Configuration](#codex-configuration)
+- [Agent Secret Hygiene (partial)](#agent-secret-hygiene-partial)
 - [ZSH Configuration](#zsh-configuration)
 - [Neovim](#neovim)
 - [Tmux](#tmux)
@@ -148,6 +149,44 @@ hook-trust entries Codex writes back into the live file); run
 copy anything Codex wrote back into `config.local.toml` first, or `codex-sync`
 will drop it. Codex's own state (auth, sessions, sqlite, plugin caches) lives
 next to those links in `~/.codex` and never inside the repo.
+
+## Agent Secret Hygiene (partial)
+
+These settings narrow what agent subprocesses can see. They are **partial
+protection**, not a fix:
+
+- **Claude Code MCP servers**: `CLAUDE_CODE_MCP_ALLOWLIST_ENV=1` in
+  `config/claude/settings.json` starts each stdio MCP server with a safe
+  baseline environment plus only that server's own configured `env`, instead
+  of the whole shell environment. Give each server its own secret through its
+  own `env` (stdio) or header (HTTP) entry, never on the command line.
+- **Codex commands**: `[shell_environment_policy]` in
+  `config/codex/config.toml` turns on Codex's built-in exclusion of variable
+  names containing `KEY`, `SECRET` or `TOKEN` (this also drops `GH_TOKEN`;
+  `gh` keeps working from the keyring) and adds `*PASSWORD*`, `*PASSWD*`,
+  `*CREDENTIAL*`, `*_PAT` and `*PRIVATE*`.
+- **Command guard**: `bin/agent-env-guard` is a PreToolUse hook for Claude
+  Code (`settings.json`) and Codex (`config.toml`) that denies whole-environment
+  dumps (`env`, `printenv` with no name, `export -p`, bare `set`,
+  `declare -x`/`-p`), `ps` with environment flags (`-E`, BSD `e` as in
+  `ps eww`) and reads of `/proc/<pid>/environ`. Ordinary `ps`,
+  `printenv NAME`, `env NAME=value command` and `env -u NAME command` still
+  run. Codex runs the hook only after it is trusted with `/hooks`. Decision
+  table: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`.
+
+What this does **not** solve:
+
+- The global export chain: `config/zsh/.zshenv` sources `~/.zshenv.local`
+  for every zsh, and anything exported there reaches every shell an agent
+  starts, including the Claude Code Bash tool, whatever the settings above say.
+  Secrets must not be exported globally.
+- Same-user access to other processes' environments: any program running as
+  your user can read them. The guard only inspects the command line the agent
+  typed; it cannot see what a test, script or interpreter (node, python, ...)
+  does once it runs, and indirections such as `p=ps; $p -E` get past it.
+- `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is intentionally not set: on Claude Code
+  2.1.319 it forces the permission mode to `default` (bypass is ignored), and
+  it cannot remove keys that shell startup files export again.
 
 ## ZSH Configuration
 

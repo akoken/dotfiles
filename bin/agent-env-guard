@@ -19,7 +19,8 @@ still checked).
 LIMITATION: this guard inspects only the command line the agent typed. It
 cannot see what a test, script, build tool or interpreter (node, python,
 ruby, ...) does once it runs, so a program that reads process environments
-internally is NOT stopped by it. Pair it with the subprocess environment
+internally is NOT stopped by it, and indirection such as `p=ps; $p -E` or
+building the command inside a script gets past it. Pair it with the subprocess environment
 scrub and with keeping secrets out of exported shell variables.
 
 Input: the hook JSON on stdin ({"tool_name": "Bash", "tool_input":

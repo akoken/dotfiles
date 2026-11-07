@@ -49,6 +49,20 @@ jobs:
         # validate the generated file.
         run: bash tests/codex-config-overlay.sh
 
+  agent-env-guard:
+    name: Agent env guard decisions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Lint guard and test syntax
+        run: python3 -m py_compile bin/agent-env-guard tests/test_agent_env_guard.py
+      - name: Test PreToolUse guard decision table
+        run: python3 -m unittest discover -s tests -p 'test_agent_env_guard.py' -v
+
   docker-smoke:
     name: Docker install.sh smoke (Linux)
     runs-on: ubuntu-latest

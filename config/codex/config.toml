@@ -38,12 +38,16 @@ last_revision = "67a666efc8524ff7abaa266f84e514aa77aee48f"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
+# The key reaches only this server, by name, from Codex's own environment
+# (context7-mcp reads CONTEXT7_API_KEY). Never pass it with --api-key: argv
+# is visible to every same-user `ps`.
 [mcp_servers.context7]
 args = [
     "-y",
     "@upstash/context7-mcp",
 ]
 command = "npx"
+env_vars = ["CONTEXT7_API_KEY"]
 startup_timeout_sec = 20
 
 [mcp_servers.cua_repl]
