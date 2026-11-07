@@ -34,7 +34,7 @@ When the user types `/graphify`,use the installed graphify skill or instructions
 # Delivery Workflow (PRs)
 - Standard PR loop: reproduce bug with a failing regression test -> fix -> update docs + CHANGELOG -> commit -> push -> open PR -> poll CI until every required check of the project is green -> reply to review findings -> request re-review.
 - Do not report done until every required check of the project is green.A project's stated draft-hold exception (e.g. a draft PR held for maintainer review) is a declared wait,never reported as done.
-- Project-level CLAUDE.md files should reference this section via `@~/AGENTS.md` import instead of restating it.
+- This loop is a template,not permission:carry out only the steps the user has explicitly authorized (see Git:no commit unless asked,no push without approval).
 
 # Agent Delegation Rules
 - aura tasks may use Claude or Codex. Codex for aura runs only on the company OBSS account (`CODEX_HOME=~/.codex-obss`, alias `codex-obss`); never use the personal `~/.codex` account for aura.
