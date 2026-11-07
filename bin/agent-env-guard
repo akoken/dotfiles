@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""PreToolUse command guard for Claude Code and Codex.
+
+Denies shell commands that dump a whole environment or list processes with
+their environments:
+
+  * ps with an environment flag: -E in a dash cluster (macOS), or e in a
+    BSD-style cluster without a dash (ps eww, ps auxe, ps axe)
+  * bare env / printenv, env with only options or assignments and no command
+  * export -p, bare export, bare set, declare/typeset/readonly with no name
+    (declare -x, declare -p, typeset -x, readonly -p)
+  * any read of /proc/<pid>/environ
+
+It allows ordinary ps (ps aux, ps -ef, ps -o pid,command -p 123),
+printenv NAME, export NAME=value, set -euo pipefail, declare -p NAME, and
+env NAME=value command ... / env -u NAME command ... (the wrapped command is
+still checked).
+
+LIMITATION: this guard inspects only the command line the agent typed. It
+cannot see what a test, script, build tool or interpreter (node, python,
+ruby, ...) does once it runs, so a program that reads process environments
+internally is NOT stopped by it. Pair it with the subprocess environment
+scrub and with keeping secrets out of exported shell variables.
+
+Input: the hook JSON on stdin ({"tool_name": "Bash", "tool_input":
+{"command": "..."}}). Output: a PreToolUse deny decision on stdout (exit 0)
+or nothing (allow). Deny messages name the matched form and the safe
+alternative; they never echo the command text, so a value typed on the
+command line cannot leak through the hook output.
+"""
+
+import json
+import os
+import re
+import shlex
+import sys
+
+SAFE_HINT = (
+    "Read a single variable with `printenv NAME` (or `[ -n \"${NAME+x}\" ]` to "
+    "test presence), list processes without environments (`ps -o pid,ppid,command`), "
+    "and pass values with `env NAME=value command`."
+)
+
+PUNCTUATION = set(";&|()<>\n")
+REDIRECTS = {"<", ">", ">>", "<<", "<<<", "<&", ">&", "<>", ">|", "&>", "&>>"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
+# Options that take a separate argument, per wrapper.
+SUDO_ARG_OPTS = {"-u", "-g", "-C", "-D", "-h", "-p", "-R", "-T", "-U", "-r", "-t"}
+NICE_ARG_OPTS = {"-n"}
+XARGS_ARG_OPTS = {"-E", "-I", "-J", "-L", "-n", "-P", "-R", "-S", "-s", "-d", "-a"}
+TIMEOUT_ARG_OPTS = {"-s", "-k", "--signal", "--kill-after"}
+ENV_ARG_OPTS = {"-u", "-S", "-P", "-C", "--unset", "--chdir", "--split-string"}
+# ps options (macOS and procps) that consume the following token, in dash
+# clusters (`-o pid`) and in BSD-style clusters without a dash (`axo pid`).
+PS_ARG_LETTERS = set("GgMNOoptUuDkq")
+PS_BSD_ARG_LETTERS = set("OoptUk")
+
+PROC_ENVIRON = re.compile(r"/proc/[^\s'\"]*/environ")
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=")
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`|<\(([^()]*)\)")
+
+
+class Deny(Exception):
+    """A denied form; the message is safe to show (no command text)."""
+
+
+def strip_heredoc_bodies(command):
+    """Drop here-document bodies; they are data, not commands."""
+    lines = command.split("\n")
+    out = []
+    pending = []
+    for line in lines:
+        if pending:
+            if line.strip() == pending[0]:
+                pending.pop(0)
+            continue
+        out.append(line)
+        pending.extend(m.group(2) for m in HEREDOC.finditer(line))
+    return "\n".join(out)
+
+
+def tokenize(command):
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>\n")
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    lexer.commenters = ""  # `#` also appears in ${#var}; never drop text
+    return list(lexer)
+
+
+def simple_commands(tokens):
+    current = []
+    skip_next = False
+    for tok in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if tok in REDIRECTS:
+            if current and current[-1].isdigit():
+                current.pop()  # fd number of `2>/dev/null`, not an argument
+            skip_next = True  # the redirect target is not an argument
+        elif tok and set(tok) <= PUNCTUATION:
+            # `;`, `&&`, `|`, and runs such as `)|` or `;\n` end a command
+            if current:
+                yield current
+            current = []
+        else:
+            current.append(tok)
+    if current:
+        yield current
+
+
+def check_command(command, depth=0):
+    if depth > 8:
+        raise Deny("command nesting is too deep to inspect")
+    if PROC_ENVIRON.search(command):
+        raise Deny("reading /proc/<pid>/environ dumps a process environment")
+    command = strip_heredoc_bodies(command)
+    for inner in SUBSTITUTION.finditer(command):
+        check_command(next(g for g in inner.groups() if g is not None), depth + 1)
+    try:
+        tokens = tokenize(command)
+    except ValueError:
+        # Unbalanced quoting: the shell would reject it too. Fall back to a
+        # whitespace split so obvious forms are still caught.
+        tokens = command.replace(";", " ; ").replace("|", " | ").split()
+    for words in simple_commands(tokens):
+        check_words(words, depth)
+
+
+def skip_options(words, i, arg_opts):
+    """Index of the first operand after a wrapper's options."""
+    while i < len(words):
+        w = words[i]
+        if w == "--":
+            return i + 1
+        if not w.startswith("-") or w == "-":
+            return i
+        i += 2 if w in arg_opts else 1
+    return i
+
+
+def check_words(words, depth):
+    i = 0
+    while i < len(words) and ASSIGNMENT.match(words[i]):
+        i += 1
+    if i >= len(words):
+        return
+    name = os.path.basename(words[i])
+    args = words[i + 1:]
+
+    if name in {"command", "builtin", "exec", "nohup", "noglob", "caffeinate", "stdbuf"}:
+        rest = skip_options(args, 0, {"-i", "-o", "-e"} if name == "stdbuf" else set())
+        if name == "command" and args[:1] and args[0] in {"-v", "-V"}:
+            return  # lookup only
+        return check_words(args[rest:], depth)
+    if name in {"sudo", "doas"}:
+        return check_words(args[skip_options(args, 0, SUDO_ARG_OPTS):], depth)
+    if name == "nice":
+        return check_words(args[skip_options(args, 0, NICE_ARG_OPTS):], depth)
+    if name == "time":
+        return check_words(args[skip_options(args, 0, set()):], depth)
+    if name in {"timeout", "gtimeout"}:
+        j = skip_options(args, 0, TIMEOUT_ARG_OPTS)
+        return check_words(args[j + 1:], depth)
+    if name == "xargs":
+        j = skip_options(args, 0, XARGS_ARG_OPTS)
+        if j >= len(args):
+            return  # xargs defaults to echo
+        return check_words(args[j:], depth)
+    if name == "watch":
+        j = skip_options(args, 0, {"-n", "--interval", "-d"})
+        return check_command(" ".join(args[j:]), depth + 1)
+    if name in SHELLS:
+        for k, a in enumerate(args):
+            if a.startswith("-") and not a.startswith("--") and "c" in a[1:]:
+                if k + 1 < len(args):
+                    check_command(args[k + 1], depth + 1)
+                return
+        return
+    if name == "eval":
+        return check_command(" ".join(args), depth + 1)
+    if name == "env":
+        return check_env(args, depth)
+    if name == "printenv":
+        if not [a for a in args if not a.startswith("-")]:
+            raise Deny("`printenv` without a variable name dumps the whole environment")
+        return
+    if name == "export":
+        if not args or all(a.startswith("-") for a in args):
+            raise Deny("`export -p` / bare `export` dumps every exported variable")
+        return
+    if name == "set":
+        if not args:
+            raise Deny("bare `set` dumps every shell variable")
+        return
+    if name in {"declare", "typeset", "readonly", "local"}:
+        if not [a for a in args if not a.startswith(("-", "+"))]:
+            if name == "local" and not args:
+                return  # prints only function locals
+            raise Deny(f"`{name}` without a name (e.g. `declare -x`, `declare -p`) dumps variables")
+        return
+    if name == "ps":
+        return check_ps(args)
+
+
+def check_env(args, depth):
+    i = 0
+    empty_env = False
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            i += 1
+            break
+        if a in {"-i", "--ignore-environment", "-"}:
+            empty_env = True
+            i += 1
+        elif a in ENV_ARG_OPTS:
+            if a in {"-S", "--split-string"} and i + 1 < len(args):
+                return check_command(args[i + 1], depth + 1)
+            i += 2
+        elif a.startswith("--") and "=" in a:
+            if a.startswith("--split-string="):
+                return check_command(a.split("=", 1)[1], depth + 1)
+            i += 1
+        elif a.startswith("-") and len(a) > 1:
+            if "S" in a[1:]:
+                rest = a[a.index("S") + 1:] or (args[i + 1] if i + 1 < len(args) else "")
+                return check_command(rest, depth + 1)
+            if "i" in a[1:]:
+                empty_env = True
+            if a[-1] in "uPC":
+                i += 2
+            else:
+                i += 1
+        else:
+            break
+    while i < len(args) and ASSIGNMENT.match(args[i]):
+        i += 1
+    if i >= len(args):
+        if empty_env:
+            return
+        raise Deny("`env` without a command dumps the whole environment")
+    return check_words(args[i:], depth)
+
+
+def check_ps(args):
+    skip = False
+    for k, a in enumerate(args):
+        if skip:
+            skip = False
+            continue
+        if a.startswith("--"):
+            if a in {"--sort", "--format", "--pid", "--ppid", "--user", "--group", "--cols", "--rows"}:
+                skip = True
+            continue
+        dashed = a.startswith("-")
+        letters = a[1:] if dashed else a
+        if not letters or not letters.isalpha():
+            continue  # pids, field lists, etc.
+        for idx, ch in enumerate(letters):
+            if dashed and ch == "E":
+                raise Deny("`ps -E` prints every listed process's environment")
+            if not dashed and ch == "e":
+                raise Deny("BSD-style `ps e` (e.g. `ps eww`, `ps auxe`) prints process environments")
+            if ch in (PS_ARG_LETTERS if dashed else PS_BSD_ARG_LETTERS):
+                if idx == len(letters) - 1:
+                    skip = True
+                break  # the rest of the cluster is this option's argument
+
+
+def decision(reason):
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": f"agent-env-guard: {reason}. {SAFE_HINT}",
+        }
+    }
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, UnicodeDecodeError):
+        # Fail closed and visibly; never echo the input.
+        json.dump(decision("could not parse the hook input, so the command was not inspected"), sys.stdout)
+        return 0
+    tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if isinstance(command, list):
+        command = shlex.join(str(c) for c in command)
+    if not isinstance(command, str) or not command.strip():
+        return 0
+    try:
+        check_command(command)
+    except Deny as denied:
+        json.dump(decision(str(denied)), sys.stdout)
+    except Exception as error:  # a guard bug must not silently allow
+        json.dump(decision(f"internal error ({type(error).__name__}), command not inspected"), sys.stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
