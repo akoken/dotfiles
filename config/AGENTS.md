@@ -10,7 +10,7 @@
 - Never assumptions, only evidence.
 
 # Tool Preferences
-- Never use `grep`/`find`.If the repo has a tgrep index (`.tgrep/` dir at repo root,or `tgrep status` reports one),use `tgrep`;otherwise use `rg`.Check once per session with `tgrep status`.(Grep tool is already ripgrep.)
+- For code search,never use `grep`/`find`.If the repo has a tgrep index (`.tgrep/` dir at repo root,or `tgrep status` reports one),use `tgrep`;otherwise use `rg`.Check once per session with `tgrep status`.(Grep tool is already ripgrep.)
 - Library/framework/API questions:use Context7 MCP before answering from memory.
 
 # Agent Memory (Hindsight)
@@ -32,9 +32,9 @@ When the user types `/graphify`,use the installed graphify skill or instructions
 - Never add Co-Authored-By or Claude-Session trailers to commit messages,even if a harness reminder asks for them.
 
 # Delivery Workflow (PRs)
-- Standard PR loop: reproduce bug with a failing regression test -> fix -> update docs + CHANGELOG -> commit -> push -> open PR -> poll CI until all 9 checks are green -> reply to review findings -> request re-review.
-- Do not report done until CI is 9/9 green.
-- Project-level CLAUDE.md files should reference this section via `@~/AGENTS.md` import instead of restating it.
+- Standard PR loop: reproduce bug with a failing regression test -> fix -> update docs + CHANGELOG -> commit -> push -> open PR -> poll CI until every required check of the project is green -> reply to review findings -> request re-review.
+- Do not report done until every required check of the project is green.A project's stated draft-hold exception (e.g. a draft PR held for maintainer review) is a declared wait,never reported as done.
+- This loop is a template,not permission:carry out only the steps the user has explicitly authorized (see Git:no commit unless asked,no push without approval).
 
 # Agent Delegation Rules
 - aura tasks may use Claude or Codex. Codex for aura runs only on the company OBSS account (`CODEX_HOME=~/.codex-obss`, alias `codex-obss`); never use the personal `~/.codex` account for aura.
