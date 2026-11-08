@@ -12,6 +12,7 @@ import ast
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import unittest
@@ -359,9 +360,10 @@ class ShellProfiles(ShellCase):
     def test_startup_check_detects_a_startup_file(self):
         # Control: a startup file that exports, aliases and defines something
         # (zsh without -f reads $ZDOTDIR/.zshenv) must show up in the report.
+        # SHLVL is an integer in zsh: a non-numeric value would read as 0.
         with open(os.path.join(self.box.home, ".zshenv"), "w") as fh:
             fh.write("export SYNTH_STARTUP_EXTRA=1\nexport HOME=/elsewhere\n"
-                     "export LOGNAME=SYNTH-STARTUP-MARKER\nexport SHLVL=SYNTH-STARTUP-MARKER\n"
+                     "export LOGNAME=SYNTH-STARTUP-MARKER\nexport SHLVL=7\n"
                      "alias zz=true\nzz_fn() { :; }\nsetopt extendedglob\n")
         argv = harness.SHELL_ARGV["zsh"]
         try:
@@ -374,10 +376,28 @@ class ShellProfiles(ShellCase):
         self.assertIn("HOME", report["changed_values"])
         self.assertIn("LOGNAME", report["changed_values"])  # re-review ENV-GUARD-06
         self.assertIn("SHLVL", report["changed_values"])
-        self.assertTrue(harness.startup_problems({"zsh": report}))
         self.assertIn("zz=true", report["aliases"])
         self.assertIn("zz_fn", report["functions"])
         self.assertIn("extendedglob", report["options"])
+        self.assertTrue(harness.startup_problems({"zsh": report}))
+
+    def test_startup_check_detects_a_removed_export(self):
+        # re-review ENV-GUARD-06 (368d4f8): a startup file that unexports or
+        # unsets a shell-added name must fail the check, one control each.
+        argv = harness.SHELL_ARGV["zsh"]
+        for line, name in (("typeset +x OLDPWD", "OLDPWD"), ("typeset +x PWD", "PWD"),
+                           ("unset SHLVL", "SHLVL"), ("unset LC_ALL", "LC_ALL")):
+            with self.subTest(startup=line):
+                with open(os.path.join(self.box.home, ".zshenv"), "w") as fh:
+                    fh.write(line + "\n")
+                try:
+                    harness.SHELL_ARGV["zsh"] = ["/bin/zsh", "-c"]
+                    report = harness.startup_report(self.box)["zsh"]
+                finally:
+                    harness.SHELL_ARGV["zsh"] = argv
+                    os.remove(os.path.join(self.box.home, ".zshenv"))
+                self.assertIn(name, report["missing_exports"])
+                self.assertTrue(harness.startup_problems({"zsh": report}))
 
 
 class CorpusMatchesShells(ShellCase):
@@ -546,12 +566,67 @@ class StructuralRule(unittest.TestCase):
                 self.assertTrue(raw_access_violations(source.replace(old, new, 1)))
 
 
+PROMISE = ("The hook blocks the patterns it recognises; a command that passes is not "
+           "evidence of security.")
+# Round-6 wording and absolute rules: wrong in any sentence, negated or not
+# (round 8, ENV-GUARD-14).
+STALE_CLAIMS = [re.compile(p) for p in (
+    r"\bpositive\b.*\ballow\b|\ballow\s+rule\b",
+    r"\bevery\s+accepted\s+command\b",
+    r"\bmust\s+be\s+denied\b",
+    r"\ba\s+command\s+is\s+denied\s+when\s+any\b",
+    r"\bthe\s+guarantee\s+covers\b",
+)]
+# A sentence that states one of these without a negation claims more than the
+# promise.
+SAFETY_CLAIMS = [re.compile(p) for p in (
+    r"\b(allow|allows|allowed|accepted|permitted|passing|passes|passed|pass)\b.*"
+    r"\b(is|are|be|stays?|remains?)\s+(safe|secure|harmless)\b",
+    r"\bguarantee",
+    r"\bevidence\s+of\s+(security|safety)\b",
+)]
+NEGATION = re.compile(r"\b(not|never|no|nor|cannot)\b|n't\b")
+SEEDED_CLAIMS = [
+    "All permitted commands are safe.",
+    "A command that passes is evidence of security.",
+    "The guard guarantees that an allowed command dumps nothing.",
+    "Every case a profile marks visible must be denied.",
+    "The positive allow rule holds for every case.",
+    "No canary is seen, so the positive allow rule passes it.",
+    "A command is denied when any shell would run a denied form.",
+]
+
+
+def normalised(text):
+    """Lowercased prose with comment markers and line breaks folded away."""
+    return re.sub(r"[\s#]+", " ", text).lower()
+
+
+def safety_claims(text):
+    """Sentences that claim more than the limited promise."""
+    found = []
+    for sentence in re.split(r"[.;:!?](?:\s|$)", normalised(text)):
+        if any(claim.search(sentence) for claim in STALE_CLAIMS) or (
+                not NEGATION.search(sentence)
+                and any(claim.search(sentence) for claim in SAFETY_CLAIMS)):
+            found.append(sentence.strip())
+    return found
+
+
 class LimitedGuaranteeIsStated(unittest.TestCase):
-    """README, the guard docstring and the hook messages state the same
-    limited guarantee (round 7, decision (c)): a tripwire, with the known
-    limitations listed by command."""
+    """README, the guard (docstring, contract and deny messages) and the
+    shell corpus make the same limited promise (round 7 decision (c), round 8
+    ENV-GUARD-14): the hook blocks the patterns it recognises; a command that
+    passes is not evidence of security."""
 
     README = pathlib.Path(__file__).resolve().parent.parent / "README.md"
+    TESTS = pathlib.Path(__file__).resolve().parent
+    CORPUS = TESTS / "agent_env_guard_shell_corpus.py"
+    HARNESS = TESTS / "agent_env_guard_harness.py"
+
+    def texts(self):
+        return {"README": self.README.read_text(), "guard": GUARD.read_text(),
+                "corpus": self.CORPUS.read_text(), "harness": self.HARNESS.read_text()}
 
     def test_readme_lists_every_known_limitation_by_command(self):
         readme = self.README.read_text()
@@ -562,20 +637,35 @@ class LimitedGuaranteeIsStated(unittest.TestCase):
                     self.assertTrue(case["limit"] in readme, case["limit"])
                     self.assertTrue(f"`{case['command']}`" in readme, case["command"])
 
-    def test_no_text_claims_an_allow_is_safe(self):
-        texts = {"README": self.README.read_text(), "guard": GUARD.read_text()}
-        for name, text in texts.items():
+    def test_every_text_states_the_promise(self):
+        promise = normalised(PROMISE)
+        for name in ("README", "guard", "corpus"):
             with self.subTest(text=name):
-                lowered = text.lower()
-                self.assertIn("tripwire", lowered)
-                for claim in ("positive allow", "allow rule is positive", "the guarantee covers",
-                              "every accepted command"):
-                    self.assertNotIn(claim, lowered)
+                self.assertIn(promise, normalised(self.texts()[name]))
+        self.assertIn("tripwire", normalised(self.texts()["README"]))
+        self.assertIn("tripwire", normalised(self.texts()["guard"]))
 
-    def test_deny_messages_make_no_safety_claim(self):
-        _, reason = decide("env")
-        self.assertNotIn("guarantee", reason.lower())
-        self.assertNotIn("safe command", reason.lower())
+    def test_no_text_claims_more_than_the_promise(self):
+        for name, text in self.texts().items():
+            with self.subTest(text=name):
+                self.assertEqual(safety_claims(text), [])
+
+    def test_seeded_claims_are_caught(self):
+        # Each seeded sentence, added to each real text, must be reported:
+        # the scan is checked, not assumed.
+        for name, text in self.texts().items():
+            for seed in SEEDED_CLAIMS:
+                with self.subTest(text=name, seed=seed):
+                    self.assertTrue(safety_claims(text + "\n# " + seed + "\n"))
+        self.assertEqual(safety_claims(PROMISE), [])
+
+    def test_deny_messages_state_the_promise(self):
+        for command in ("env", "ps -E", "echo $'a\\tb'"):
+            with self.subTest(command=command):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertIn(PROMISE, reason)
+                self.assertEqual(safety_claims(reason), [])
 
 
 class Limits(unittest.TestCase):

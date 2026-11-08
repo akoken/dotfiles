@@ -10,8 +10,11 @@ profile, what the shell does with the command in a synthetic environment
   parse_error  the shell rejected the command as a syntax error
 
 "No canary seen" never implies allow: the decision column is written out for
-every case, and the harness only checks that it is consistent (a case any
-profile marks visible or ran must be denied).
+every case. The harness checks it against the measured profiles: a case any
+profile marks visible or ran is denied unless it carries a KNOWN_LIMITS id,
+which records a known limitation (it dumps and the guard still passes it).
+The hook blocks the patterns it recognises; a command that passes is not
+evidence of security. An allow row in this corpus is no such evidence either.
 
 Profiles are keyed by shell and major version (sh=bash3 is macOS /bin/sh,
 sh=dash is Debian/Ubuntu /bin/sh). A profile missing from a case's table is
@@ -33,8 +36,8 @@ C = B + NL  # line continuation
 #   branch              the dump sits in a branch this environment skipped
 #   parse_error         the lexer refuses the text (unterminated construct)
 #   limit               a size or nesting limit is exceeded
-#   narrow              the text is outside the accepted grammar (positive
-#                       allow rule); refused although this form dumps nothing
+#   narrow              the text is outside the grammar the lexer reads; refused
+#                       although this form dumps nothing
 WHY = {"builtin_suppressed", "unknown", "branch", "parse_error", "limit", "narrow"}
 
 # Known limitations (round 7, maintainer decision (c): the guard is a

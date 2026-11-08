@@ -21,8 +21,8 @@ dump commands it recognises, read by the lexing contract below for sh, bash
 and zsh, and refuses forms it cannot read (unknown syntax, options a wrapper
 table does not know, a command name it cannot resolve, exceeded size or
 nesting limits) with a short reason that never quotes the command. An allow
-only means that no recognised pattern matched; it does not mean the command
-is safe. Known commands that still dump and pass are listed in the README
+only means that no recognised pattern matched. The hook blocks the patterns
+it recognises; a command that passes is not evidence of security. Known commands that still dump and pass are listed in the README
 ("Agent Secret Hygiene") and in tests/agent_env_guard_shell_corpus.py
 (KNOWN_LIMITS).
 
@@ -53,6 +53,13 @@ SAFE_HINT = (
     "and pass values with `env NAME=value command`."
 )
 
+# The one limited promise, stated in the docstring above, every deny message,
+# the README and the shell corpus (tests/test_agent_env_guard.py checks it).
+PROMISE = (
+    "The hook blocks the patterns it recognises; a command that passes is not "
+    "evidence of security."
+)
+
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
 # ps options (macOS and procps) that consume the following token, in dash
 # clusters (`-o pid`) and in BSD-style clusters without a dash (`axo pid`).
@@ -71,14 +78,16 @@ DECLARATION_BUILTINS = {"local", "typeset", "declare", "export", "readonly", "in
 # Lexing support contract
 #
 # Read as a tripwire (see the docstring): the contract says how the text is
-# split, not that an allowed command is safe.
+# split. The hook blocks the patterns it recognises; a command that passes is
+# not evidence of security.
 #
 # Supported dialects (verified profiles, measured by the shell corpus in
 # tests/): POSIX sh (dash 0.5; bash 3.2 in sh mode), bash 3.2 and 5.x, and
-# zsh 5.9, each started without user startup files. A command
-# is denied when ANY of them would run a denied form. Where they read the
-# typed text differently, the guard either takes the reading that runs more
-# (the union) or denies visibly. It denies visibly when the lexer meets
+# zsh 5.9, each started without user startup files. A recognised denied
+# form is denied when any of them would run it; a form the guard does not
+# recognise passes (README "Known limitations"). Where they read the typed
+# text differently, the guard either takes the reading that runs more (the
+# union) or denies visibly. It denies visibly when the lexer meets
 # text it cannot resolve (L9).
 #
 # All access to the typed command text goes through LogicalSource; nothing
@@ -1140,7 +1149,7 @@ def decision(reason):
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": f"agent-env-guard: {reason}. {SAFE_HINT}",
+            "permissionDecisionReason": f"agent-env-guard: {reason}. {SAFE_HINT} {PROMISE}",
         }
     }
 

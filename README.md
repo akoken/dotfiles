@@ -177,7 +177,9 @@ protection**, not a fix:
   command name, a command name built from a variable or a glob, an option a
   wrapper table does not know, `env -S`, a shell reading stdin, nesting or
   size over the limits), with a short reason that does not quote the
-  command. An allow only means that no recognised pattern matched. Everyday
+  command. An allow only means that no recognised pattern matched: the hook
+  blocks the patterns it recognises; a command that passes is not evidence
+  of security. Everyday
   forms such as `git status && git diff`, `env FOO=1 true` and quoted
   here-documents pass. Codex runs the hook only after it is trusted with
   `/hooks`. Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`

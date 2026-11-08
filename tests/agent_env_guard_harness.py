@@ -9,8 +9,9 @@ the profile check records whether one exists and verifies that PATH and the
 canary are unchanged after startup.
 
 The startup surface is checked, not assumed (startup_report): after a shell
-has started, the exported variable names must be the synthetic ones plus
-the names the shell itself sets, every synthetic value must be unchanged,
+has started, the exported variable names must be exactly the synthetic ones
+plus the names the shell itself sets (SHELL_ADDED; an extra, unexported or
+unset name fails), every value must be unchanged or the one the shell sets,
 no function may be defined, and zsh must show only its built-in default
 aliases and the options -f and -c give it. A system zshenv that exported,
 changed, aliased or set anything would fail that check.
@@ -169,10 +170,22 @@ def profiles(sandbox):
     return {shell: key for shell in SHELL_ARGV if (key := profile_key(shell, sandbox))}
 
 
-# Names a shell adds to the environment by itself, each with the only value
-# it may have (measured on macOS and Ubuntu; SHLVL is 0 or 1 depending on the
-# shell). Every other name must be a synthetic one with its synthetic value:
-# there is no name a startup file could change unnoticed.
+# The exact set of names each verified profile adds to the environment by
+# itself (measured on macOS and Ubuntu with no startup file changing
+# anything). After startup the exported names must be exactly the synthetic
+# names plus this set: an added, changed, unexported or unset name fails.
+# zsh resets `_` to the command it runs, so `_` cannot carry a startup value.
+SHELL_ADDED = {
+    "sh=bash3": {"PWD", "SHLVL", "_"},
+    "bash3": {"PWD", "SHLVL", "_"},
+    "sh=dash": {"PWD"},
+    "bash5": {"PWD", "SHLVL", "_"},
+    "zsh5": {"PWD", "OLDPWD", "SHLVL", "_"},
+}
+
+
+# The only value each shell-added name may have (SHLVL is 0 or 1 depending
+# on the shell).
 def shell_set_value_ok(name, value, cwd):
     if name in ("PWD", "OLDPWD"):
         return value == os.path.realpath(cwd)
@@ -195,7 +208,7 @@ SURFACE_PROBE = {
 def startup_report(sandbox):
     """What a started shell carries beyond the synthetic environment."""
     report = {"system_zshenv": {p: os.path.exists(p) for p in SYSTEM_ZSHENV}}
-    for shell in profiles(sandbox):
+    for shell, key in profiles(sandbox).items():
         with tempfile.TemporaryDirectory(dir=sandbox.root) as cwd:
             env = sandbox.environment(os.path.join(cwd, ".trace"))
             run = lambda script, extra=None: subprocess.run(  # noqa: E731
@@ -206,20 +219,25 @@ def startup_report(sandbox):
             # the env shim. A value with a newline yields a stray line, which
             # is reported as an extra name.
             seen = {}
-            for line in run("/usr/bin/env").splitlines():
+            # "; :" keeps the shell from exec-ing env as its last command: zsh
+            # re-exports SHLVL on that exec even after a startup file unset it.
+            for line in run("/usr/bin/env; :").splitlines():
                 name, _, value = line.partition("=")
                 seen[name] = value
-            extra = sorted(n for n in seen if n not in env and not shell_set_value_ok(n, seen[n], cwd)
-                           and n not in ("PWD", "OLDPWD", "SHLVL", "_"))
-            changed = sorted(n for n in seen if (n in env and seen[n] != env[n]) or (
-                n not in env and n in ("PWD", "OLDPWD", "SHLVL", "_") and not shell_set_value_ok(n, seen[n], cwd)))
-            changed += sorted(n for n in env if n not in seen)  # removed or unexported
+            expected = set(env) | SHELL_ADDED.get(key, set())
+            extra = sorted(set(seen) - expected)
+            missing = sorted(expected - set(seen))  # unexported or unset
+            changed = sorted(n for n in set(seen) & expected if (
+                seen[n] != env[n] if n in env else not shell_set_value_ok(n, seen[n], cwd)))
+            if key not in SHELL_ADDED:
+                missing.append("<unverified profile>")
             surface = run(SURFACE_PROBE[shell])
         options, _, rest = surface.partition(":aliases\n")
         aliases, _, functions = rest.partition(":functions\n")
         report[shell] = {
             "extra_exports": extra,
-            "changed_values": sorted(changed),
+            "missing_exports": missing,
+            "changed_values": changed,
             "options": options.split(),
             "aliases": aliases.split(),
             "functions": functions.split(),
@@ -230,7 +248,7 @@ def startup_report(sandbox):
 def expected_surface(shell):
     zsh = shell == "zsh"
     return {
-        "extra_exports": [], "changed_values": [], "functions": [],
+        "extra_exports": [], "missing_exports": [], "changed_values": [], "functions": [],
         "options": ZSH_DEFAULT_OPTIONS if zsh else [],
         "aliases": ZSH_DEFAULT_ALIASES if zsh else [],
     }
