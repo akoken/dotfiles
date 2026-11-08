@@ -127,7 +127,7 @@ fi
 [[ -a ~/.localrc ]] && source ~/.localrc
 
 # look for all .zsh files and source them
-for file in "$ZDOTDIR/.zsh_prompt" "$ZDOTDIR/.zsh_aliases"; do
+for file in "$ZDOTDIR/.zsh_prompt" "$ZDOTDIR/.zsh_aliases" "$ZDOTDIR/.zsh_agent_keys"; do
     if [ -f $file ]; then
         source $file
     fi

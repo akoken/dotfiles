@@ -38,12 +38,19 @@ last_revision = "67a666efc8524ff7abaa266f84e514aa77aee48f"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
+# The Context7 key never goes on argv (a key flag is visible to every `ps`)
+# and never into Codex's own environment: bin/context7-mcp starts the pinned
+# server that `install.sh mcp` installs outside every project (never npx,
+# which would prefer a project's own node_modules) through with-secret, so
+# CONTEXT7_API_KEY exists in that server process alone. `sh -c` resolves
+# $HOME, which Codex forwards to stdio servers, so this works when Codex runs
+# without ~/bin on PATH.
 [mcp_servers.context7]
 args = [
-    "-y",
-    "@upstash/context7-mcp",
+    "-c",
+    'exec "$HOME/bin/context7-mcp"',
 ]
-command = "npx"
+command = "sh"
 startup_timeout_sec = 20
 
 [mcp_servers.cua_repl]

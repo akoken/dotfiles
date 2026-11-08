@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#
+# context7-mcp
+#
+# Start the Context7 MCP server (stdio) for Codex, OpenCode or Copilot with
+# its key in its own environment only. The server is the pinned copy that
+# `install.sh mcp` installs outside every project, started by absolute path:
+# never `npx`, which prefers a same-named package from the current project's
+# node_modules and would hand the key to whatever that project ships. If the
+# pinned install is missing this fails closed instead of falling back.
+# See README "Agent keys".
+
+# A caller's exported SHELLOPTS=xtrace (or `bash -x`) would trace the launch
+# below. Turn tracing off before anything else.
+set +x
+set -Eeuo pipefail
+
+server="$HOME/.local/share/agent-mcp/context7/node_modules/.bin/context7-mcp"
+
+if [ ! -x "$server" ]; then
+  echo "context7-mcp: pinned server not installed; run './install.sh mcp' in the dotfiles repo" >&2
+  exit 1
+fi
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$here/with-secret" context7 CONTEXT7_API_KEY "$server" "$@"
