@@ -1012,6 +1012,38 @@ setup_hooks() {
   success "core.hooksPath set to githooks/ — githooks/pre-commit now runs on commit."
 }
 
+# ---------------------------------------------------------------------------
+# MCP servers that receive an agent key run from a pinned install outside
+# every project: one directory per mcp/<name>/ manifest under
+# ~/.local/share/agent-mcp/, installed with `npm ci` from the tracked lockfile
+# (exact versions and integrity hashes) and without install scripts. A
+# launcher such as bin/context7-mcp starts it by absolute path, so a
+# same-named package in a project's node_modules is never selected.
+# ---------------------------------------------------------------------------
+agent_mcp_home="$HOME/.local/share/agent-mcp"
+
+setup_mcp() {
+  title "Installing pinned MCP servers into ${agent_mcp_home/#$HOME/~}"
+  command -v npm >/dev/null 2>&1 ||
+    error "npm not found; run './install.sh homebrew' first (the Brewfile installs node)"
+  local manifest name dest
+  for manifest in "$DOTFILES"/mcp/*/package.json; do
+    [ -f "$manifest" ] || continue
+    name="$(basename "$(dirname "$manifest")")"
+    dest="$agent_mcp_home/$name"
+    info "installing $name"
+    do_mkdir "$dest"
+    do_copy "$manifest" "$dest/package.json"
+    do_copy "$(dirname "$manifest")/package-lock.json" "$dest/package-lock.json"
+    if ((DRY_RUN)); then
+      info "[dry-run] (cd $dest && npm ci --ignore-scripts --omit=dev --no-audit --no-fund)"
+    else
+      (cd "$dest" && npm ci --ignore-scripts --omit=dev --no-audit --no-fund) ||
+        error "npm ci failed for $name"
+    fi
+  done
+}
+
 usage() {
   cat <<EOF
 
@@ -1026,11 +1058,12 @@ Commands:
   codex-sync       Regenerate ~/.codex/config.toml from config.toml + config.local.toml
   skills           Link config/skills into every harness dir and ~/.claude/skills (also run by link)
   hooks            Install githooks/pre-commit via 'git config core.hooksPath'
+  mcp              Install pinned MCP servers (mcp/*) into ~/.local/share/agent-mcp
   git              Set up Git identity and credential helper
   homebrew         Install Homebrew and run 'brew bundle' from the Brewfile
   shell            Set Zsh as the default shell and pre-install Zinit
   macos            Apply macOS system preferences
-  all              Run link -> homebrew -> shell -> git -> macos
+  all              Run link -> homebrew -> mcp -> shell -> git -> macos
   help             Show this message
 
 Flags:
@@ -1085,6 +1118,9 @@ skills)
 hooks)
   setup_hooks
   ;;
+mcp)
+  setup_mcp
+  ;;
 git)
   setup_git
   ;;
@@ -1101,6 +1137,7 @@ all)
   setup_symlinks
   fail_on_conflicts
   setup_homebrew
+  setup_mcp
   setup_shell
   setup_git
   setup_macos

@@ -72,6 +72,7 @@ dotfiles/
 ├── Dockerfile                # Linux test environment
 ├── install.sh                # Setup & installation script
 ├── bin/                      # Custom shell scripts (symlinked to ~/bin)
+├── mcp/                      # Pinned MCP server manifests (installed by install.sh mcp)
 └── config/
     ├── aerospace/  # Tiling window manager
     ├── bat/        # bat themes
@@ -113,11 +114,12 @@ dotfiles/
 | `codex-sync` | Regenerate `~/.codex/config.toml` from `config.toml` + `config.local.toml` |
 | `skills`     | Link `config/skills/` into every `config/<harness>/skills/` and `~/.claude/skills/` (also run by `link`) |
 | `hooks`      | Install `githooks/pre-commit` via `git config core.hooksPath` |
+| `mcp`        | Install the pinned MCP servers from `mcp/*` into `~/.local/share/agent-mcp/` (see [Agent Keys](#agent-keys)) |
 | `git`        | Set up Git identity and credential helper |
 | `homebrew`   | Install Homebrew and run `brew bundle` from the [Brewfile](./Brewfile) |
 | `shell`      | Set Zsh as the default shell and pre-install Zinit |
 | `macos`      | Apply macOS system preferences (Finder, keyboard, Safari, etc.) |
-| `all`        | Run `link` → `homebrew` → `shell` → `git` → `macos` |
+| `all`        | Run `link` → `homebrew` → `mcp` → `shell` → `git` → `macos` |
 | `help`       | Show usage |
 
 | Flag                | Description |
@@ -171,9 +173,13 @@ interactive shell does not inherit any of them.
    line on stderr (never the value, never the token), nothing on stdout, and
    exits non-zero.
 3. `bin/with-secret <item> <VAR> <command> [args...]` captures that value,
-   sets `VAR` in its own process and `exec`s the command. The command (and
-   its children) is the only process that gets the key; the calling shell
-   gets nothing. If the key cannot be read, the command is not started.
+   removes the other managed keys (`CONTEXT7_API_KEY`, `OBSS_LLM_API_KEY`,
+   `OPENROUTER_API_KEY`, `XAI_API_KEY`, `JIRA_API_TOKEN`) and
+   `OP_SERVICE_ACCOUNT_TOKEN` from its environment, sets `VAR` and `exec`s
+   the command. The command (and its children) is the only process that gets
+   the key, and only that key; the calling shell gets nothing. If the key
+   cannot be read, the command is not started. All three scripts turn off an
+   inherited `xtrace` (`SHELLOPTS=xtrace`, `bash -x`) before reading anything.
 4. Consumers:
 
    | Consumer | Key (item → variable) | How it gets the key |
@@ -181,9 +187,27 @@ interactive shell does not inherit any of them.
    | `grok` (Grok CLI) | `xai` → `XAI_API_KEY` | shell function in `config/zsh/.zsh_agent_keys` |
    | `jira` (jira-cli) | `jira` → `JIRA_API_TOKEN` | shell function in `config/zsh/.zsh_agent_keys` |
    | anything needing OpenRouter / OBSS LLM | `openrouter` → `OPENROUTER_API_KEY`, `obss-llm` → `OBSS_LLM_API_KEY` | prefix the one command: `with-openrouter <cmd>`, `with-obss-llm <cmd>` |
-   | Codex Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/codex/config.toml` starts the server through `with-secret`; the key is in that server's environment only, never on argv and never in Codex's own environment |
-   | OpenCode Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/opencode/opencode.json`, same `with-secret` launch as Codex |
+   | Codex Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/codex/config.toml` runs `bin/context7-mcp`, which starts the pinned server by absolute path through `with-secret`; the key is in that server's environment only, never on argv and never in Codex's own environment |
+   | OpenCode Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/opencode/opencode.json`, same `bin/context7-mcp` launch as Codex |
    | Claude Code Context7 MCP (HTTP) | `context7` → `Authorization` header | `headersHelper` running `bin/context7-headers`; no static header in `~/.claude.json` |
+
+The stdio Context7 server never runs through `npx`: `npx` prefers a
+same-named package from the current project's `node_modules`, so any project
+an agent opens could receive the key. `./install.sh mcp` (also part of `all`)
+installs the version pinned in `mcp/context7/package.json` with `npm ci
+--ignore-scripts` from the tracked lockfile (exact versions, integrity hashes)
+into `~/.local/share/agent-mcp/context7/`, and `bin/context7-mcp` starts that
+copy by absolute path. Without that install it fails closed. To upgrade, bump
+the exact version in `mcp/context7/package.json`, regenerate the lockfile with
+`npm install --package-lock-only --ignore-scripts` in that directory, and
+re-run `./install.sh mcp`.
+
+Copilot CLI keeps MCP servers in `~/.copilot/mcp-config.json` (not managed
+here). Use the same launcher there instead of a header holding the key:
+
+```json
+"context7": { "type": "local", "command": "sh", "args": ["-c", "exec \"$HOME/bin/context7-mcp\""], "tools": ["*"] }
+```
 
 Claude Code keeps MCP servers in `~/.claude.json`, which this repo does not
 manage. Register Context7 there once (the single quotes keep `$HOME` for the
@@ -196,10 +220,14 @@ claude mcp add-json -s user context7 \
 ```
 
 `tests/agent-keys.sh` (CI job "Agent key wrappers") checks all of this with a
-fake `op` and `security` and synthetic values: each wrapper passes exactly its
-own variable to its child and nothing to the parent shell (under bash and
-zsh), every failure path prints neither value nor token and starts nothing,
-and the tracked Context7 configs carry no key and no key flag.
+fake `op`, `security`, `npm` and `npx` and synthetic values: each wrapper
+passes exactly its own variable to its child and nothing to the parent shell
+(under bash and zsh), even when the starting environment still carries the
+other keys and the service account token; every failure path, and every path
+under an inherited `xtrace`, prints neither value nor token and starts
+nothing; the Codex and OpenCode launches, run inside a project that ships its
+own `context7-mcp` package, start only the pinned install; and the leak scans
+report file names, never the matched text.
 
 ### Adding a key
 
@@ -209,8 +237,12 @@ and the tracked Context7 configs carry no key and no key flag.
 2. Check it without displaying it: `secret-get <item> | wc -c` (a non-zero
    count and exit status 0).
 3. Give its consumer a wrapper in `config/zsh/.zsh_agent_keys`, for example
-   `mytool() { with-secret myitem MYTOOL_API_KEY mytool "$@"; }`, or for an
-   MCP server launch it as `with-secret <item> <VAR> <server command...>`.
+   `mytool() { with-secret myitem MYTOOL_API_KEY mytool "$@"; }`. If the new
+   variable should also be stripped from other consumers, add it to the
+   managed list in `bin/with-secret` and `bin/secret-get`. An MCP server gets
+   a pinned install under `mcp/<name>/` and a launcher like
+   `bin/context7-mcp` that starts it by absolute path through `with-secret`;
+   never launch it with `npx` or a bare name a project could shadow.
    Never add an `export` of the key anywhere, and never pass it as a command
    line flag.
 4. Extend `tests/agent-keys.sh` for the new consumer.
@@ -221,6 +253,9 @@ and the tracked Context7 configs carry no key and no key flag.
   user (for example through its environment); `with-secret` narrows which
   processes hold a key and for how long, it does not isolate them from one
   another.
+- `node` itself is resolved from `PATH` when the pinned server starts, and
+  `NODE_OPTIONS` or similar variables in the launching environment still
+  apply; only the package location is pinned.
 - Long-running consumers, MCP servers in particular, hold their key in their
   environment for as long as they run. Restart them after rotating a key.
 - The Claude Code helper's output is held by Claude Code for that connection,
@@ -313,6 +348,7 @@ Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
 |----------------------|-------------|
 | `brew-why`           | List installed packages and their dependents |
 | `context7-headers`   | Claude Code `headersHelper` for Context7, see [Agent Keys](#agent-keys) |
+| `context7-mcp`       | Start the pinned Context7 MCP server with its key, see [Agent Keys](#agent-keys) |
 | `extract`            | Extract any archive format automatically |
 | `git-bare-clone`     | Clone a repo as a bare repository for worktrees |
 | `git-create-worktree`| Create a new git worktree |

@@ -1,0 +1,8 @@
+{
+  "name": "agent-mcp-context7",
+  "private": true,
+  "description": "Pinned Context7 MCP server, installed outside any project by install.sh mcp",
+  "dependencies": {
+    "@upstash/context7-mcp": "4.4.4"
+  }
+}

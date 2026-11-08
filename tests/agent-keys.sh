@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 
 # Controls for the per-command agent key flow (README "Agent keys"):
-# bin/secret-get, bin/with-secret, bin/context7-headers, the shell wrappers in
-# config/zsh/.zsh_agent_keys and the Context7 MCP configs.
+# bin/secret-get, bin/with-secret, bin/context7-headers, bin/context7-mcp,
+# the shell wrappers in config/zsh/.zsh_agent_keys, the Context7 MCP configs
+# and `install.sh mcp`.
 #
-# Every case runs against a fake `security` and a fake `op` placed first on a
-# private PATH, with synthetic values only. Nothing here reads the real
-# Keychain or 1Password.
+# Every case runs against a fake `security`, `op`, `npm` and `npx` placed
+# first on a private PATH, with synthetic values only. Nothing here reads the
+# real Keychain or 1Password, and no failure message prints a value: failures
+# name the case, never the data.
 
+set +x
 set -Eeuo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,17 +22,33 @@ fail() {
   exit 1
 }
 
-# Synthetic values, never real credentials.
+# Resolve the interpreter before narrowing PATH; the config checks need
+# tomllib (Python 3.11+).
+py="$(command -v python3)" || fail "python3 not found"
+"$py" -c 'import tomllib' 2>/dev/null || fail "python3 with tomllib (3.11+) is required"
+
+# Synthetic values, never real credentials. Every one is a marker that must
+# never show up on any stderr or in this script's own failure output.
 token="synthetic-sa-token-0001"
 xai_value="synthetic-xai-value-42"
+jira_value="synthetic-jira-value-43"
 ctx_value="synthetic.ctx7.value-7"
+other_jira="synthetic-other-jira-44"
+other_ctx="synthetic-other-ctx-45"
+other_or="synthetic-other-openrouter-46"
+other_obss="synthetic-other-obss-47"
+stale_xai="synthetic-stale-xai-48"
+markers=("$token" "$xai_value" "$jira_value" "$ctx_value" "$other_jira" "$other_ctx" "$other_or" "$other_obss" "$stale_xai")
+key_names=(CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN)
 
 fakebin="$work/fakebin"
-mkdir -p "$fakebin" "$work/home"
+home="$work/home"
+mkdir -p "$fakebin" "$home"
 oplog="$work/op.log"
 
 cat >"$fakebin/security" <<EOF
 #!/bin/sh
+set +x
 # fake macOS security: only the agent-keys service account token exists
 [ "\${FAKE_SECURITY_MODE:-ok}" = fail ] && exit 44
 [ "\$1" = find-generic-password ] || exit 2
@@ -49,12 +68,14 @@ EOF
 
 cat >"$fakebin/op" <<EOF
 #!/bin/sh
+set +x
 # fake 1Password CLI: records argv and selected environment facts, serves
 # synthetic values only when called with the expected token
 {
   printf 'argv:%s\n' "\$*"
   printf 'token-match:%s\n' "\$([ "\${OP_SERVICE_ACCOUNT_TOKEN-}" = '$token' ] && echo yes || echo no)"
   printf 'connect-host:%s\n' "\${OP_CONNECT_HOST-unset}"
+  printf 'jira-in-op:%s\n' "\${JIRA_API_TOKEN:+set}"
 } >>'$oplog'
 case "\${FAKE_OP_MODE:-ok}" in
   fail)
@@ -68,49 +89,68 @@ esac
 [ "\$1 \$2" = "read --no-newline" ] || exit 4
 case "\$3" in
   op://agent-keys/xai/credential) printf '%s' '$xai_value' ;;
-  op://agent-keys/jira/credential) printf '%s' 'synthetic-jira-value' ;;
+  op://agent-keys/jira/credential) printf '%s' '$jira_value' ;;
   op://agent-keys/context7/credential) printf '%s' "\${FAKE_CTX_VALUE:-$ctx_value}" ;;
   *) exit 5 ;;
 esac
 EOF
 
-# A consumer stand-in: records which of the five key names it received.
-cat >"$fakebin/probe" <<'EOF'
+# A consumer stand-in: records which managed names it received, and values
+# only as "match"/"other" so the record itself never holds a marker.
+cat >"$fakebin/probe" <<EOF
 #!/bin/sh
-out="$1"
-: >"$out"
-for name in CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN; do
-  eval "v=\${$name-}"
-  [ -n "$v" ] && printf '%s=%s\n' "$name" "$v" >>"$out"
+set +x
+out="\$1"
+: >"\$out"
+for name in ${key_names[*]}; do
+  eval "v=\\\${\$name-}"
+  [ -n "\$v" ] || continue
+  case "\$name=\$v" in
+    XAI_API_KEY='$xai_value' | JIRA_API_TOKEN='$jira_value' | CONTEXT7_API_KEY='$ctx_value') printf '%s=match\n' "\$name" >>"\$out" ;;
+    *) printf '%s=other\n' "\$name" >>"\$out" ;;
+  esac
 done
 exit 0
 EOF
-chmod +x "$fakebin/security" "$fakebin/op" "$fakebin/probe"
 
-# Resolve the interpreter before narrowing PATH; the config check needs
-# tomllib (Python 3.11+).
-py="$(command -v python3)" || fail "python3 not found"
-"$py" -c 'import tomllib' 2>/dev/null || fail "python3 with tomllib (3.11+) is required"
+# probe-var <name> <out>: records whether one arbitrary variable holds the
+# xAI marker.
+cat >"$fakebin/probe-var" <<EOF
+#!/bin/sh
+set +x
+eval "v=\\\${\$1-}"
+if [ "\$v" = '$xai_value' ]; then echo match >"\$2"; else echo missing >"\$2"; fi
+EOF
+chmod +x "$fakebin/security" "$fakebin/op" "$fakebin/probe" "$fakebin/probe-var"
 
 # Private PATH: fakes first, then the repo's bin, then the system.
 export PATH="$fakebin:$repo/bin:/usr/bin:/bin"
 export USER="${USER:-tester}"
-unset CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN
+unset "${key_names[@]}" BASH_ENV ENV
 
-no_secret_in() { # <file> <label>
-  ! grep -q -e "$token" -e "$xai_value" -e "$ctx_value" "$1" || fail "$2 contains a secret or the token"
+no_marker_in() { # <file> <label>: fixed message only, never the match
+  local m
+  for m in "${markers[@]}"; do
+    if grep -qF -e "$m" "$1"; then fail "$2 contains a secret marker"; fi
+  done
+}
+
+expect_probe() { # <file> <expected-content> <label>
+  [ "$(cat "$1")" = "$2" ] ||
+    fail "$3: child env should be '$2', got names: $(cut -d= -f1 "$1" | tr '\n' ' ')"
 }
 
 # --- secret-get: success -----------------------------------------------------
 : >"$oplog"
-out="$(OP_CONNECT_HOST=http://connect.invalid secret-get xai)" || fail "secret-get xai failed"
+out="$(OP_CONNECT_HOST=http://connect.invalid JIRA_API_TOKEN="$other_jira" secret-get xai)" || fail "secret-get xai failed"
 [ "$out" = "$xai_value" ] || fail "secret-get xai printed the wrong value"
 grep -qx 'argv:read --no-newline op://agent-keys/xai/credential' "$oplog" || fail "op not called with the expected read reference"
 grep -qx 'token-match:yes' "$oplog" || fail "op did not receive the service account token"
 grep -qx 'connect-host:unset' "$oplog" || fail "OP_CONNECT_HOST leaked into op"
-! grep -q "argv:.*$token" "$oplog" || fail "token appeared on op's command line"
+grep -qx 'jira-in-op:' "$oplog" || fail "another managed key leaked into op"
+! grep '^argv:' "$oplog" | grep -qF "$token" || fail "token appeared on op's command line"
 
-# --- secret-get: failure paths print no value and no token -------------------
+# --- failure paths print no value and no token -------------------------------
 check_failure() { # <label> <expected-status|any> <command...>
   local label="$1" want="$2" status=0
   shift 2
@@ -118,7 +158,7 @@ check_failure() { # <label> <expected-status|any> <command...>
   [ "$status" -ne 0 ] || fail "$label: exited 0"
   [ "$want" = any ] || [ "$status" -eq "$want" ] || fail "$label: exit $status, want $want"
   [ ! -s "$work/f.out" ] || fail "$label: wrote to stdout"
-  no_secret_in "$work/f.err" "$label stderr"
+  no_marker_in "$work/f.err" "$label stderr"
   [ -s "$work/f.err" ] || fail "$label: no error message"
 }
 check_failure "op failure" 1 env FAKE_OP_MODE=fail secret-get xai
@@ -132,10 +172,41 @@ for bad in '../xai' 'xai/credential' '-x' 'a b' 'x?y' ''; do
 done
 [ ! -s "$oplog" ] || fail "op was called for an invalid item name"
 
+# --- inherited xtrace never traces a secret ----------------------------------
+# bash imports SHELLOPTS from the environment, so a caller running with
+# `set -x` exported would otherwise trace every assignment holding the token
+# or a key. Success paths included.
+xtrace_quiet() { # <label> <command...>: stderr must hold no marker
+  local label="$1"
+  shift
+  env SHELLOPTS=xtrace "$@" >"$work/x.out" 2>"$work/x.err" || true
+  no_marker_in "$work/x.err" "xtrace $label stderr"
+}
+xtrace_quiet "secret-get success" secret-get xai
+xtrace_quiet "secret-get op failure" env FAKE_OP_MODE=fail secret-get xai
+xtrace_quiet "with-secret success" with-secret xai XAI_API_KEY true
+xtrace_quiet "with-secret op failure" env FAKE_OP_MODE=fail with-secret xai XAI_API_KEY true
+xtrace_quiet "context7-headers success" context7-headers
+xtrace_quiet "context7-headers op failure" env FAKE_OP_MODE=fail context7-headers
+env SHELLOPTS=xtrace context7-headers >"$work/x.out" 2>/dev/null || fail "context7-headers failed under inherited xtrace"
+
 # --- with-secret: only the named variable reaches only the child ------------
 with-secret xai XAI_API_KEY probe "$work/child.env" || fail "with-secret failed"
-[ "$(cat "$work/child.env")" = "XAI_API_KEY=$xai_value" ] ||
-  fail "child env should hold exactly XAI_API_KEY, got: $(cut -d= -f1 "$work/child.env" | tr '\n' ' ')"
+expect_probe "$work/child.env" "XAI_API_KEY=match" "with-secret clean env"
+
+# A session that still carries the old global exports (and a stray token)
+# must not hand them to the consumer.
+env JIRA_API_TOKEN="$other_jira" CONTEXT7_API_KEY="$other_ctx" OPENROUTER_API_KEY="$other_or" \
+  OBSS_LLM_API_KEY="$other_obss" XAI_API_KEY="$stale_xai" OP_SERVICE_ACCOUNT_TOKEN="$token" \
+  with-secret xai XAI_API_KEY probe "$work/child.env" || fail "with-secret failed with inherited keys"
+expect_probe "$work/child.env" "XAI_API_KEY=match" "with-secret inherited keys"
+
+# The target name must not collide with the script's own variables.
+for name in value item var here getter; do
+  with-secret xai "$name" probe-var "$name" "$work/var.out" || fail "with-secret into '$name' failed"
+  [ "$(cat "$work/var.out")" = match ] || fail "with-secret into '$name' did not deliver the value"
+done
+
 check_failure "with-secret bad var" 2 with-secret xai '1BAD' probe "$work/never"
 check_failure "with-secret usage" 2 with-secret xai XAI_API_KEY
 rm -f "$work/never"
@@ -143,16 +214,16 @@ check_failure "with-secret on op failure" 1 env FAKE_OP_MODE=fail with-secret xa
 [ ! -e "$work/never" ] || fail "with-secret started the command although the secret was unavailable"
 
 # --- shell wrappers: child gets its own key, parent shell gets nothing -------
-# Fake consumers named like the real CLIs.
 ln -s probe "$fakebin/grok"
 ln -s probe "$fakebin/jira"
 
 run_wrappers() { # <shell> [startup-file flags]
-  local sh="$1"
+  local sh="$1" name status=0
   shift
+  name="$(basename "$sh")"
   # Never let the shell read the invoking user's startup files: a real
   # ~/.zshenv could export real keys into this test.
-  env -u BASH_ENV -u ENV HOME="$work/home" ZDOTDIR="$work/home" "$sh" "$@" -c '
+  env -u BASH_ENV -u ENV HOME="$home" ZDOTDIR="$home" "$sh" "$@" -c '
     set -u
     . "$1/config/zsh/.zsh_agent_keys"
     grok "$2/grok.env" || exit 11
@@ -162,10 +233,11 @@ run_wrappers() { # <shell> [startup-file flags]
       eval "v=\${$n-}"
       [ -z "$v" ] || { echo "parent shell holds $n" >&2; exit 14; }
     done
-  ' sh "$repo" "$work" 2>"$work/$(basename "$sh").err" || fail "wrappers under $sh exited $?: $(cat "$work/$(basename "$sh").err")"
-  [ "$(cat "$work/grok.env")" = "XAI_API_KEY=$xai_value" ] || fail "$sh grok wrapper injected the wrong variables"
-  [ "$(cat "$work/jira.env")" = "JIRA_API_TOKEN=synthetic-jira-value" ] || fail "$sh jira wrapper injected the wrong variables"
-  no_secret_in "$work/$(basename "$sh").err" "$sh wrapper stderr"
+  ' sh "$repo" "$work" 2>"$work/$name.err" || status=$?
+  no_marker_in "$work/$name.err" "$sh wrapper stderr"
+  [ "$status" -eq 0 ] || fail "wrappers under $sh exited $status"
+  expect_probe "$work/grok.env" "XAI_API_KEY=match" "$sh grok wrapper"
+  expect_probe "$work/jira.env" "JIRA_API_TOKEN=match" "$sh jira wrapper"
 }
 run_wrappers bash --norc --noprofile
 if command -v zsh >/dev/null 2>&1; then
@@ -176,10 +248,31 @@ else
   echo "note: zsh not installed, wrappers tested under bash only" >&2
 fi
 
-# No dotfiles shell file may export any of the keys globally again.
-if grep -rnE '^[[:space:]]*(export[[:space:]]+)?(CONTEXT7_API_KEY|OBSS_LLM_API_KEY|OPENROUTER_API_KEY|XAI_API_KEY|JIRA_API_TOKEN)=' "$repo/config/zsh"; then
-  fail "a shell file assigns an agent key globally"
-fi
+# --- leak scans: report file names or a fixed message, never the match ------
+scan_global_exports() { # <dir>
+  local hits
+  hits="$(grep -rlE '^[[:space:]]*(export[[:space:]]+)?(CONTEXT7_API_KEY|OBSS_LLM_API_KEY|OPENROUTER_API_KEY|XAI_API_KEY|JIRA_API_TOKEN)=' "$1" || true)"
+  [ -z "$hits" ] || fail "a shell file assigns an agent key globally: $(echo "$hits" | tr '\n' ' ')"
+}
+scan_literal_keys() { # <file...>
+  local hits
+  hits="$(grep -lE 'ctx7sk-[A-Za-z0-9]|--api-key' "$@" || true)"
+  [ -z "$hits" ] || fail "literal Context7 key or key flag in: $(echo "$hits" | tr '\n' ' ')"
+}
+
+# The scans themselves must not echo what they find: plant markers and check
+# the failure output.
+planted="$work/planted"
+mkdir -p "$planted"
+printf 'export XAI_API_KEY="%s"\n' "$stale_xai" >"$planted/.zshenv"
+printf 'args = ["--api-key", "%s"]\n' "$other_ctx" >"$planted/config.toml"
+(scan_global_exports "$planted") >"$work/scan.out" 2>&1 && fail "global export scan missed a planted export"
+no_marker_in "$work/scan.out" "global export scan output"
+(scan_literal_keys "$planted/config.toml") >"$work/scan.out" 2>&1 && fail "literal key scan missed a planted key flag"
+no_marker_in "$work/scan.out" "literal key scan output"
+
+scan_global_exports "$repo/config/zsh"
+scan_literal_keys "$repo/config/codex/config.toml" "$repo/config/opencode/opencode.json"
 
 # --- context7-headers: valid JSON header, fail closed ------------------------
 hdr="$(context7-headers)" || fail "context7-headers failed"
@@ -187,32 +280,98 @@ hdr="$(context7-headers)" || fail "context7-headers failed"
 import json, sys
 h = json.loads(sys.argv[1])
 assert h == {"Authorization": "Bearer " + sys.argv[2]}, sorted(h)
-' "$hdr" "$ctx_value" || fail "context7-headers output is not the expected JSON header object"
+' "$hdr" "$ctx_value" 2>/dev/null || fail "context7-headers output is not the expected JSON header object"
 check_failure "context7-headers on op failure" 1 env FAKE_OP_MODE=fail context7-headers
 check_failure "context7-headers bad chars" 1 env 'FAKE_CTX_VALUE=a"b' context7-headers
 
-# --- Context7 MCP configs carry no literal key and no argv key ---------------
-"$py" - "$repo" <<'PY' || fail "a Context7 MCP config carries a key or bypasses with-secret"
-import json, re, sys, tomllib
-repo = sys.argv[1]
+# --- Context7 MCP launch: trusted install only, never the project's ---------
+# A hostile project ships a same-named package in node_modules; npx (faked
+# here with npx's local-first resolution) would run it.
+server_log="$work/server.log"
+trusted="$home/.local/share/agent-mcp/context7/node_modules/.bin"
+proj="$work/project"
+mkdir -p "$trusted" "$proj/node_modules/.bin" "$proj/node_modules/@upstash/context7-mcp"
+ln -s "$repo/bin" "$home/bin"
+cat >"$trusted/context7-mcp" <<EOF
+#!/bin/sh
+set +x
+if [ "\${CONTEXT7_API_KEY-}" = '$ctx_value' ]; then echo trusted:key >>'$server_log'; else echo trusted:nokey >>'$server_log'; fi
+EOF
+cat >"$proj/node_modules/.bin/context7-mcp" <<EOF
+#!/bin/sh
+set +x
+echo "project:\${CONTEXT7_API_KEY:+key}" >>'$server_log'
+EOF
+cat >"$fakebin/npx" <<'EOF'
+#!/bin/sh
+set +x
+exec ./node_modules/.bin/context7-mcp
+EOF
+chmod +x "$trusted/context7-mcp" "$proj/node_modules/.bin/context7-mcp" "$fakebin/npx"
 
-with open(f"{repo}/config/codex/config.toml", "rb") as fh:
-    codex = tomllib.load(fh)["mcp_servers"]["context7"]
-argv = [codex["command"], *codex.get("args", [])]
-joined = " ".join(argv)
-assert "--api-key" not in joined, "codex: --api-key on argv"
-assert re.search(r'with-secret"? context7 CONTEXT7_API_KEY ', joined), "codex: not launched through with-secret"
-assert not codex.get("env") and not codex.get("env_vars"), "codex: key passed through config env"
-
-with open(f"{repo}/config/opencode/opencode.json") as fh:
-    oc = json.load(fh)["mcp"]["context7"]
-joined = " ".join(oc.get("command", []))
-assert "--api-key" not in joined, "opencode: --api-key on argv"
-assert re.search(r'with-secret"? context7 CONTEXT7_API_KEY ', joined), "opencode: not launched through with-secret"
-assert not oc.get("headers") and not oc.get("environment"), "opencode: key in headers or environment"
+launch_argv() { # <codex|opencode>: the configured argv, NUL-separated
+  "$py" - "$repo" "$1" <<'PY'
+import json, sys, tomllib
+repo, which = sys.argv[1], sys.argv[2]
+if which == "codex":
+    with open(f"{repo}/config/codex/config.toml", "rb") as fh:
+        s = tomllib.load(fh)["mcp_servers"]["context7"]
+    assert not s.get("env") and not s.get("env_vars"), "codex: key passed through config env"
+    argv = [s["command"], *s.get("args", [])]
+else:
+    with open(f"{repo}/config/opencode/opencode.json") as fh:
+        s = json.load(fh)["mcp"]["context7"]
+    assert s.get("type") == "local", "opencode: not a local launch"
+    assert not s.get("headers") and not s.get("environment"), "opencode: key in headers or environment"
+    argv = s["command"]
+assert "--api-key" not in " ".join(argv), f"{which}: key flag on argv"
+sys.stdout.write("\0".join(argv) + "\0")
 PY
-if grep -rnE 'ctx7sk-[A-Za-z0-9]|--api-key' "$repo/config/codex/config.toml" "$repo/config/opencode/opencode.json"; then
-  fail "literal Context7 key or --api-key in a tracked config"
-fi
+}
+
+for client in codex opencode; do
+  launch_argv "$client" >"$work/argv" 2>/dev/null || fail "$client Context7 config failed the static checks"
+  argv=()
+  while IFS= read -r -d '' a; do argv+=("$a"); done <"$work/argv"
+  : >"$server_log"
+  (cd "$proj" && env HOME="$home" "${argv[@]}" >/dev/null 2>"$work/launch.err") || fail "$client Context7 launch failed"
+  no_marker_in "$work/launch.err" "$client launch stderr"
+  [ "$(cat "$server_log")" = "trusted:key" ] || fail "$client launch did not run only the trusted server with its key"
+
+  # No trusted install: fail closed, never fall back to the project copy.
+  mv "$home/.local/share/agent-mcp" "$work/agent-mcp.off"
+  : >"$server_log"
+  if (cd "$proj" && env HOME="$home" "${argv[@]}" >/dev/null 2>"$work/launch.err"); then
+    fail "$client launch succeeded without the trusted install"
+  fi
+  no_marker_in "$work/launch.err" "$client missing-install stderr"
+  [ ! -s "$server_log" ] || fail "$client launch ran a server without the trusted install"
+  mv "$work/agent-mcp.off" "$home/.local/share/agent-mcp"
+done
+
+# --- install.sh mcp: pinned, lockfile-only, no install scripts ---------------
+npmlog="$work/npm.log"
+cat >"$fakebin/npm" <<EOF
+#!/bin/sh
+set +x
+printf 'cwd:%s argv:%s\n' "\$PWD" "\$*" >>'$npmlog'
+[ -f package.json ] && [ -f package-lock.json ] || exit 9
+EOF
+chmod +x "$fakebin/npm"
+env HOME="$home" bash "$repo/install.sh" mcp >"$work/install.log" 2>&1 || fail "install.sh mcp failed"
+dest="$home/.local/share/agent-mcp/context7"
+cmp -s "$repo/mcp/context7/package-lock.json" "$dest/package-lock.json" || fail "install.sh mcp did not install the tracked lockfile"
+grep -qx "cwd:$dest argv:ci --ignore-scripts --omit=dev --no-audit --no-fund" "$npmlog" ||
+  fail "install.sh mcp did not run 'npm ci --ignore-scripts' in the install dir"
+"$py" - "$repo/mcp/context7" <<'PY' || fail "mcp/context7 manifest is not pinned to an exact version with integrity"
+import json, re, sys
+d = sys.argv[1]
+spec = json.load(open(f"{d}/package.json"))["dependencies"]["@upstash/context7-mcp"]
+assert re.fullmatch(r"\d+\.\d+\.\d+", spec), spec
+lock = json.load(open(f"{d}/package-lock.json"))
+pkg = lock["packages"]["node_modules/@upstash/context7-mcp"]
+assert pkg["version"] == spec and pkg.get("integrity", "").startswith("sha512-")
+assert all(p.get("integrity") for k, p in lock["packages"].items() if k), "a locked package lacks integrity"
+PY
 
 echo "PASS: agent key flow injects one key into one command and fails closed"

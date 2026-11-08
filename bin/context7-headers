@@ -8,6 +8,9 @@
 # command line. Fails closed: any problem prints one short line on stderr,
 # nothing on stdout, and exits non-zero. See README "Agent keys".
 
+# A caller's exported SHELLOPTS=xtrace (or `bash -x`) would trace every
+# assignment below, secrets included. Turn tracing off before anything else.
+set +x
 set -Eeuo pipefail
 
 fail() {
