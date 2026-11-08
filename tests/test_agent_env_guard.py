@@ -15,9 +15,11 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import agent_env_guard_contract as contract  # noqa: E402
 import agent_env_guard_harness as harness  # noqa: E402
 from agent_env_guard_shell_corpus import CASES, KNOWN_LIMITS, PROFILES, WHY  # noqa: E402
 
@@ -221,9 +223,9 @@ LEXING_ALLOW = [
 ]
 
 
-def run_guard(payload):
+def run_guard(payload, guard=None):
     proc = subprocess.run(
-        [sys.executable, "-I", str(GUARD)],
+        [sys.executable, "-I", str(guard or GUARD)],
         input=payload,
         capture_output=True,
         text=True,
@@ -232,12 +234,12 @@ def run_guard(payload):
     return proc
 
 
-def decide(command, shape="claude"):
+def decide(command, shape="claude", guard=None):
     if shape == "claude":
         payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command}}
     else:
         payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "turn_id": "t", "tool_input": {"command": command}}
-    proc = run_guard(json.dumps(payload))
+    proc = run_guard(json.dumps(payload), guard)
     if proc.returncode != 0:
         raise AssertionError(f"guard exited {proc.returncode}: {proc.stderr}")
     if not proc.stdout.strip():
@@ -603,7 +605,15 @@ def normalised(text):
 
 
 def safety_claims(text):
-    """Sentences that claim more than the limited promise."""
+    """Sentences that claim more than the limited promise.
+
+    A secondary tripwire only. It is lexical: it matches a fixed vocabulary,
+    and it skips every sentence that contains a negation word anywhere, so
+    "Allowed commands are safe and do not dump." passes. A clean result is
+    not proof that no misleading claim exists; the pinned reference text
+    (agent_env_guard_contract.py, PinnedContractText) is what holds the
+    promise in place.
+    """
     found = []
     for sentence in re.split(r"[.;:!?](?:\s|$)", normalised(text)):
         if any(claim.search(sentence) for claim in STALE_CLAIMS) or (
@@ -666,6 +676,139 @@ class LimitedGuaranteeIsStated(unittest.TestCase):
                 self.assertEqual(decision, "deny")
                 self.assertIn(PROMISE, reason)
                 self.assertEqual(safety_claims(reason), [])
+
+
+SEED_W1 = "Allowed commands are safe and do not dump."
+
+# (surface, where the text lives, regex that opens its paragraph)
+PINNED = [
+    ("guard docstring", "guard", r"This is a best-effort tripwire"),
+    ("guard contract comment", "guard", r"# Read as a tripwire"),
+    ("corpus docstring", "corpus", r'"No canary seen"'),
+    ("README command guard bullet", "readme", r"- \*\*Command guard\*\*"),
+]
+END_OF_PROMISE = r"not(?:\s|#)+evidence(?:\s|#)+of(?:\s|#)+security\."
+
+
+def after_promise(anchor, seed):
+    """(pattern, replacement): add `seed` right after the promise sentence of
+    the paragraph that starts at `anchor`."""
+    return re.compile(r"(" + anchor + r"[\s\S]*?" + END_OF_PROMISE + r")"), r"\1 " + seed
+
+
+def one_word(anchor):
+    """(pattern, replacement): change one word of the paragraph at `anchor`."""
+    return re.compile(r"(" + anchor + r"[\s\S]*?)\brecognises\b"), r"\1knows"
+
+
+class PinnedContractText(unittest.TestCase):
+    """The text that states the promise equals its pinned reference (W-1).
+
+    safety_claims() is a vocabulary scan that skips negated sentences, so a
+    sentence such as SEED_W1 added to a surface passes it. Each surface
+    paragraph (guard docstring and contract comment, corpus docstring, README
+    command guard bullet) and the deny message frame (prefix, safe hint and
+    PROMISE) must therefore equal agent_env_guard_contract.REFERENCE
+    modulo whitespace. Changing the promise means changing the reference in
+    the same commit.
+
+    Limit: only the pinned paragraphs and the fixed deny frame are exact. The
+    per-form <reason> inside a deny message and any text outside the pinned
+    paragraphs are covered only by the secondary vocabulary scan.
+    """
+
+    def real(self):
+        return {"guard": GUARD.read_text(),
+                "corpus": LimitedGuaranteeIsStated.CORPUS.read_text(),
+                "readme": LimitedGuaranteeIsStated.README.read_text()}
+
+    def violations(self, sources):
+        return contract.pin_violations(sources["guard"], sources["corpus"], sources["readme"])
+
+    def test_current_text_equals_the_reference(self):
+        self.assertEqual(self.violations(self.real()), [])
+
+    def test_every_surface_has_a_reference_and_a_seed_target(self):
+        self.assertEqual({name for name, _, _ in PINNED}, set(contract.REFERENCE))
+
+    def test_tripwire_alone_misses_a_negated_claim(self):
+        # The reason the text is pinned: the scan lets SEED_W1 through.
+        self.assertEqual(safety_claims(SEED_W1), [])
+        for name, text in self.texts_with_seed().items():
+            with self.subTest(text=name):
+                self.assertEqual(safety_claims(text), [])
+
+    def texts_with_seed(self):
+        out = {}
+        for name, kind, anchor in PINNED:
+            pattern, repl = after_promise(anchor, SEED_W1)
+            out[name] = pattern.sub(repl, self.real()[kind], count=1)
+        return out
+
+    def test_seeded_sentence_fails_the_pin_on_every_surface(self):
+        for name, kind, anchor in PINNED:
+            with self.subTest(surface=name):
+                pattern, repl = after_promise(anchor, SEED_W1)
+                sources = self.real()
+                sources[kind], count = pattern.subn(repl, sources[kind], count=1)
+                self.assertEqual(count, 1)
+                self.assertEqual(self.violations(sources), [name])
+
+    def test_one_word_edit_fails_the_pin_on_every_surface(self):
+        for name, kind, anchor in PINNED:
+            with self.subTest(surface=name):
+                pattern, repl = one_word(anchor)
+                sources = self.real()
+                sources[kind], count = pattern.subn(repl, sources[kind], count=1)
+                self.assertEqual(count, 1)
+                self.assertEqual(self.violations(sources), [name])
+
+    def test_rewrapping_alone_is_not_an_edit(self):
+        # Only whitespace is normalised: re-wrapped text still equals the reference.
+        for name, kind, anchor in PINNED:
+            with self.subTest(surface=name):
+                pattern = re.compile(r"(" + anchor + r"[\s\S]*?)\brecognises; a command\b")
+                sources = self.real()
+                gap = "\n# " if name == "guard contract comment" else "\n  "
+                sources[kind], count = pattern.subn(
+                    lambda m: m.group(1) + "recognises;" + gap + "a" + gap + "command", sources[kind], count=1)
+                self.assertEqual(count, 1)
+                self.assertEqual(self.violations(sources), [])
+
+    def test_missing_paragraph_fails_the_pin(self):
+        sources = self.real()
+        sources["corpus"] = sources["corpus"].replace('"No canary seen"', '"No canary"')
+        self.assertTrue(self.violations(sources))
+
+    def test_deny_messages_follow_the_pinned_frame(self):
+        for command in ("env", "ps -E", "echo $'a\\tb'", "echo " + "a" * 200_001):
+            with self.subTest(command=command[:20]):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertEqual(contract.deny_frame_violations(reason), [])
+
+    def test_seeded_and_edited_deny_wording_fails_the_frame(self):
+        guard = GUARD.read_text()
+        seeds = {
+            "seed in PROMISE": ('"evidence of security."', f'"evidence of security. {SEED_W1}"'),
+            "seed after PROMISE in the message": (
+                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} {PROMISE} " + SEED_W1 + "\""),
+            "seed before PROMISE in the message": (
+                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} " + SEED_W1 + " {PROMISE}\""),
+            "one word of PROMISE": ('"The hook blocks the patterns it recognises;',
+                                    '"The hook blocks the patterns it knows;'),
+            "one word of the safe hint": ("Read a single variable", "Read a single value"),
+            "message prefix": ('f"agent-env-guard: {reason}.', 'f"env-guard: {reason}.'),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for label, (old, new) in seeds.items():
+                with self.subTest(seed=label):
+                    self.assertEqual(guard.count(old), 1, old)
+                    copy = pathlib.Path(tmp) / "agent-env-guard"
+                    copy.write_text(guard.replace(old, new, 1))
+                    decision, reason = decide("env", guard=copy)
+                    self.assertEqual(decision, "deny")
+                    self.assertTrue(contract.deny_frame_violations(reason), reason)
 
 
 class Limits(unittest.TestCase):
