@@ -110,6 +110,18 @@ status_line_use_colors = true
 "gpt-5.6-sol" = 4
 gpt-6-astra = 4
 
+# Deny environment dumps and env-expanding process listings typed as shell
+# commands; see bin/agent-env-guard for what it can and cannot stop. Codex
+# runs a changed hook only after it is re-trusted with /hooks.
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = '"$HOME/bin/agent-env-guard"'
+timeout = 10
+statusMessage = "Checking command for environment dumps"
+
 [memories]
 generate_memories = true
 use_memories = true
@@ -140,6 +152,24 @@ code = "MonaLisa"
 diffAdded = "#40c977"
 diffRemoved = "#fa423e"
 skill = "#ad7bf9"
+
+# Commands Codex runs (shell tool, unified exec) inherit the shell
+# environment minus credential-named variables. ignore_default_excludes =
+# false turns on Codex's built-in exclusion of names containing KEY, SECRET
+# or TOKEN; the filters add other credential spellings. This filters what
+# Codex passes to a command; it cannot stop a command that sources shell
+# startup files (zsh -l, .zshenv) from exporting secrets again, so secrets
+# must also stay out of globally exported shell variables.
+[shell_environment_policy]
+inherit = "all"
+ignore_default_excludes = false
+
+[shell_environment_policy.filters]
+"*PASSWORD*" = "exclude"
+"*PASSWD*" = "exclude"
+"*CREDENTIAL*" = "exclude"
+"*_PAT" = "exclude"
+"*PRIVATE*" = "exclude"
 
 [shell_environment_policy.set]
 NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "9230e2bd8b24b7ac7a0ba6774c64bf0d78ecdabbdd91d0ed627b02a587bae2df"

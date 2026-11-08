@@ -49,6 +49,31 @@ jobs:
         # validate the generated file.
         run: bash tests/codex-config-overlay.sh
 
+  agent-env-guard:
+    # ubuntu: sh=dash, bash 5, zsh 5; macos: sh=bash 3.2, bash 3.2, zsh 5.
+    # The shell corpus fails on a missing shell or an unmeasured profile.
+    name: Agent env guard decisions (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: Lint guard and test syntax
+        run: >-
+          python3 -m py_compile bin/agent-env-guard tests/test_agent_env_guard.py
+          tests/agent_env_guard_harness.py tests/agent_env_guard_shell_corpus.py
+      - name: Test PreToolUse guard decisions and shell corpus
+        run: python3 -B -m unittest discover -s tests -p 'test_agent_env_guard.py' -v
+
   agent-keys:
     name: Agent key wrappers (fake op/security)
     runs-on: ubuntu-latest

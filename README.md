@@ -15,6 +15,7 @@ Personal dotfiles for my macOS development environment.
 - [Install Script](#install-script)
 - [Codex Configuration](#codex-configuration)
 - [Agent Keys](#agent-keys)
+- [Agent Secret Hygiene (partial)](#agent-secret-hygiene-partial)
 - [ZSH Configuration](#zsh-configuration)
 - [Neovim](#neovim)
 - [Tmux](#tmux)
@@ -264,6 +265,68 @@ report file names, never the matched text.
 - Anyone who can run commands as you can run `secret-get` and read every key
   in the `agent-keys` vault (but nothing outside it). Keep only agent-usable
   keys in that vault.
+
+## Agent Secret Hygiene (partial)
+
+These settings narrow what agent subprocesses can see. They are **partial
+protection**, not a fix:
+
+- **Claude Code MCP servers**: `CLAUDE_CODE_MCP_ALLOWLIST_ENV=1` in
+  `config/claude/settings.json` starts each stdio MCP server with a safe
+  baseline environment plus only that server's own configured `env`, instead
+  of the whole shell environment. Give each server its own secret through its
+  own `env` (stdio) or header (HTTP) entry, never on the command line.
+- **Codex commands**: `[shell_environment_policy]` in
+  `config/codex/config.toml` turns on Codex's built-in exclusion of variable
+  names containing `KEY`, `SECRET` or `TOKEN` (this also drops `GH_TOKEN`;
+  `gh` keeps working from the keyring) and adds `*PASSWORD*`, `*PASSWD*`,
+  `*CREDENTIAL*`, `*_PAT` and `*PRIVATE*`.
+- **Command guard**: `bin/agent-env-guard` is a PreToolUse hook for Claude
+  Code (`settings.json`) and Codex (`config.toml`) that denies whole-environment
+  dumps (`env`, `printenv` with no name, `export -p`, bare `set`,
+  `declare -x`/`-p`), `ps` with environment flags (`-E`, BSD `e` as in
+  `ps eww`) and reads of `/proc/<pid>/environ`. Ordinary `ps`,
+  `printenv NAME`, `env NAME=value command` and `env -u NAME command` still
+  run. **It is a best-effort tripwire, not a security boundary**: it blocks
+  the dump commands it recognises and refuses forms it cannot read (for
+  example zsh glob qualifiers, ANSI-C escapes, a redirection before the
+  command name, a command name built from a variable or a glob, an option a
+  wrapper table does not know, `env -S`, a shell reading stdin, nesting or
+  size over the limits), with a short reason that does not quote the
+  command. An allow only means that no recognised pattern matched: the hook
+  blocks the patterns it recognises; a command that passes is not evidence
+  of security. Everyday
+  forms such as `git status && git diff`, `env FOO=1 true` and quoted
+  here-documents pass. Codex runs the hook only after it is trusted with
+  `/hooks`. Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
+  (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
+  synthetic environment, never the real one).
+- **Known limitations of the guard** (commands that still dump and pass; kept
+  as `KNOWN_LIMITS` rows in `tests/agent_env_guard_shell_corpus.py`):
+  - ENV-GUARD-11: a function body without braces is not checked, so
+    `f() env; f` passes (dumps in zsh and dash).
+  - ENV-GUARD-12: one named operand makes a declaration command pass, so
+    `typeset -m PATH '*'` and `typeset -pm PATH '*'` (zsh) and
+    `export -p PATH`, `export -p UNUSED` and
+    `readonly FAKE_TEST_API_KEY; readonly -p PATH` (dash) list everything.
+  - ENV-GUARD-13: `env` skips an operand whose value is unknown as if it were
+    an assignment, so `env "$(printf env)" -u X` passes.
+  - Anything the guard cannot see: what a started program, script file or
+    interpreter does, and variables set outside the command.
+
+What this does **not** solve:
+
+- The global export chain: `config/zsh/.zshenv` sources `~/.zshenv.local`
+  for every zsh, and anything exported there reaches every shell an agent
+  starts, including the Claude Code Bash tool, whatever the settings above say.
+  Secrets must not be exported globally.
+- Same-user access to other processes' environments: any program running as
+  your user can read them. The guard only inspects the command line the agent
+  typed; it cannot see what a test, script or interpreter (node, python, ...)
+  does once it runs.
+- `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is intentionally not set: on Claude Code
+  2.1.319 it forces the permission mode to `default` (bypass is ignored), and
+  it cannot remove keys that shell startup files export again.
 
 ## ZSH Configuration
 

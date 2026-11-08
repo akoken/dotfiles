@@ -1,0 +1,1180 @@
+#!/usr/bin/env python3
+"""PreToolUse command guard for Claude Code and Codex.
+
+Denies shell commands that dump a whole environment or list processes with
+their environments:
+
+  * ps with an environment flag: -E in a dash cluster (macOS), or e in a
+    BSD-style cluster without a dash (ps eww, ps auxe, ps axe)
+  * bare env / printenv, env with only options or assignments and no command
+  * export -p, bare export, bare set, declare/typeset/readonly with no name
+    (declare -x, declare -p, typeset -x, readonly -p)
+  * any read of /proc/<pid>/environ
+
+It allows ordinary ps (ps aux, ps -ef, ps -o pid,command -p 123),
+printenv NAME, export NAME=value, set -euo pipefail, declare -p NAME, and
+env NAME=value command ... / env -u NAME command ... (the wrapped command is
+still checked).
+
+This is a best-effort tripwire, not a security boundary. It blocks the
+dump commands it recognises, read by the lexing contract below for sh, bash
+and zsh, and refuses forms it cannot read (unknown syntax, options a wrapper
+table does not know, a command name it cannot resolve, exceeded size or
+nesting limits) with a short reason that never quotes the command. An allow
+only means that no recognised pattern matched. The hook blocks the patterns
+it recognises; a command that passes is not evidence of security. Known commands that still dump and pass are listed in the README
+("Agent Secret Hygiene") and in tests/agent_env_guard_shell_corpus.py
+(KNOWN_LIMITS).
+
+LIMITATION: it inspects only the command text that passes through this
+hook. It cannot see what a test, script, build tool or interpreter (node,
+python, ruby, ...) does once it runs, what a script file contains, or what a
+variable set outside the command holds. Pair it with keeping secrets out of
+exported shell variables.
+
+Input: the hook JSON on stdin ({"tool_name": "Bash", "tool_input":
+{"command": "..."}}). Output: a PreToolUse deny decision on stdout (exit 0)
+or nothing (allow). Deny messages name the matched form and the safe
+alternative; they never echo the command text, so a value typed on the
+command line cannot leak through the hook output.
+"""
+
+import contextlib
+import fnmatch
+import json
+import os
+import re
+import shlex
+import sys
+
+SAFE_HINT = (
+    "Read a single variable with `printenv NAME` (or `[ -n \"${NAME+x}\" ]` to "
+    "test presence), list processes without environments (`ps -o pid,ppid,command`), "
+    "and pass values with `env NAME=value command`."
+)
+
+# The one limited promise, stated in the docstring above, every deny message,
+# the README and the shell corpus (tests/test_agent_env_guard.py checks it).
+PROMISE = (
+    "The hook blocks the patterns it recognises; a command that passes is not "
+    "evidence of security."
+)
+
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
+# ps options (macOS and procps) that consume the following token, in dash
+# clusters (`-o pid`) and in BSD-style clusters without a dash (`axo pid`).
+PS_ARG_LETTERS = set("GgMNOoptUuDkq")
+PS_BSD_ARG_LETTERS = set("OoptUk")
+
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=")
+UNKNOWN = "\x00"  # stands for text whose value the guard cannot know
+MAX_COMMAND_CHARS = 200_000
+MAX_DEPTH = 8     # nested command texts ($(...), sh -c, eval, backticks)
+MAX_NEST = 16     # nested expressions inside one text (${...}, quotes, $(...))
+MAX_BRACE_WORDS = 256
+DECLARATION_BUILTINS = {"local", "typeset", "declare", "export", "readonly", "integer", "float"}
+
+# ---------------------------------------------------------------------------
+# Lexing support contract
+#
+# Read as a tripwire (see the docstring): the contract says how the text is
+# split. The hook blocks the patterns it recognises; a command that passes is
+# not evidence of security.
+#
+# Supported dialects (verified profiles, measured by the shell corpus in
+# tests/): POSIX sh (dash 0.5; bash 3.2 in sh mode), bash 3.2 and 5.x, and
+# zsh 5.9, each started without user startup files. A recognised denied
+# form is denied when any of them would run it; a form the guard does not
+# recognise passes (README "Known limitations"). Where they read the typed
+# text differently, the guard either takes the reading that runs more (the
+# union) or denies visibly. It denies visibly when the lexer meets
+# text it cannot resolve (L9).
+#
+# All access to the typed command text goes through LogicalSource; nothing
+# else reads the raw string (tests/test_agent_env_guard.py checks this
+# structurally).
+#
+# L1 Quoting. '...' is literal. $'...' (ANSI-C; bash, zsh, newer dash) is
+#    read only without a backslash inside; any escape is refused (the guard
+#    does not decode them). "..." is literal except for $(...), $((...)),
+#    ${...}, $name and backticks; inside it a backslash escapes only $ ` "
+#    and \ and is kept before anything else. Outside quotes a backslash
+#    makes the next character literal.
+# L2 Line continuation. Backslash-newline is removed before anything else is
+#    read in code, double quotes, backticks, ${...}, arithmetic, here-document
+#    delimiter words, unquoted here-document bodies and here-string words. It
+#    is kept in '...', $'...', comments and quoted here-document bodies. zsh
+#    does not join an operator split by a continuation (parse error, nothing
+#    runs); sh and bash do, so the joined reading is the union.
+# L3 Comments. # at the start of a word in code comments out the rest of the
+#    physical line (no continuation).
+# L4 Operators are recognised by longest match on the logical text:
+#    ; ;; ;& ;;& & && | || |& ( ) < > >> << <<- <<< <& >& &> &>> <> >|
+# L5 Here-string <<<: its word is ordinary code.
+# L6 Here-document <<word / <<-word. The delimiter is the word after L2 and
+#    quote removal; any quoting or backslash in it makes the body literal. A
+#    delimiter containing an expansion is denied. Bodies start after the next
+#    newline in code, in order. <<- strips leading tabs per physical line.
+#    A $'...' or $"..." delimiter is refused (dash reads the $ literally).
+#    The delimiter word is the redirection's target token.
+#    Quoted body: physical lines, compared literally, not inspected.
+#    Unquoted body: a line ending in an unescaped backslash continues before
+#    the delimiter comparison in bash and zsh but not in dash, so a delimiter
+#    reached through a continuation (either way) is denied; $(...), ${...},
+#    $((...)) and backticks in the body are inspected; quotes are literal
+#    characters. A body without its delimiter runs to the end of the command.
+# L7 Substitutions. $(...) is lexed in place, recursively, and ends at its
+#    own top-level ")". Backtick text is unescaped (\` \\ \$) and inspected
+#    as a new command. ${...} is scanned for substitutions inside, with '
+#    taken as a literal character there (so more is inspected, never less).
+# L8 Arithmetic. In $((...)) and in ((...)) at the start of a word, << is a
+#    shift. dash reads ((...)) as nested subshells, so its content is also
+#    inspected as code. Multi-line arithmetic, or a $(( that does not close
+#    with )), is denied.
+# L9 Refusals (visible deny): unterminated quote, substitution, ${...} or
+#    backtick; here-document without a delimiter or with an expanding one;
+#    $'...' with a backslash; case inside $(...) (bash 3.2 and zsh
+#    disagree); any `(` glued to a word other than an array assignment
+#    name=(...) in assignment position or a function definition name() -
+#    zsh glob qualifiers, extglob, =(...); ${!...} and the zsh ${(P)...} and
+#    ${(e)...} flags; input over MAX_COMMAND_CHARS; command texts nested
+#    deeper than MAX_DEPTH or expressions nested deeper than MAX_NEST; sh -c,
+#    eval, watch and trap with text the guard cannot know.
+# L10 Grammar. Reserved words that start or continue compound commands
+#    ({ } ! if then elif else while until do time coproc nocorrect noglob,
+#    repeat N) are skipped to reach the command they run; standalone { and }
+#    end a command; for, select, case, function, [[ heads are not commands.
+#    A word with an unknown part (a substitution or $name) is never taken as
+#    a variable name.
+# L11 Simple commands. Every redirection consumes exactly one target word
+#    or a <(...)/>(...) process substitution; a redirection before the
+#    command name is refused. The command name must be known: a basename
+#    with an unknown part, an unquoted glob or brace expansion, or a leading
+#    = (zsh) is refused. Wrappers (sudo, doas, nice, time, timeout, xargs,
+#    watch, exec, command, builtin, nohup, noglob, caffeinate, stdbuf) and
+#    env are read with fixed option tables; an unknown option, env -S, a
+#    shell reading stdin, sourcing a device or substituted file, alias
+#    definitions, hash path bindings, namerefs and cd into /proc are
+#    refused. xargs input is an unknown operand.
+#
+# Not modelled: functions or aliases defined outside the command, values of
+# variables set outside it, what a started program or script file does, and
+# relative paths when the working directory was changed by an unknown cd.
+# ---------------------------------------------------------------------------
+
+
+# dash compares each physical body line with the delimiter; bash and zsh
+# compare the line after joining continuations. Where the two readings end
+# the body at different lines, the guard cannot know which shell runs it.
+DELIMITER_SPLIT = "a here-document delimiter reached through a line continuation is read differently by dash and bash/zsh"
+
+
+class Deny(Exception):
+    """A denied form; the message is safe to show (no command text)."""
+
+
+class LogicalSource:
+    """The only reader of the typed command text.
+
+    peek/take see the logical text: with cont=True every backslash-newline
+    pair is skipped first (L2). cont=False reads raw characters, for the
+    contexts where continuation does not apply and for the character after
+    an escaping backslash.
+    """
+
+    def __init__(self, text):
+        if len(text) > MAX_COMMAND_CHARS:
+            raise Deny("the command is too large to inspect")
+        self._text = text
+        self._pos = 0
+
+    def _skip(self, pos, cont):
+        while cont and self._text.startswith("\\\n", pos):
+            pos += 2
+        return pos
+
+    def peek(self, k=0, cont=True):
+        pos = self._pos
+        for step in range(k + 1):
+            pos = self._skip(pos, cont)
+            if pos >= len(self._text):
+                return None
+            if step == k:
+                return self._text[pos]
+            pos += 1
+        return None
+
+    def at(self, literal, cont=True):
+        return all(self.peek(k, cont) == ch for k, ch in enumerate(literal))
+
+    def take(self, n=1, cont=True):
+        out = []
+        for _ in range(n):
+            self._pos = self._skip(self._pos, cont)
+            if self._pos >= len(self._text):
+                break
+            out.append(self._text[self._pos])
+            self._pos += 1
+        return "".join(out)
+
+    def take_physical_line(self):
+        """Raw text up to the next newline (consumed, not returned)."""
+        end = self._text.find("\n", self._pos)
+        if end < 0:
+            line, self._pos = self._text[self._pos:], len(self._text)
+        else:
+            line, self._pos = self._text[self._pos:end], end + 1
+        return line
+
+    def physical_eof(self):
+        return self._pos >= len(self._text)
+
+
+OPERATORS = sorted(
+    [";", ";;", ";&", ";;&", "&", "&&", "|", "||", "|&", "(", ")", "<", ">", ">>",
+     "<<", "<<-", "<<<", "<&", ">&", "&>", "&>>", "<>", ">|"],
+    key=len, reverse=True,
+)
+REDIRECT_OPS = {"<", ">", ">>", "<<", "<<-", "<<<", "<&", ">&", "&>", "&>>", "<>", ">|"}
+BLANKS = " \t"
+NAME_START = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
+SPECIAL_PARAMS = set("@*#?-$!0123456789")
+
+
+BRACE_EXPANSION = re.compile(r"\{[^{}]*(,|\.\.)[^{}]*\}")
+
+
+class Word:
+    def __init__(self):
+        self.parts = []  # (kind, text): kind in lit, esc, sq, dq, unknown
+        self.quoted = False
+
+    def add(self, kind, text=""):
+        self.parts.append((kind, text))
+        if kind in ("esc", "sq", "dq"):
+            self.quoted = True
+
+    def value(self):
+        """Quote-removed value; unknown parts become UNKNOWN."""
+        return "".join(UNKNOWN if kind == "unknown" else text for kind, text in self.parts)
+
+    def literal_start(self):
+        return self.parts[0][1] if self.parts and self.parts[0][0] == "lit" else ""
+
+    def unquoted_text(self):
+        """Unquoted literal text; every other part is a neutral placeholder."""
+        return "".join(text if kind == "lit" else "_" for kind, text in self.parts)
+
+    def glob(self):
+        text = self.unquoted_text()
+        return "*" in text or "?" in text or bool(re.search(r"\[[^]]*\]", text))
+
+    def brace(self):
+        return bool(BRACE_EXPANSION.search(self.unquoted_text()))
+
+    def __bool__(self):
+        return bool(self.parts)
+
+
+class Lexer:
+    """Mode-stack lexer over one LogicalSource (contract L1-L9).
+
+    Produces tokens ("word", Word) / ("op", str) / ("nl", None) and collects
+    nested command texts and token lists that must also be checked.
+    """
+
+    def __init__(self, src, depth, budget=None):
+        if depth > MAX_DEPTH:
+            raise Deny("command nesting is too deep to inspect")
+        self.src = src
+        self.depth = depth
+        self.budget = budget if budget is not None else [0]
+        self.nested_tokens = []  # token lists of $(...)
+        self.nested_texts = []   # backtick, ((...)) and here-doc substitution texts
+
+    @contextlib.contextmanager
+    def nested(self):
+        """One level of expression nesting, shared by every lexer of a text."""
+        self.budget[0] += 1
+        if self.budget[0] > MAX_NEST:
+            raise Deny("expression nesting is too deep to inspect")
+        try:
+            yield
+        finally:
+            self.budget[0] -= 1
+
+    # -- code ---------------------------------------------------------------
+    def lex_code(self, closing=None, in_subst=False):
+        src, tokens, word, pending, parens = self.src, [], Word(), [], 0
+
+        def flush():
+            nonlocal word
+            if word:
+                tokens.append(("word", word))
+                word = Word()
+
+        while True:
+            c = src.peek()
+            if c is None:
+                flush()
+                if closing:
+                    raise Deny("an unterminated command substitution cannot be inspected")
+                if pending:
+                    pass  # here-document marker without a body line: nothing runs from it
+                return tokens
+            if c in BLANKS:
+                flush()
+                src.take()
+                continue
+            if c == "\n":
+                flush()
+                src.take()
+                tokens.append(("nl", None))
+                for delimiter, strip_tabs, quoted in pending:
+                    self.read_heredoc_body(delimiter, strip_tabs, quoted)
+                pending = []
+                continue
+            if c == "#" and not word:
+                src.take_physical_line()
+                tokens.append(("nl", None))
+                for delimiter, strip_tabs, quoted in pending:
+                    self.read_heredoc_body(delimiter, strip_tabs, quoted)
+                pending = []
+                continue
+            if c == "(" and word:
+                self.glued_paren(word, assignment_position(tokens))
+                continue
+            if c == "(" and src.at("((") and not word:
+                self.double_paren()
+                head = Word()
+                head.add("lit", "((")  # an arithmetic command; nothing runs by name
+                tokens.append(("word", head))
+                continue
+            if closing and c == ")" and parens == 0:
+                flush()
+                src.take()
+                return tokens
+            op = next((o for o in OPERATORS if src.at(o)), None)
+            if op:
+                flush()
+                src.take(len(op))
+                tokens.append(("op", op))
+                parens += {"(": 1, ")": -1}.get(op, 0)
+                if op in ("<<", "<<-"):
+                    delimiter_word, heredoc = self.heredoc_delimiter(op == "<<-")
+                    pending.append(heredoc)
+                    tokens.append(("word", delimiter_word))  # the redirection's target
+                continue
+            at_command = not tokens or tokens[-1][0] == "nl" or (tokens[-1][0] == "op" and tokens[-1][1] not in REDIRECT_OPS)
+            if in_subst and not word and at_command and src.at("case") and src.peek(4) in (None, " ", "\t", "\n", ";"):
+                raise Deny("`case` inside a command substitution is read differently by bash and zsh")
+            self.word_char(word, mode="code")
+
+    def unknown_word(self):
+        w = Word()
+        w.add("unknown")
+        return w
+
+    def word_char(self, word, mode):
+        src = self.src
+        c = src.peek()
+        if c == "\\":
+            src.take()
+            nxt = src.take(cont=False)
+            word.add("esc", nxt)
+        elif c == "'" and mode != "param":
+            src.take()
+            word.add("sq", self.read_single_quoted())
+        elif c == '"':
+            src.take()
+            with self.nested():
+                self.read_double_quoted(word)
+        elif c == "`":
+            src.take()
+            with self.nested():
+                self.read_backtick()
+            word.add("unknown")
+        elif c == "$":
+            with self.nested():
+                self.dollar(word)
+        else:
+            word.add("lit", src.take())
+
+    def read_single_quoted(self):
+        out = []
+        while True:
+            c = self.src.take(cont=False)
+            if c == "":
+                raise Deny("an unterminated quote cannot be inspected")
+            if c == "'":
+                return "".join(out)
+            out.append(c)
+
+    def read_ansi_c(self):
+        out = []
+        while True:
+            c = self.src.take(cont=False)
+            if c == "":
+                raise Deny("an unterminated quote cannot be inspected")
+            if c == "\\":
+                raise Deny("ANSI-C escapes inside $'...' are not decoded by the guard")
+            if c == "'":
+                return "".join(out)
+            out.append(c)
+
+    def read_double_quoted(self, word):
+        src = self.src
+        while True:
+            c = src.peek()
+            if c is None:
+                raise Deny("an unterminated quote cannot be inspected")
+            if c == '"':
+                src.take()
+                word.quoted = True
+                return
+            if c == "\\":
+                src.take()
+                nxt = src.take(cont=False)
+                # Inside "...", a backslash only escapes $ ` " and itself.
+                word.add("dq", nxt if nxt in '$`"\\' else "\\" + nxt)
+            elif c == "`":
+                src.take()
+                self.read_backtick()
+                word.add("unknown")
+            elif c == "$":
+                self.dollar(word)
+            else:
+                word.add("dq", src.take())
+
+    def dollar(self, word):
+        src = self.src
+        if src.at("$'"):
+            src.take(2)
+            word.add("sq", self.read_ansi_c())
+        elif src.at('$"'):
+            src.take()
+        elif src.at("$(("):
+            src.take(3)
+            self.read_arithmetic(closing="))")
+            word.add("unknown")
+        elif src.at("$("):
+            src.take(2)
+            self.nested_tokens.append(Lexer(src, self.depth + 1, self.budget).lex_nested(self))
+            word.add("unknown")
+        elif src.at("${"):
+            src.take(2)
+            self.read_param()
+            word.add("unknown")
+        elif src.peek(1) is not None and (src.peek(1) in NAME_START or src.peek(1) in SPECIAL_PARAMS):
+            src.take()
+            if src.peek() in SPECIAL_PARAMS:
+                src.take()
+            else:
+                while src.peek() is not None and (src.peek().isalnum() or src.peek() == "_"):
+                    src.take()
+            word.add("unknown")
+        else:
+            word.add("lit", src.take())
+
+    def lex_nested(self, parent):
+        tokens = self.lex_code(closing=")", in_subst=True)
+        parent.nested_tokens.extend(self.nested_tokens)
+        parent.nested_texts.extend(self.nested_texts)
+        return tokens
+
+    def read_backtick(self):
+        src, out = self.src, []
+        while True:
+            c = src.take()
+            if c == "":
+                raise Deny("an unterminated backtick substitution cannot be inspected")
+            if c == "`":
+                self.nested_texts.append("".join(out))
+                return
+            if c == "\\":
+                nxt = src.take(cont=False)
+                out.append(nxt if nxt in "`\\$" else "\\" + nxt)
+                continue
+            out.append(c)
+
+    def read_param(self):
+        """Body of ${...} (L7); zsh (e) flags are refused (L9)."""
+        src = self.src
+        if src.peek() == "!":
+            raise Deny("an indirect ${!...} expansion reads a variable named at run time")
+        if src.peek() == "(":
+            flags = []
+            src.take()
+            while src.peek() not in (None, ")"):
+                flags.append(src.take())
+            if "e" in "".join(flags):
+                raise Deny("the zsh ${(e)...} flag runs command text")
+            if "P" in "".join(flags):
+                raise Deny("the zsh ${(P)...} flag reads a variable named at run time")
+        depth = 1
+        scratch = Word()
+        while True:
+            c = src.peek()
+            if c is None:
+                raise Deny("an unterminated ${...} cannot be inspected")
+            if c == "}":
+                depth -= 1
+                src.take()
+                if depth == 0:
+                    return
+                continue
+            if src.at("${"):
+                src.take(2)
+                with self.nested():
+                    self.read_param()
+                continue
+            if c == "{":
+                depth += 1
+            self.word_char(scratch, mode="param")
+
+    def read_arithmetic(self, closing):
+        """Arithmetic text up to `))`; substitutions inside are inspected."""
+        src, depth, out = self.src, 0, []
+        while True:
+            c = src.peek()
+            if c is None:
+                raise Deny("unterminated arithmetic cannot be inspected")
+            if c == "\n":
+                raise Deny("a multi-line arithmetic expression cannot be inspected")
+            if c == ")" and depth == 0:
+                if src.at("))"):
+                    src.take(2)
+                    return "".join(out)
+                raise Deny("an arithmetic expansion that is not closed by `))` cannot be inspected")
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            if c in "$`\\\"'":
+                scratch = Word()
+                self.word_char(scratch, mode="param")
+                out.append(" ")
+                continue
+            out.append(src.take())
+
+    def double_paren(self):
+        """((...)) at the start of a word (L8): arithmetic for bash/zsh,
+        nested subshells for dash, so the text is also inspected as code."""
+        self.src.take(2)
+        text = self.read_arithmetic(closing="))")
+        self.nested_texts.append(text)
+
+    def glued_paren(self, word, in_assignment):
+        """`(` right after word text. Only an array assignment `name=(...)`
+        and a function definition `name()` are read; anything else is a zsh
+        glob qualifier, an extglob pattern or `=(...)` and is refused."""
+        src = self.src
+        if word.literal_start().startswith("="):
+            raise Deny("the zsh =(...) process substitution runs a command")
+        value = word.value()
+        if in_assignment and value.endswith("=") and ASSIGNMENT.match(value):
+            src.take()
+            scratch = Word()
+            while True:
+                c = src.peek()
+                if c is None:
+                    raise Deny("an unterminated `(` cannot be inspected")
+                if c == ")":
+                    src.take()
+                    break
+                if c == "(":
+                    raise Deny("a glob qualifier inside an array is not inspected")
+                if c in "$`'\"\\":
+                    self.word_char(scratch, mode="code")
+                    continue
+                src.take()
+            word.add("unknown")  # array elements; substitutions were inspected
+            return
+        if src.at("()"):
+            src.take(2)
+            word.add("lit", "()")  # function definition; the body is checked as code
+            return
+        raise Deny("a `(` right after a word (zsh glob qualifier or extglob) is not inspected")
+
+    def heredoc_delimiter(self, strip_tabs):
+        src = self.src
+        while src.peek() is not None and src.peek() in BLANKS:
+            src.take()
+        word = Word()
+        while src.peek() is not None and src.peek() not in BLANKS + "\n;&|<>()":
+            if src.at("$'") or src.at('$"'):
+                raise Deny("a $'...' or $\"...\" here-document delimiter is read differently by dash")
+            before = len(self.nested_tokens) + len(self.nested_texts)
+            self.word_char(word, mode="code")
+            if any(kind == "unknown" for kind, _ in word.parts):
+                raise Deny("a here-document delimiter with an expansion cannot be inspected")
+            if len(self.nested_tokens) + len(self.nested_texts) != before:
+                raise Deny("a here-document delimiter with an expansion cannot be inspected")
+        if not word:
+            raise Deny("a here-document without a delimiter cannot be inspected")
+        return word, (word.value(), strip_tabs, word.quoted)
+
+    def read_heredoc_body(self, delimiter, strip_tabs, quoted):
+        src, body = self.src, []
+        while not src.physical_eof():
+            line = src.take_physical_line()
+            if strip_tabs:
+                line = line.lstrip("\t")
+            if not quoted:
+                spanned = False
+                while self.continues(line) and not src.physical_eof():
+                    more = src.take_physical_line()
+                    more = more.lstrip("\t") if strip_tabs else more
+                    if more == delimiter:
+                        raise Deny(DELIMITER_SPLIT)
+                    line, spanned = line[:-1] + more, True
+                if spanned and line == delimiter:
+                    raise Deny(DELIMITER_SPLIT)
+            if line == delimiter:
+                break
+            body.append(line)
+        if not quoted:
+            self.inspect_heredoc_body("\n".join(body))
+
+    @staticmethod
+    def continues(line):
+        stripped = line.rstrip("\\")
+        return (len(line) - len(stripped)) % 2 == 1
+
+    def inspect_heredoc_body(self, body):
+        sub = Lexer(LogicalSource(body), self.depth + 1, self.budget)
+        src = sub.src
+        while src.peek(cont=False) is not None:
+            c = src.peek(cont=False)
+            if c == "\\":
+                src.take(2, cont=False)
+            elif c in "$`":
+                sub.word_char(Word(), mode="param")
+            else:
+                src.take(cont=False)
+        self.nested_tokens.extend(sub.nested_tokens)
+        self.nested_texts.extend(sub.nested_texts)
+
+def assignment_position(tokens):
+    """True when every word since the last separator is an assignment (or a
+    declaration builtin and its options/assignments): where name=(...) is an
+    array assignment rather than a glob qualifier."""
+    words = []
+    for kind, value in reversed(tokens):
+        if kind != "word" or value.value() in RESERVED_PREFIXES or value.value() in ("{", "}"):
+            break  # the current simple command starts after this token
+        words.append(value.value())
+    words.reverse()
+    if words and words[0] in DECLARATION_BUILTINS:
+        words = words[1:]
+    return all(ASSIGNMENT.match(w) or w.startswith(("-", "+")) for w in words)
+
+
+SEPARATOR_OPS = {";", ";;", ";&", ";;&", "&", "&&", "|", "||", "|&", "(", ")"}
+RESERVED_PREFIXES = {"{", "!", "if", "then", "elif", "else", "while", "until", "do",
+                     "coproc", "nocorrect", "noglob", "-"}
+NON_COMMAND_HEADS = {"for", "select", "case", "function", "[[", "]]", "in", "esac",
+                     "done", "fi", "}", "((", "))"}
+PROC_ENVIRON = re.compile(r"/proc/[^/\s]*/(environ|[^/\s]*[*?\[][^/\s]*)(?:/|$)")
+# Paths an absolute glob is tested against.
+PROC_ENVIRON_PATHS = ["/proc/self/environ", "/proc/1/environ", "/proc/123/environ",
+                      "/proc/thread-self/environ", "/proc/self/task/1/environ",
+                      "/proc/1/task/1/environ"]
+PROC_DIRS = ["/proc", "/proc/self", "/proc/1", "/proc/123", "/proc/self/task/1"]
+
+
+class Arg(str):
+    """A word value plus what its unquoted text expands into."""
+
+    def __new__(cls, text, glob=False, brace=False):
+        arg = str.__new__(cls, text)
+        arg.glob = glob
+        arg.brace = brace
+        return arg
+
+    @classmethod
+    def of(cls, word):
+        return cls(word.value(), word.glob(), word.brace())
+
+
+def check_command(command, depth=0):
+    """Check a command text: the typed command, or text the shell will run
+    (sh -c, eval, backticks, ((...))). Only LogicalSource reads it."""
+    lexer = Lexer(LogicalSource(command), depth)
+    tokens = lexer.lex_code()
+    check_tokens(tokens, depth)
+    for nested in lexer.nested_tokens:
+        check_tokens(nested, depth + 1)
+    for text in lexer.nested_texts:
+        check_command(text, depth + 1)
+
+
+def check_tokens(tokens, depth):
+    for kind, word in tokens:
+        if kind == "word" and reads_environ(word):
+            raise Deny("reading /proc/<pid>/environ dumps a process environment")
+    for words in simple_commands(tokens):
+        check_words(words, depth)
+
+
+def brace_alternatives(text):
+    """Every expansion of the brace expressions in `text` (bash/zsh)."""
+    m = re.search(r"\{([^{}]*)\}", text)
+    if not m or ("," not in m.group(1) and ".." not in m.group(1)):
+        return [text]
+    head, tail = text[:m.start()], text[m.end():]
+    items = m.group(1).split(",") if "," in m.group(1) else [m.group(1)]
+    out = []
+    for item in items:
+        out.extend(brace_alternatives(head + item + tail))
+        if len(out) > MAX_BRACE_WORDS:
+            raise Deny("a brace expansion is too large to inspect")
+    return out
+
+
+def path_glob(pattern, path):
+    """Shell pathname matching: `*` and `?` stay inside one component and
+    a `**` component (zsh) spans any number of components."""
+    def match(ps, qs):
+        if not ps:
+            return not qs
+        if ps[0] == "**":
+            return any(match(ps[1:], qs[k:]) for k in range(len(qs) + 1))
+        return bool(qs) and fnmatch.fnmatchcase(qs[0], ps[0]) and match(ps[1:], qs[1:])
+    return match(pattern.split("/"), path.split("/"))
+
+
+def reads_environ(word):
+    """Whether the word can name /proc/<pid>/environ (literal, glob or brace)."""
+    values = brace_alternatives(word.value()) if word.brace() else [word.value()]
+    for value in values:
+        if PROC_ENVIRON.search(value.replace(UNKNOWN, "*")):
+            return True
+        if os.path.normpath(value).startswith("/proc/") and UNKNOWN in value:
+            return True  # the rest of a /proc path is only known at run time
+        if "/" in value and value.rstrip("/").rsplit("/", 1)[-1] == "environ":
+            return True  # a relative ./environ or self/environ path
+        if word.glob():
+            pattern = value.replace(UNKNOWN, "*")
+            # Relative globs resolve against the working directory, which
+            # cannot be /proc unless a cd (refused for known targets) put it there.
+            if any(path_glob(pattern, path) for path in PROC_ENVIRON_PATHS):
+                return True
+    return False
+
+
+def matching_paren(tokens, start):
+    depth = 0
+    for k in range(start, len(tokens)):
+        if tokens[k] == ("op", "("):
+            depth += 1
+        elif tokens[k] == ("op", ")"):
+            depth -= 1
+            if depth == 0:
+                return k
+    raise Deny("an unterminated process substitution cannot be inspected")
+
+
+def simple_commands(tokens):
+    """Split tokens into simple commands (lists of Arg). Every redirection
+    consumes exactly one target word, or a <(...) / >(...) process
+    substitution; a redirection before the command name is refused."""
+    commands, current, after_group, i = [], [], False, 0
+
+    def end():
+        nonlocal current
+        if current:
+            commands.append(current)
+        current = []
+
+    def process_substitution(k):
+        """Index after a <(...) / >(...) starting at k, or None."""
+        if tokens[k] in (("op", "<"), ("op", ">")) and k + 1 < len(tokens) and tokens[k + 1] == ("op", "("):
+            close = matching_paren(tokens, k + 1)
+            commands.extend(simple_commands(tokens[k + 2:close]))
+            return close + 1
+        return None
+
+    while i < len(tokens):
+        kind, value = tokens[i]
+        after = process_substitution(i)
+        if after is not None:  # an argument: the /dev/fd path the shell passes
+            current.append(Arg(UNKNOWN))
+            after_group, i = False, after
+            continue
+        if kind == "op" and value in REDIRECT_OPS:
+            if current and current[-1].isdigit():
+                current.pop()  # fd number of `2>/dev/null`
+            if not after_group and all(ASSIGNMENT.match(w) for w in current):
+                raise Deny("a redirection before the command name is not inspected")
+            if i + 1 < len(tokens) and tokens[i + 1][0] == "word":
+                i += 2
+                continue
+            after = process_substitution(i + 1) if i + 1 < len(tokens) else None
+            if after is None:
+                raise Deny("a redirection without a target cannot be inspected")
+            i = after
+            continue
+        after_group = False
+        if kind == "nl" or (kind == "op" and value in SEPARATOR_OPS):
+            end()
+            after_group = value == ")"
+        else:
+            arg = Arg.of(value)
+            if not value.quoted and arg in ("{", "}"):
+                end()
+                after_group = arg == "}"
+            else:
+                current.append(arg)
+        i += 1
+    end()
+    return commands
+
+
+def unknown(word):
+    return UNKNOWN in word
+
+
+VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def names_a_variable(word):
+    """`NAME`, `NAME=value` or `NAME[...]=value` with NAME fully known."""
+    m = VARIABLE_NAME.match(word)
+    return bool(m) and (m.end() == len(word) or word[m.end()] in "=[+")
+
+
+# Wrapper option tables: (flags, options taking a value, options whose value
+# may only be attached). An option outside the table is refused, so no
+# option argument is ever taken for the wrapped command or the reverse.
+WRAPPER_OPTIONS = {
+    "command": ({"-p", "-v", "-V"}, set(), set()),
+    "builtin": (set(), set(), set()),
+    "exec": ({"-c", "-l"}, {"-a"}, set()),
+    "nohup": (set(), set(), set()),
+    "noglob": (set(), set(), set()),
+    "caffeinate": ({"-d", "-i", "-m", "-s", "-u"}, {"-t", "-w"}, set()),
+    "stdbuf": (set(), {"-i", "-o", "-e", "--input", "--output", "--error"}, set()),
+    "sudo": ({"-A", "-b", "-E", "-e", "-H", "-i", "-K", "-k", "-l", "-n", "-P", "-S", "-s",
+              "-V", "-v", "--askpass", "--background", "--preserve-env", "--edit",
+              "--set-home", "--login", "--remove-timestamp", "--reset-timestamp", "--list",
+              "--non-interactive", "--preserve-groups", "--stdin", "--shell", "--version",
+              "--validate"},
+             {"-u", "-g", "-C", "-D", "-h", "-p", "-R", "-T", "-U", "-r", "-t", "--user",
+              "--group", "--close-from", "--chdir", "--host", "--prompt", "--chroot",
+              "--command-timeout", "--other-user", "--role", "--type"}, set()),
+    "doas": ({"-n", "-s", "-L"}, {"-u", "-C"}, set()),
+    "nice": (set(), {"-n", "--adjustment"}, set()),
+    "time": ({"-p", "-l", "-h", "-v", "-a", "-q", "--portability", "--verbose", "--append",
+              "--quiet"}, {"-o", "-f", "--output", "--format"}, set()),
+    "timeout": ({"-v", "--verbose", "--foreground", "--preserve-status"},
+                {"-s", "-k", "--signal", "--kill-after"}, set()),
+    "xargs": ({"-0", "-o", "-p", "-r", "-t", "-x", "--null", "--no-run-if-empty", "--verbose",
+               "--interactive", "--exit", "--open-tty"},
+              {"-E", "-I", "-J", "-L", "-n", "-P", "-R", "-S", "-s", "-d", "-a", "--max-args",
+               "--max-procs", "--delimiter", "--arg-file", "--max-lines", "--max-chars",
+               "--replace", "--eof"}, {"-e", "-i", "-l"}),
+    "watch": ({"-d", "-t", "-b", "-e", "-g", "-c", "-x", "-p", "-w", "--differences",
+               "--no-title", "--beep", "--errexit", "--chgexit", "--color", "--exec",
+               "--precise", "--no-wrap"}, {"-n", "-q", "-s", "--interval"}, set()),
+}
+WRAPPER_OPTIONS["gtimeout"] = WRAPPER_OPTIONS["timeout"]
+ENV_OPTIONS = ({"-i", "-0", "-v", "--ignore-environment", "--null", "--debug"},
+               {"-u", "-C", "-P", "--unset", "--chdir"}, set())
+
+
+def operands(name, args, table, parsed=None):
+    """Index of the first operand after `name`'s options, per `table`.
+    `parsed`, if given, receives each option that was read as an option
+    (never an option's value)."""
+    flags, with_value, attached = table
+    parsed = [] if parsed is None else parsed
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            return i + 1
+        if not a.startswith("-") or a == "-":
+            return i
+        if unknown(a):
+            raise Deny(f"an option of `{name}` built from an expansion cannot be inspected")
+        if a.startswith("--"):
+            key = a.split("=", 1)[0]
+            if key in with_value:
+                i += 1 if "=" in a else 2
+            elif a in flags:
+                i += 1
+            else:
+                raise Deny(f"an unrecognised `{name}` option cannot be inspected")
+            parsed.append(key)
+            continue
+        if name == "nice" and a[1:].isdigit():
+            i += 1
+            continue
+        step = 1
+        for k in range(1, len(a)):
+            opt = "-" + a[k]
+            if opt in with_value:
+                parsed.append(opt)
+                step = 1 if k + 1 < len(a) else 2  # attached value, or the next word
+                break
+            if opt in attached:
+                parsed.append(opt)
+                break  # optional value, attached only
+            if opt not in flags:
+                raise Deny(f"an unrecognised `{name}` option cannot be inspected")
+            parsed.append(opt)
+        i += step
+    return i
+
+
+def check_text(text_words, depth):
+    """Text a wrapper hands to a shell (sh -c, eval, watch, trap)."""
+    if any(unknown(w) for w in text_words):
+        raise Deny("command text built from expansions cannot be inspected")
+    check_command(" ".join(text_words), depth + 1)
+
+
+def check_shell(args, depth):
+    """sh/bash/zsh: inspect -c text; a shell reading stdin is refused; a
+    script file operand is outside what the guard can see."""
+    i, command_text, from_stdin = 0, False, False
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            i += 1
+            break
+        if a == "-":
+            from_stdin = True
+            i += 1
+            break
+        if a.startswith("--"):
+            if a in {"--version", "--help"}:
+                return
+            i += 2 if a in {"--rcfile", "--init-file", "--emulate"} else 1
+            continue
+        if a[:1] in "-+" and len(a) > 1:
+            letters = a[1:]
+            value_letters = [k for k, ch in enumerate(letters) if ch in "oO"]
+            if value_letters and value_letters[0] != len(letters) - 1:
+                # zsh reads -oNAME as an attached value, bash as more flags.
+                raise Deny("a shell option with an attached value is not inspected")
+            if a[0] == "-" and "c" in letters:
+                command_text = True
+            if a[0] == "-" and "s" in letters:
+                from_stdin = True
+            i += 2 if value_letters else 1  # -o NAME / -O NAME take the next word
+            continue
+        break
+    rest = args[i:]
+    if command_text:
+        if not rest:
+            raise Deny("`sh -c` without command text cannot be inspected")
+        return check_text([rest[0]], depth)
+    if from_stdin or not rest:
+        raise Deny("a shell reading commands from standard input is not inspected")
+
+
+def check_words(words, depth):
+    words = list(words)
+    while words:
+        if ASSIGNMENT.match(words[0]):
+            words.pop(0)
+        elif words[0] in RESERVED_PREFIXES:
+            words.pop(0)
+        elif words[0] == "repeat":
+            words = words[2:]
+        else:
+            break
+    if not words or words[0] in NON_COMMAND_HEADS:
+        return  # nothing runs here
+    head = words[0]
+    if unknown(head.rsplit("/", 1)[-1]):
+        raise Deny("a command name built from an expansion cannot be inspected")
+    if isinstance(head, Arg) and (head.glob or head.brace):
+        raise Deny("a command name with a glob or brace expansion cannot be inspected")
+    if head.startswith("="):
+        raise Deny("the zsh =command expansion is not inspected")
+    name = os.path.basename(head)
+    args = words[1:]
+
+    if name in WRAPPER_OPTIONS:
+        j = operands(name, args, WRAPPER_OPTIONS[name])
+        if name == "command" and any(a in {"-v", "-V"} for a in args[:j]):
+            return  # lookup only
+        if name == "sudo" and any(a in {"-e", "--edit", "-l", "--list", "-v", "--validate",
+                                        "-K", "-k", "-V", "--version"} for a in args[:j]):
+            return  # sudoedit, list, validate: no command runs
+        if name in {"timeout", "gtimeout"}:
+            j += 1  # the duration
+        if name == "xargs":
+            if j >= len(args):
+                return  # xargs defaults to echo
+            return check_words(xargs_command(args, j), depth)
+        if name == "watch":
+            return check_text(args[j:], depth)
+        return check_words(args[j:], depth)
+    if name in SHELLS:
+        return check_shell(args, depth)
+    if name in {".", "source"}:
+        rest = args[1:] if args[:1] == ["--"] else args
+        if not rest:
+            raise Deny("sourcing without a file (process substitution, stdin) is not inspected")
+        if rest[0].startswith(("/dev/", "/proc/")) or unknown(rest[0].rsplit("/", 1)[-1]):
+            raise Deny("sourcing a device, /proc or substituted file is not inspected")
+        return
+    if name == "eval":
+        return check_text(args, depth)
+    if name == "trap":
+        rest = args[1:] if args[:1] == ["--"] else args
+        if rest and not rest[0].startswith("-") and not rest[0].isdigit() and len(rest) > 1:
+            return check_text([rest[0]], depth)
+        return
+    if name == "alias":
+        if any("=" in a for a in args):
+            raise Deny("alias definitions are not inspected")
+        return
+    if name == "hash":
+        if any(a.startswith("-") and "p" in a for a in args) or any("=" in a for a in args):
+            raise Deny("`hash` path bindings are not inspected")
+        return
+    if name in {"cd", "pushd"}:
+        for a in args:
+            if not a.startswith("-") and enters_proc(a):
+                raise Deny("changing into /proc is not inspected")
+        return
+    if name == "env":
+        return check_env(args, depth)
+    if name == "printenv":
+        if not any(VARIABLE_NAME.fullmatch(a) for a in args):
+            raise Deny("`printenv` without a variable name dumps the whole environment")
+        return
+    if name == "export":
+        if not any(names_a_variable(a) for a in args):
+            raise Deny("`export -p` / bare `export` dumps every exported variable")
+        return
+    if name == "set":
+        if not args:
+            raise Deny("bare `set` dumps every shell variable")
+        return
+    if name in {"declare", "typeset", "readonly", "local"}:
+        if any(a[:1] in "-+" and "n" in a[1:] for a in args):
+            raise Deny("namerefs (`declare -n`) read variables named at run time")
+        if not any(names_a_variable(a) for a in args):
+            if name == "local" and not args:
+                return  # prints only function locals
+            raise Deny(f"`{name}` without a name (e.g. `declare -x`, `declare -p`) dumps variables")
+        return
+    if name == "ps":
+        return check_ps(args)
+
+
+def xargs_command(args, j):
+    """The command xargs runs: input replaces -I/-i/-J strings, otherwise it
+    is appended; either way its value is unknown."""
+    replace = None
+    for k, a in enumerate(args[:j]):
+        for opt, default in (("-I", None), ("-J", None), ("-i", "{}"), ("--replace", "{}")):
+            if a == opt:
+                replace = args[k + 1] if default is None and k + 1 < j else default
+            elif a.startswith(opt) and len(a) > len(opt):
+                replace = a[len(opt):].lstrip("=")
+    words = list(args[j:])
+    if replace:
+        return [Arg(UNKNOWN) if replace in w else w for w in words]
+    return words + [Arg(UNKNOWN)]
+
+
+def enters_proc(arg):
+    """Whether a cd target can resolve to /proc or a directory below it."""
+    path = arg.replace(UNKNOWN, "\x01")  # an unknown part never matches
+    targets = brace_alternatives(path) if isinstance(arg, Arg) and arg.brace else [path]
+    for target in targets:
+        if os.path.normpath(target).startswith("/proc"):
+            return True
+        if isinstance(arg, Arg) and arg.glob and any(path_glob(target, d) for d in PROC_DIRS):
+            return True
+    return False
+
+
+def check_env(args, depth):
+    for a in args:  # an -S inside a cluster is refused by operands() below
+        if a == "--":
+            break
+        if a in {"-S", "--split-string"} or a.startswith("--split-string="):
+            raise Deny("`env -S` splits text the guard does not inspect")
+        if not a.startswith("-") or a == "-":
+            break
+    # The empty-environment flag is taken from the parsed options only, so
+    # an -u value such as `-ui` or `-u -i` is never mistaken for -i.
+    parsed = []
+    i = operands("env", args, ENV_OPTIONS, parsed) if args[:1] != ["-"] else 1
+    empty_env = args[:1] == ["-"] or any(o in {"-i", "--ignore-environment"} for o in parsed)
+    while i < len(args) and (ASSIGNMENT.match(args[i]) or unknown(args[i])):
+        i += 1
+    if i >= len(args):
+        if empty_env:
+            return
+        raise Deny("`env` without a command dumps the whole environment")
+    return check_words(args[i:], depth)
+
+
+def check_ps(args):
+    skip = False
+    for k, a in enumerate(args):
+        if skip:
+            skip = False
+            continue
+        if a.startswith("--"):
+            if a in {"--sort", "--format", "--pid", "--ppid", "--user", "--group", "--cols", "--rows"}:
+                skip = True
+            continue
+        dashed = a.startswith("-")
+        letters = a[1:] if dashed else a
+        if not letters or not letters.isalpha():
+            continue  # pids, field lists, etc.
+        for idx, ch in enumerate(letters):
+            if dashed and ch == "E":
+                raise Deny("`ps -E` prints every listed process's environment")
+            if not dashed and ch == "e":
+                raise Deny("BSD-style `ps e` (e.g. `ps eww`, `ps auxe`) prints process environments")
+            if ch in (PS_ARG_LETTERS if dashed else PS_BSD_ARG_LETTERS):
+                if idx == len(letters) - 1:
+                    skip = True
+                break  # the rest of the cluster is this option's argument
+
+
+def decision(reason):
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": f"agent-env-guard: {reason}. {SAFE_HINT} {PROMISE}",
+        }
+    }
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, UnicodeDecodeError):
+        # Fail closed and visibly; never echo the input.
+        json.dump(decision("could not parse the hook input, so the command was not inspected"), sys.stdout)
+        return 0
+    tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if isinstance(command, list):
+        command = shlex.join(str(c) for c in command)
+    if not isinstance(command, str) or command == "":
+        return 0
+    try:
+        check_command(command)
+    except Deny as denied:
+        json.dump(decision(str(denied)), sys.stdout)
+    except Exception as error:  # a guard bug must not silently allow
+        json.dump(decision(f"internal error ({type(error).__name__}), command not inspected"), sys.stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
