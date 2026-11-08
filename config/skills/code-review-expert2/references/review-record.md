@@ -47,10 +47,11 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   `python3 scripts/review_record.py --skill-fingerprint <skill directory>` on the installed
   directory you read; never copy it from an earlier report. It is the SHA-256 of one line
   `<file sha256>  <path>` plus newline per file in SKILL.md, references/ and scripts/,
-  sorted by path bytes (eval/, `__pycache__` and .DS_Store excluded; symlinks refused). On
-  a clean tree it equals `find SKILL.md references scripts -type f | LC_ALL=C sort | xargs
-  shasum -a 256 | shasum -a 256`. Write the same three values in the report header. A
-  record without skill (or with null) is a legacy record: it stays valid and reads as
+  sorted by path bytes (eval/, `__pycache__` and .DS_Store excluded; symlinks and paths
+  containing a newline or other control character refused, since they could forge or hide
+  a line). On a clean tree it equals `find SKILL.md references scripts -type f | LC_ALL=C
+  sort | xargs shasum -a 256 | shasum -a 256`. Write the same three values in the report
+  header. A record without skill (or with null) is a legacy record: it stays valid and reads as
   identity unknown, never as the current version.
 - rereview: include it on every re-review (any round after the first, full or delta) and
   omit it on a first review. previous_head is the full SHA of the previously reviewed head

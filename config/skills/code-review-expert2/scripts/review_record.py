@@ -16,6 +16,7 @@ DIGEST = re.compile(r'[0-9a-f]{64}\Z')
 VERSION = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+\Z')
 PACKAGE_PARTS = ('SKILL.md', 'references', 'scripts')
 PRESENCE = ('yes', 'no', 'unknown')
+CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 
 
 class InvalidRecord(ValueError):
@@ -91,6 +92,9 @@ def skill_fingerprint(directory):
             if '__pycache__' in relative.parts or path.name == '.DS_Store':
                 continue
             require(not path.is_symlink(), 'symlink in skill package: ' + relative.as_posix())
+            # One record per line: a separator inside a path could forge or hide records.
+            require(not CONTROL.search(relative.as_posix()),
+                    'control character in skill package path: ' + repr(relative.as_posix()))
             if path.is_file():
                 files.append(relative.as_posix())
     lines = b''.join(hashlib.sha256((root / name).read_bytes()).hexdigest().encode() + b'  '

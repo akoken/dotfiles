@@ -453,6 +453,25 @@ class SkillIdentityTests(unittest.TestCase):
                     (root / extra).unlink()
             self.assertEqual(first, MODULE.skill_fingerprint(root))
 
+    def test_fingerprint_refuses_record_separators_in_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            left, right = Path(directory) / 'left', Path(directory) / 'right'
+            first, second = 'first reference\n', 'second reference\n'
+            self.write_skill(left, {'SKILL.md': 'name: demo\n', 'references/a.md': first,
+                                    'references/b.md': second})
+            digest = hashlib.sha256(second.encode()).hexdigest()
+            self.write_skill(right, {'SKILL.md': 'name: demo\n',
+                                     f'references/a.md\n{digest}  references/b.md': first})
+            with self.assertRaisesRegex(MODULE.InvalidRecord, 'control character'):
+                MODULE.skill_fingerprint(right)
+            self.assertRegex(MODULE.skill_fingerprint(left), r'^[0-9a-f]{64}$')
+            for number, name in enumerate(('references/tab\there.md', 'references/cr\rhere.md')):
+                with self.subTest(name=name):
+                    other = Path(directory) / f'other-{number}'
+                    self.write_skill(other, {'SKILL.md': 'name: demo\n', name: first})
+                    with self.assertRaisesRegex(MODULE.InvalidRecord, 'control character'):
+                        MODULE.skill_fingerprint(other)
+
     def test_fingerprint_refuses_missing_entry_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
