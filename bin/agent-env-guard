@@ -58,27 +58,201 @@ PS_BSD_ARG_LETTERS = set("OoptUk")
 
 PROC_ENVIRON = re.compile(r"/proc/[^\s'\"]*/environ")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=")
-HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
-SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`|<\(([^()]*)\)")
+WORD_END = set(" \t\n;&|<>()")
 
 
 class Deny(Exception):
     """A denied form; the message is safe to show (no command text)."""
 
 
-def strip_heredoc_bodies(command):
-    """Drop here-document bodies; they are data, not commands."""
-    lines = command.split("\n")
-    out = []
-    pending = []
-    for line in lines:
-        if pending:
-            if line.strip() == pending[0]:
-                pending.pop(0)
+def close_paren(text, i):
+    """Index of the `)` closing a `$(` whose body starts at text[i].
+
+    Quote-aware: parentheses inside quotes do not count, and nested `$(`,
+    backticks and escapes are skipped. A body that never closes cannot be
+    resolved reliably, so it is denied.
+    """
+    depth, state, n = 1, None, len(text)
+    while i < n:
+        c = text[i]
+        if state == "'":
+            if c == "'":
+                state = None
+        elif c == "\\":
+            i += 1
+        elif c == "`":
+            i = close_backtick(text, i + 1)
+        elif text.startswith("$(", i):
+            i = close_paren(text, i + 2)
+        elif state == '"':
+            if c == '"':
+                state = None
+        elif c in "'\"":
+            state = c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    raise Deny("an unterminated command substitution cannot be inspected")
+
+
+def close_backtick(text, i):
+    """Index of the backtick closing one whose body starts at text[i]."""
+    n = len(text)
+    while i < n:
+        if text[i] == "\\":
+            i += 2
             continue
-        out.append(line)
-        pending.extend(m.group(2) for m in HEREDOC.finditer(line))
-    return "\n".join(out)
+        if text[i] == "`":
+            return i
+        i += 1
+    raise Deny("an unterminated backtick substitution cannot be inspected")
+
+
+def body_substitutions(body):
+    """Command substitutions the shell runs inside an unquoted here-document.
+
+    Quotes are literal characters in a here-document body, so only escapes,
+    `$(...)` and backticks matter.
+    """
+    subs, i, n = [], 0, len(body)
+    while i < n:
+        c = body[i]
+        if c == "\\":
+            i += 2
+            continue
+        if body.startswith("$(", i):
+            end = close_paren(body, i + 2)
+            subs.append(body[i + 2:end])
+            i = end + 1
+        elif c == "`":
+            end = close_backtick(body, i + 1)
+            subs.append(body[i + 1:end])
+            i = end + 1
+        else:
+            i += 1
+    return subs
+
+
+def read_word(text, i):
+    """Raw shell word starting at text[i] (quotes kept), and the end index."""
+    state, j, n = None, i, len(text)
+    while j < n:
+        c = text[j]
+        if state:
+            if c == state:
+                state = None
+            elif c == "\\" and state == '"':
+                j += 1
+        elif c == "\\":
+            j += 1
+        elif c in "'\"":
+            state = c
+        elif c in WORD_END:
+            break
+        j += 1
+    return text[i:j], j
+
+
+def read_heredoc_body(text, i, delimiter, strip_tabs):
+    """Body lines from text[i] up to the delimiter line, and the next index."""
+    body, n = [], len(text)
+    while i < n:
+        end = text.find("\n", i)
+        line = text[i:] if end < 0 else text[i:end]
+        i = n if end < 0 else end + 1
+        if (line.lstrip("\t") if strip_tabs else line) == delimiter:
+            break
+        body.append(line)
+    return "\n".join(body), i
+
+
+def scan(command):
+    """Split a command into shell code and the command substitutions it runs.
+
+    Returns the command text with here-document bodies removed (they are
+    data, not commands) and every `$(...)` / backtick body the shell would
+    execute: in plain and double-quoted text and in here-documents whose
+    delimiter is unquoted. A quoted delimiter (<<'EOF', <<"EOF", <<E"OF",
+    <<\\EOF) keeps the body literal, so it is not inspected. Here-document
+    operators inside quotes or comments are not operators.
+    """
+    code, subs, pending = [], [], []
+    state, word_start, i, n = None, True, 0, len(command)
+    while i < n:
+        c = command[i]
+        if state == "'":
+            code.append(c)
+            if c == "'":
+                state = None
+            i += 1
+            continue
+        if c == "\\":
+            code.append(command[i:i + 2])
+            i += 2
+            word_start = False
+            continue
+        if command.startswith("$(", i):
+            end = close_paren(command, i + 2)
+            subs.append(command[i + 2:end])
+            code.append(command[i:end + 1])
+            i, word_start = end + 1, False
+            continue
+        if c == "`":
+            end = close_backtick(command, i + 1)
+            subs.append(command[i + 1:end])
+            code.append(command[i:end + 1])
+            i, word_start = end + 1, False
+            continue
+        if state == '"':
+            code.append(c)
+            if c == '"':
+                state = None
+            i += 1
+            continue
+        if c in "'\"":
+            state, word_start = c, False
+            code.append(c)
+            i += 1
+            continue
+        if c == "#" and word_start:
+            end = command.find("\n", i)
+            i = n if end < 0 else end  # a comment; keep the newline
+            continue
+        if command.startswith("<<", i) and not command.startswith("<<<", i):
+            j = i + 2
+            strip_tabs = j < n and command[j] == "-"
+            j += strip_tabs
+            while j < n and command[j] in " \t":
+                j += 1
+            word, j = read_word(command, j)
+            if not word:
+                raise Deny("a here-document without a delimiter cannot be inspected")
+            try:
+                delimiter = "".join(shlex.split(word))
+            except ValueError:
+                raise Deny("a here-document delimiter that cannot be parsed cannot be inspected")
+            quoted = any(q in word for q in "'\"\\")
+            pending.append((delimiter, strip_tabs, quoted))
+            code.append(command[i:j])
+            i, word_start = j, False
+            continue
+        if c == "\n":
+            code.append(c)
+            i, word_start = i + 1, True
+            for delimiter, strip_tabs, quoted in pending:
+                body, i = read_heredoc_body(command, i, delimiter, strip_tabs)
+                if not quoted:
+                    subs.extend(body_substitutions(body))
+            pending = []
+            continue
+        word_start = c in " \t;&|()<>"
+        code.append(c)
+        i += 1
+    return "".join(code), subs
 
 
 def tokenize(command):
@@ -116,9 +290,9 @@ def check_command(command, depth=0):
         raise Deny("command nesting is too deep to inspect")
     if PROC_ENVIRON.search(command):
         raise Deny("reading /proc/<pid>/environ dumps a process environment")
-    command = strip_heredoc_bodies(command)
-    for inner in SUBSTITUTION.finditer(command):
-        check_command(next(g for g in inner.groups() if g is not None), depth + 1)
+    command, substitutions = scan(command)
+    for inner in substitutions:
+        check_command(inner, depth + 1)
     try:
         tokens = tokenize(command)
     except ValueError:

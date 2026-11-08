@@ -6,12 +6,19 @@ values are synthetic.
 """
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 import unittest
 
-GUARD = pathlib.Path(__file__).resolve().parent.parent / "bin" / "agent-env-guard"
+# AGENT_ENV_GUARD_UNDER_TEST runs the same table against another copy of the
+# guard (used to show a regression test is red on an older head).
+GUARD = pathlib.Path(
+    os.environ.get("AGENT_ENV_GUARD_UNDER_TEST")
+    or pathlib.Path(__file__).resolve().parent.parent / "bin" / "agent-env-guard"
+)
 MARKER = "SYNTH-MARKER-guard-7f3c"
 
 DENY = [
@@ -124,6 +131,42 @@ UNSEEN_ALLOW = [
 ]
 
 
+# Here-documents (ENV-GUARD-01). With an unquoted delimiter the shell runs
+# command substitutions in the body; with any quoting of the delimiter the
+# body is literal. Here-document operators inside quotes or comments are not
+# operators, so they must not hide the following lines from inspection.
+HEREDOC_DENY = [
+    "cat <<EOF\n$(env)\nEOF",
+    "cat <<EOF\n`env`\nEOF",
+    "cat <<-EOF\n\t$(env)\n\tEOF",
+    "cat <<EOF\n'$(printenv)'\nEOF",
+    "cat <<EOF\nuser: $(echo $(env))\nEOF",
+    "cat <<EOF\n$(env | (cat))\nEOF",
+    "cat <<A <<B\nfirst\nA\n$(env)\nB",
+    "cat <<EOF > out.txt\n$(export -p)\nEOF",
+    "cat <<EOF\n$(ps eww)\nEOF",
+    "echo '<<EOF'\nenv\nEOF",
+    "echo hi # <<EOF\nenv\nEOF",
+    "cat <<EOF\n$(env\nEOF",
+]
+HEREDOC_ALLOW = [
+    "cat <<'EOF'\n$(env)\nEOF",
+    "cat <<\"EOF\"\n`env`\nEOF",
+    "cat <<E'OF'\n$(env)\nEOF",
+    "cat <<\\EOF\n$(printenv)\nEOF",
+    "cat <<-'EOF'\n\t$(env)\n\tEOF",
+    "cat <<EOF\nbuilt $(date) on $(uname -s)\nEOF",
+    "cat <<EOF\n$(env FOO=1 date)\nEOF",
+    "cat <<EOF\nliteral \\$(env) and \\`env\\`\nEOF",
+    "cat <<EOF\nHOME is $HOME\nEOF",
+    "cat <<<\"$(date)\"",
+    "echo '$(env)'",
+]
+# Cases the shell can run in the synthetic environment, to tie the guard's
+# decision to what /bin/sh actually expands: deny exactly when the canary
+# reaches the output. Excludes ps and the unterminated form (a syntax error).
+SHELL_COUPLED = [c for c in HEREDOC_DENY + HEREDOC_ALLOW if "ps eww" not in c and "$(env\nEOF" not in c]
+
 def run_guard(payload):
     proc = subprocess.run(
         [sys.executable, "-I", str(GUARD)],
@@ -169,10 +212,35 @@ class GuardDecisions(unittest.TestCase):
     def test_unseen_allowed_forms(self):
         self.check(UNSEEN_ALLOW, "allow")
 
+    def test_heredoc_executable_bodies_denied(self):
+        self.check(HEREDOC_DENY, "deny")
+
+    def test_heredoc_literal_bodies_and_safe_expansions_allowed(self):
+        self.check(HEREDOC_ALLOW, "allow")
+
     def test_codex_shape(self):
         self.assertEqual(decide("ps eww", shape="codex")[0], "deny")
         self.assertEqual(decide("ps aux", shape="codex")[0], "allow")
 
+
+class GuardMatchesShellExpansion(unittest.TestCase):
+    """Runs /bin/sh with only PATH and a synthetic canary, never the real env."""
+
+    def test_guard_denies_exactly_the_bodies_the_shell_expands(self):
+        clean = {"PATH": "/usr/bin:/bin", "FAKE_TEST_API_KEY": MARKER}
+        for command in SHELL_COUPLED:
+            with self.subTest(command=command):
+                with tempfile.TemporaryDirectory() as cwd:
+                    shell = subprocess.run(
+                        ["/bin/sh", "-c", command], capture_output=True, text=True,
+                        env=clean, cwd=cwd, timeout=10,
+                    )
+                    output = shell.stdout + shell.stderr
+                    for name in os.listdir(cwd):
+                        with open(os.path.join(cwd, name), encoding="utf-8", errors="replace") as fh:
+                            output += fh.read()
+                leaked = MARKER in output
+                self.assertEqual(decide(command)[0], "deny" if leaked else "allow")
 
 class GuardOutputCarriesNoMarker(unittest.TestCase):
     def test_deny_message_does_not_echo_command(self):

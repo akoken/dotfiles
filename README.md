@@ -171,7 +171,11 @@ protection**, not a fix:
   `declare -x`/`-p`), `ps` with environment flags (`-E`, BSD `e` as in
   `ps eww`) and reads of `/proc/<pid>/environ`. Ordinary `ps`,
   `printenv NAME`, `env NAME=value command` and `env -u NAME command` still
-  run. Codex runs the hook only after it is trusted with `/hooks`. Decision
+  run. Command substitutions are checked wherever the shell runs them,
+  including here-documents with an unquoted delimiter (`<<EOF`); a quoted
+  delimiter (`<<'EOF'`) keeps the body literal, and a substitution that
+  cannot be parsed is denied. Codex runs the hook only after it is trusted
+  with `/hooks`. Decision
   table: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`.
 
 What this does **not** solve:
