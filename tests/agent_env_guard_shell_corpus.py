@@ -36,13 +36,26 @@ C = B + NL  # line continuation
 #   narrow              the text is outside the accepted grammar (positive
 #                       allow rule); refused although this form dumps nothing
 WHY = {"builtin_suppressed", "unknown", "branch", "parse_error", "limit", "narrow"}
+
+# Known limitations (round 7, maintainer decision (c): the guard is a
+# best-effort tripwire). These commands dump in at least one profile and the
+# guard still allows them; each row names its review finding. The table test
+# requires the limit id on every allow case that dumps anywhere, so a new
+# allowed dump cannot hide in the corpus, and a fix shows up as a decision
+# change that must update the README and this list.
+KNOWN_LIMITS = {
+    "ENV-GUARD-11": "a function body without braces (`f() env`) is not checked",
+    "ENV-GUARD-12": "one named operand makes typeset/export/readonly listing forms pass "
+                    "(`typeset -m NAME '*'`, dash `export -p NAME`, `readonly -p NAME`)",
+    "ENV-GUARD-13": "env skips an unknown operand as if it were an assignment",
+}
 CASES = []
 
 
-def case(case_id, command, decision, why=None, run=True, sweep=False):
+def case(case_id, command, decision, why=None, run=True, sweep=False, limit=None):
     CASES.append({
         "id": case_id, "command": command, "decision": decision,
-        "why": why, "observed": {}, "run": run, "sweep": sweep,
+        "why": why, "observed": {}, "run": run, "sweep": sweep, "limit": limit,
     })
 
 
@@ -177,6 +190,28 @@ case("B22", "for v in ${(k)parameters}; do print -r -- ${(P)v}; done", "deny")
 case("B23", "hash -p /usr/bin/env x; x", "deny")
 case("B24", "cd /proc/self && cat environ", "deny", run=False)
 case("B25", "cat /pro?/self/environ", "deny", run=False)
+# Round 7 (re-review of eb86707): round-6 regressions, now permanent
+case("J1", "env -ui", "deny")
+case("J2", "/usr/bin/env -ui", "deny")
+case("J3", "env -u -i", "deny")
+case("J4", "env -u --ignore-environment", "deny")
+case("J5", "zsh -oSH_WORD_SPLIT -c env true", "deny")
+case("J6", "zsh -oNO_RCS -c printenv true", "deny")
+case("J7", "bash -onoglob -c env", "deny", why="narrow")
+case("J8", "env -u i", "deny")
+case("J9", "zsh -o NO_RCS -c printenv true", "deny")
+case("J10", "env -u i true", "allow")
+case("J11", "env -i true", "allow")
+case("J12", "env -uFOO -i true", "allow")
+case("J13", "zsh -o NO_RCS -c 'echo ok'", "allow")
+# Known limitations (see KNOWN_LIMITS): allowed although they dump
+case("X1", "f() env; f", "allow", limit="ENV-GUARD-11")
+case("X2", "typeset -m PATH '*'", "allow", limit="ENV-GUARD-12")
+case("X3", "typeset -pm PATH '*'", "allow", limit="ENV-GUARD-12")
+case("X4", "export -p PATH", "allow", limit="ENV-GUARD-12")
+case("X5", "export -p UNUSED", "allow", limit="ENV-GUARD-12")
+case("X6", "readonly FAKE_TEST_API_KEY; readonly -p PATH", "allow", limit="ENV-GUARD-12")
+case("X7", 'env "$(printf env)" -u X', "allow", limit="ENV-GUARD-13")
 # Legitimate forms the narrow grammar refuses (see round6-grammar-table)
 case("L1", "2>/dev/null true", "deny", why="narrow")
 case("L2", "printf $'a\\tb\\n'", "deny", why="narrow")
@@ -233,7 +268,7 @@ case("A32", "echo ${#PATH}", "allow")
 case("A33", f"x=$({C}(env))", "allow")
 
 # Measured categories per verified profile, in PROFILES order (round 6
-# rows B, L, K measured the same way). Source:
+# rows B, L, K and round 7 rows J, X measured the same way). Source:
 # `python3 -I tests/agent_env_guard_harness.py` on macOS 27 (sh=bash3, bash3,
 # zsh5) and on ubuntu:24.04 (sh=dash, bash5, zsh5; both zsh5 columns agree).
 PROFILES = ("sh=bash3", "bash3", "zsh5", "sh=dash", "bash5")
@@ -381,6 +416,26 @@ OBSERVED = {
     "B22": "parse_error parse_error visible parse_error parse_error",
     "B23": "visible visible none none visible",
     "B26": "visible visible visible visible visible",
+    "J1": "visible visible visible visible visible",
+    "J2": "visible visible visible visible visible",
+    "J3": "visible visible visible visible visible",
+    "J4": "visible visible visible visible visible",
+    "J5": "visible visible visible visible visible",
+    "J6": "visible visible visible visible visible",
+    "J7": "none none none none none",
+    "J8": "visible visible visible visible visible",
+    "J9": "visible visible visible visible visible",
+    "J10": "none none none none none",
+    "J11": "none none none none none",
+    "J12": "none none none none none",
+    "J13": "none none none none none",
+    "X1": "parse_error parse_error visible visible parse_error",
+    "X2": "none none visible none none",
+    "X3": "none none visible none none",
+    "X4": "none none none visible none",
+    "X5": "none none none visible none",
+    "X6": "none none none visible none",
+    "X7": "visible visible visible visible visible",
     "L1": "none none none none none",
     "L2": "none none none none none",
     "L3": "none none none none none",

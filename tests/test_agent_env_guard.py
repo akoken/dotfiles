@@ -18,7 +18,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agent_env_guard_harness as harness  # noqa: E402
-from agent_env_guard_shell_corpus import CASES, PROFILES, WHY  # noqa: E402
+from agent_env_guard_shell_corpus import CASES, KNOWN_LIMITS, PROFILES, WHY  # noqa: E402
 
 # AGENT_ENV_GUARD_UNDER_TEST runs the same table against another copy of the
 # guard (used to show a regression test is red on an older head).
@@ -300,9 +300,13 @@ class CorpusTable(unittest.TestCase):
                 self.assertLessEqual(set(observed.values()), CATEGORIES)
                 dumped = DUMPED & set(observed.values())
                 if case["decision"] == "allow":
-                    # An allow is written out and never runs a dump anywhere.
-                    self.assertFalse(dumped)
+                    # An allow is written out; one that dumps anywhere must name
+                    # its documented known limitation (round 7, decision (c)).
                     self.assertIsNone(case["why"])
+                    if dumped:
+                        self.assertIn(case["limit"], KNOWN_LIMITS)
+                    else:
+                        self.assertIsNone(case["limit"])
                 elif dumped:
                     self.assertIsNone(case["why"])
                 else:
@@ -324,6 +328,11 @@ class ShellCase(unittest.TestCase):
         cls.box = harness.Sandbox()
         cls.addClassCleanup(cls.box.close)
         cls.profiles = harness.profiles(cls.box)
+        # Gate: no shell case runs unless every shell starts with exactly the
+        # synthetic surface (system zshenv included, no name exemptions).
+        problems = harness.startup_problems(harness.startup_report(cls.box))
+        if problems:
+            raise AssertionError(f"shell startup is not isolated: {problems}")
 
     def measure(self, command):
         return {key: self.box.run(shell, command) for shell, key in self.profiles.items()}
@@ -337,14 +346,6 @@ class ShellProfiles(ShellCase):
             with self.subTest(shell=shell):
                 self.assertIn(key, PROFILES)
 
-    def expected_surface(self, shell):
-        zsh = shell == "zsh"
-        return {
-            "extra_exports": [], "changed_values": [], "functions": [],
-            "options": harness.ZSH_DEFAULT_OPTIONS if zsh else [],
-            "aliases": harness.ZSH_DEFAULT_ALIASES if zsh else [],
-        }
-
     def test_startup_files_leave_the_synthetic_environment_alone(self):
         # zsh -f still sources the system zshenv (/etc/zshenv or
         # /etc/zsh/zshenv); the report names it, and every shell must start
@@ -353,13 +354,14 @@ class ShellProfiles(ShellCase):
         report = harness.startup_report(self.box)
         for shell in self.profiles:
             with self.subTest(shell=shell, system_zshenv=report["system_zshenv"]):
-                self.assertEqual(report[shell], self.expected_surface(shell))
+                self.assertEqual(report[shell], harness.expected_surface(shell))
 
     def test_startup_check_detects_a_startup_file(self):
         # Control: a startup file that exports, aliases and defines something
         # (zsh without -f reads $ZDOTDIR/.zshenv) must show up in the report.
         with open(os.path.join(self.box.home, ".zshenv"), "w") as fh:
             fh.write("export SYNTH_STARTUP_EXTRA=1\nexport HOME=/elsewhere\n"
+                     "export LOGNAME=SYNTH-STARTUP-MARKER\nexport SHLVL=SYNTH-STARTUP-MARKER\n"
                      "alias zz=true\nzz_fn() { :; }\nsetopt extendedglob\n")
         argv = harness.SHELL_ARGV["zsh"]
         try:
@@ -370,6 +372,9 @@ class ShellProfiles(ShellCase):
             os.remove(os.path.join(self.box.home, ".zshenv"))
         self.assertIn("SYNTH_STARTUP_EXTRA", report["extra_exports"])
         self.assertIn("HOME", report["changed_values"])
+        self.assertIn("LOGNAME", report["changed_values"])  # re-review ENV-GUARD-06
+        self.assertIn("SHLVL", report["changed_values"])
+        self.assertTrue(harness.startup_problems({"zsh": report}))
         self.assertIn("zz=true", report["aliases"])
         self.assertIn("zz_fn", report["functions"])
         self.assertIn("extendedglob", report["options"])
@@ -414,9 +419,27 @@ REFLECTION = {"getattr", "setattr", "delattr", "vars", "eval", "exec", "compile"
               "globals", "locals", "__import__", "attrgetter", "methodcaller"}
 ALLOWED_DUNDERS = {"__name__", "__new__"}
 PRIVATE = {"_text", "_pos"}
+# The guard's whole import surface: plain `import name` of these modules, no
+# aliases and no `from` imports (an alias such as `attrgetter as reader`
+# would hide reflection from a name check), and no module internals.
+ALLOWED_IMPORTS = {"contextlib", "fnmatch", "json", "os", "re", "shlex", "sys"}
+MODULE_INTERNALS = {"modules", "_getframe", "settrace", "setprofile", "__builtins__"}
 # The reader API of LogicalSource; only the lexing layer may call it.
 READER_API = {"peek", "at", "take", "take_physical_line", "physical_eof", "_skip"}
 LAYER = {"LogicalSource", "Lexer"}
+
+
+def fold_string(node):
+    """The constant string an expression of string literals builds, or None."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = fold_string(node.left), fold_string(node.right)
+        return left + right if left is not None and right is not None else None
+    if isinstance(node, ast.JoinedStr):
+        parts = [fold_string(v) for v in node.values if isinstance(v, ast.Constant)]
+        return "".join(p for p in parts if p is not None)
+    return None
 
 
 def raw_access_violations(source):
@@ -457,6 +480,18 @@ def raw_access_violations(source):
             violations.append(f"line {node.lineno}: .{node.attr} outside LogicalSource")
         if isinstance(node, ast.Constant) and node.value in PRIVATE and owner(node) != "LogicalSource":
             violations.append(f"line {node.lineno}: private name as a string outside LogicalSource")
+        if isinstance(node, ast.ImportFrom):
+            violations.append(f"line {node.lineno}: `from {node.module} import ...`")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name not in ALLOWED_IMPORTS or alias.asname:
+                    violations.append(f"line {node.lineno}: import of `{alias.name}`")
+        if isinstance(node, ast.Attribute) and node.attr in MODULE_INTERNALS:
+            violations.append(f"line {node.lineno}: module internals `.{node.attr}`")
+        if isinstance(node, (ast.BinOp, ast.JoinedStr)):
+            folded = fold_string(node)
+            if folded is not None and any(p in folded for p in PRIVATE) and owner(node) != "LogicalSource":
+                violations.append(f"line {node.lineno}: private name built from strings")
         if isinstance(node, ast.Name) and node.id in REFLECTION:
             violations.append(f"line {node.lineno}: reflective `{node.id}`")
         if isinstance(node, ast.Attribute) and node.attr in {"attrgetter", "methodcaller"}:
@@ -475,6 +510,13 @@ def raw_access_violations(source):
 
 
 SEEDED_RAW_ACCESS = [
+    # re-review ENV-GUARD-07 (eb86707): an import-alias reflective read
+    ("import contextlib\n", "import contextlib\nfrom operator import attrgetter as field_reader\n"),
+    ("        self.src = src\n",
+     '        self.src = src\n        self.debug_prefix = field_reader("_te" + "xt")(src)[:80]\n'),
+    ("import contextlib\n", "import contextlib\nimport operator as op\n"),
+    ("import contextlib\n", "import contextlib\nimport importlib\n"),
+    ("        self.src = src\n", "        self.src = src\n        self.mods = sys.modules\n"),
     # re-review ENV-GUARD-07: a reflective read of the private text
     ("        self.src = src\n", '        self.src = src\n        self.debug_prefix = getattr(src, "_text")[:80]\n'),
     ("        self.src = src\n", "        self.src = src\n        self.debug = vars(src)\n"),
@@ -502,6 +544,38 @@ class StructuralRule(unittest.TestCase):
             with self.subTest(seed=new):
                 self.assertIn(old, source)
                 self.assertTrue(raw_access_violations(source.replace(old, new, 1)))
+
+
+class LimitedGuaranteeIsStated(unittest.TestCase):
+    """README, the guard docstring and the hook messages state the same
+    limited guarantee (round 7, decision (c)): a tripwire, with the known
+    limitations listed by command."""
+
+    README = pathlib.Path(__file__).resolve().parent.parent / "README.md"
+
+    def test_readme_lists_every_known_limitation_by_command(self):
+        readme = self.README.read_text()
+        self.assertIn("best-effort tripwire, not a security boundary", readme)
+        for case in CASES:
+            if case["limit"]:
+                with self.subTest(case=case["id"]):
+                    self.assertTrue(case["limit"] in readme, case["limit"])
+                    self.assertTrue(f"`{case['command']}`" in readme, case["command"])
+
+    def test_no_text_claims_an_allow_is_safe(self):
+        texts = {"README": self.README.read_text(), "guard": GUARD.read_text()}
+        for name, text in texts.items():
+            with self.subTest(text=name):
+                lowered = text.lower()
+                self.assertIn("tripwire", lowered)
+                for claim in ("positive allow", "allow rule is positive", "the guarantee covers",
+                              "every accepted command"):
+                    self.assertNotIn(claim, lowered)
+
+    def test_deny_messages_make_no_safety_claim(self):
+        _, reason = decide("env")
+        self.assertNotIn("guarantee", reason.lower())
+        self.assertNotIn("safe command", reason.lower())
 
 
 class Limits(unittest.TestCase):

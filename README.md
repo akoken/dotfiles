@@ -171,23 +171,30 @@ protection**, not a fix:
   `declare -x`/`-p`), `ps` with environment flags (`-E`, BSD `e` as in
   `ps eww`) and reads of `/proc/<pid>/environ`. Ordinary `ps`,
   `printenv NAME`, `env NAME=value command` and `env -u NAME command` still
-  run. The allow rule is positive: a command passes only when one lexer
-  reads the whole text by a written grammar (top of `bin/agent-env-guard`)
-  and every shell the agents use - POSIX `sh` (dash, or bash in sh mode),
-  bash and zsh - would allow it. Anything outside that grammar is refused
-  with a short reason that does not quote the command: unknown syntax such
-  as zsh glob qualifiers or ANSI-C escapes, a redirection before the
+  run. **It is a best-effort tripwire, not a security boundary**: it blocks
+  the dump commands it recognises and refuses forms it cannot read (for
+  example zsh glob qualifiers, ANSI-C escapes, a redirection before the
   command name, a command name built from a variable or a glob, an option a
-  wrapper table does not know, `env -S`, a shell reading stdin, and nesting
-  or size over the limits. Everyday forms such as `git status && git diff`,
-  `env FOO=1 true` and quoted here-documents still pass. **The guarantee
-  covers only the command text that passes through this hook and the
-  dump forms listed above**; it says nothing about what a started program,
-  script file or interpreter does, or about variables set outside the
-  command. Codex runs the hook only after it is trusted with `/hooks`.
-  Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
+  wrapper table does not know, `env -S`, a shell reading stdin, nesting or
+  size over the limits), with a short reason that does not quote the
+  command. An allow only means that no recognised pattern matched. Everyday
+  forms such as `git status && git diff`, `env FOO=1 true` and quoted
+  here-documents pass. Codex runs the hook only after it is trusted with
+  `/hooks`. Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
   (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
   synthetic environment, never the real one).
+- **Known limitations of the guard** (commands that still dump and pass; kept
+  as `KNOWN_LIMITS` rows in `tests/agent_env_guard_shell_corpus.py`):
+  - ENV-GUARD-11: a function body without braces is not checked, so
+    `f() env; f` passes (dumps in zsh and dash).
+  - ENV-GUARD-12: one named operand makes a declaration command pass, so
+    `typeset -m PATH '*'` and `typeset -pm PATH '*'` (zsh) and
+    `export -p PATH`, `export -p UNUSED` and
+    `readonly FAKE_TEST_API_KEY; readonly -p PATH` (dash) list everything.
+  - ENV-GUARD-13: `env` skips an operand whose value is unknown as if it were
+    an assignment, so `env "$(printf env)" -u X` passes.
+  - Anything the guard cannot see: what a started program, script file or
+    interpreter does, and variables set outside the command.
 
 What this does **not** solve:
 

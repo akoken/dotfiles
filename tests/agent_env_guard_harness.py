@@ -111,6 +111,7 @@ class Sandbox:
             "HOME": self.home,
             "ZDOTDIR": self.home,
             "LC_ALL": "C",
+            "LOGNAME": "synthetic-user",  # set, so zsh does not fill it in
             "FAKE_TEST_API_KEY": CANARY,
             "GUARD_TRACE": trace,
         }
@@ -168,8 +169,18 @@ def profiles(sandbox):
     return {shell: key for shell in SHELL_ARGV if (key := profile_key(shell, sandbox))}
 
 
-# Names a shell adds to the environment by itself (zsh also exports LOGNAME).
-SHELL_EXPORTS = {"PWD", "OLDPWD", "SHLVL", "_", "LOGNAME"}
+# Names a shell adds to the environment by itself, each with the only value
+# it may have (measured on macOS and Ubuntu; SHLVL is 0 or 1 depending on the
+# shell). Every other name must be a synthetic one with its synthetic value:
+# there is no name a startup file could change unnoticed.
+def shell_set_value_ok(name, value, cwd):
+    if name in ("PWD", "OLDPWD"):
+        return value == os.path.realpath(cwd)
+    if name == "SHLVL":
+        return value in ("0", "1")
+    if name == "_":
+        return value == "/usr/bin/env"
+    return False
 # What `zsh -f -c` shows with no startup file changing anything (measured on
 # macOS and Ubuntu: identical).
 ZSH_DEFAULT_OPTIONS = ["nohashdirs", "norcs"]
@@ -191,24 +202,44 @@ def startup_report(sandbox):
                 SHELL_ARGV[shell] + [script], capture_output=True, text=True,
                 env={**env, **(extra or {})}, cwd=cwd, timeout=10, stdin=subprocess.DEVNULL,
             ).stdout
-            # Names only; the absolute path bypasses the env shim.
-            names = {line.split("=", 1)[0] for line in run("/usr/bin/env").splitlines() if "=" in line}
-            unchanged = {
-                name: run('[ "$(printenv %s)" = "$EXPECT" ] && echo same' % name,
-                          {"EXPECT": value}).strip() == "same"
-                for name, value in env.items()
-            }
+            # Parsed in-process and never printed; the absolute path bypasses
+            # the env shim. A value with a newline yields a stray line, which
+            # is reported as an extra name.
+            seen = {}
+            for line in run("/usr/bin/env").splitlines():
+                name, _, value = line.partition("=")
+                seen[name] = value
+            extra = sorted(n for n in seen if n not in env and not shell_set_value_ok(n, seen[n], cwd)
+                           and n not in ("PWD", "OLDPWD", "SHLVL", "_"))
+            changed = sorted(n for n in seen if (n in env and seen[n] != env[n]) or (
+                n not in env and n in ("PWD", "OLDPWD", "SHLVL", "_") and not shell_set_value_ok(n, seen[n], cwd)))
+            changed += sorted(n for n in env if n not in seen)  # removed or unexported
             surface = run(SURFACE_PROBE[shell])
         options, _, rest = surface.partition(":aliases\n")
         aliases, _, functions = rest.partition(":functions\n")
         report[shell] = {
-            "extra_exports": sorted(names - set(env) - SHELL_EXPORTS),
-            "changed_values": sorted(name for name, same in unchanged.items() if not same),
+            "extra_exports": extra,
+            "changed_values": sorted(changed),
             "options": options.split(),
             "aliases": aliases.split(),
             "functions": functions.split(),
         }
     return report
+
+
+def expected_surface(shell):
+    zsh = shell == "zsh"
+    return {
+        "extra_exports": [], "changed_values": [], "functions": [],
+        "options": ZSH_DEFAULT_OPTIONS if zsh else [],
+        "aliases": ZSH_DEFAULT_ALIASES if zsh else [],
+    }
+
+
+def startup_problems(report):
+    """Shells whose started state differs from the clean surface."""
+    return {shell: surface for shell, surface in report.items()
+            if shell != "system_zshenv" and surface != expected_surface(shell)}
 
 
 if __name__ == "__main__":
