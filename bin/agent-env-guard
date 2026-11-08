@@ -20,7 +20,8 @@ LIMITATION: this guard inspects only the command line the agent typed. It
 cannot see what a test, script, build tool or interpreter (node, python,
 ruby, ...) does once it runs, so a program that reads process environments
 internally is NOT stopped by it, and indirection such as `p=ps; $p -E` or
-building the command inside a script gets past it. Pair it with the subprocess environment
+building the command inside a script gets past it. Shell syntax is read by
+the lexing contract below; forms outside it are not modelled. Pair it with the subprocess environment
 scrub and with keeping secrets out of exported shell variables.
 
 Input: the hook JSON on stdin ({"tool_name": "Bash", "tool_input":
@@ -59,6 +60,58 @@ PS_BSD_ARG_LETTERS = set("OoptUk")
 PROC_ENVIRON = re.compile(r"/proc/[^\s'\"]*/environ")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=")
 WORD_END = set(" \t\n;&|<>()")
+CONTINUATION = "\\\n"
+# Stands in for a command substitution in the code handed to the word checks;
+# its value is unknown, so it never counts as a variable name or a command.
+SUBSTITUTED = "\x00substitution\x00"
+
+# ---------------------------------------------------------------------------
+# Shell lexing support contract
+#
+# The guard decides on shell code only after splitting the typed command the
+# way POSIX sh and bash do for the subset below. Every executable form outside
+# it that the guard cannot resolve is denied, never allowed.
+#
+# L1 Quoting. Single quotes are literal (a backslash-newline inside them stays).
+#    Double quotes are literal except for `$(...)`, backticks and backslash.
+#    A backslash outside single quotes escapes the next character.
+# L2 Line continuation. Backslash-newline outside single quotes is removed
+#    before anything else is read, so it joins words, operators, here-document
+#    delimiters (`<<EO\<newline>F` is `<<EOF`) and command names
+#    (`en\<newline>v` is `env`).
+# L3 Comments. `#` at the start of an unquoted word comments out the rest of
+#    the physical line; a comment has no continuation and no operators.
+# L4 Here-string. `<<<` is one operator; its word is ordinary code, so the
+#    substitutions in it are inspected.
+# L5 Here-document. `<<word` or `<<-word` (not `<<<`) in unquoted code. The
+#    delimiter is the word after L2 and quote removal; it is quoted when the
+#    word contains any quote character or backslash. The body starts after
+#    the next newline in code; several here-documents on one line take their
+#    bodies in order.
+#    - `<<-` removes leading tabs from each physical body line.
+#    - Quoted delimiter: body lines are compared physically and the body is
+#      literal data, not inspected.
+#    - Unquoted delimiter: a line ending in an unescaped backslash continues
+#      onto the next line (L2) before it is compared with the delimiter, and
+#      every `$(...)` and backtick in the body is inspected. Quotes are
+#      literal characters in a body.
+#    - A body without its delimiter runs to the end of the command.
+# L6 Arithmetic. In `((...))` at the start of a word and in `$((...))`, `<<`
+#    is a shift, not a here-document. Substitutions inside are inspected; a
+#    multi-line arithmetic expression is denied.
+# L7 Command substitution. `$(...)` is matched by quote-aware parenthesis
+#    counting, backticks by the next unescaped backtick; each body is
+#    inspected with all rules, recursively.
+# L8 Refusal. An unterminated substitution, a here-document without a
+#    parseable delimiter, multi-line arithmetic and nesting deeper than 8 are
+#    denied visibly.
+#
+# Not modelled (outside the contract): `case` patterns with `)` inside
+# `$(...)` and here-documents inside `$(...)` are counted as code; a mismatch
+# there only makes more text count as code, or is denied as unterminated.
+# Aliases, functions, variable indirection (`p=ps; $p -E`) and anything a
+# program does after it starts are not seen at all.
+# ---------------------------------------------------------------------------
 
 
 class Deny(Exception):
@@ -66,12 +119,7 @@ class Deny(Exception):
 
 
 def close_paren(text, i):
-    """Index of the `)` closing a `$(` whose body starts at text[i].
-
-    Quote-aware: parentheses inside quotes do not count, and nested `$(`,
-    backticks and escapes are skipped. A body that never closes cannot be
-    resolved reliably, so it is denied.
-    """
+    """Index of the `)` closing a `(` whose content starts at text[i] (L7)."""
     depth, state, n = 1, None, len(text)
     while i < n:
         c = text[i]
@@ -100,7 +148,7 @@ def close_paren(text, i):
 
 
 def close_backtick(text, i):
-    """Index of the backtick closing one whose body starts at text[i]."""
+    """Index of the backtick closing one whose body starts at text[i] (L7)."""
     n = len(text)
     while i < n:
         if text[i] == "\\":
@@ -112,74 +160,96 @@ def close_backtick(text, i):
     raise Deny("an unterminated backtick substitution cannot be inspected")
 
 
-def body_substitutions(body):
-    """Command substitutions the shell runs inside an unquoted here-document.
-
-    Quotes are literal characters in a here-document body, so only escapes,
-    `$(...)` and backticks matter.
-    """
-    subs, i, n = [], 0, len(body)
+def literal_text_substitutions(text):
+    """`$(...)` and backtick bodies in text whose quotes are literal (L5, L6)."""
+    subs, i, n = [], 0, len(text)
     while i < n:
-        c = body[i]
+        c = text[i]
         if c == "\\":
             i += 2
             continue
-        if body.startswith("$(", i):
-            end = close_paren(body, i + 2)
-            subs.append(body[i + 2:end])
+        if text.startswith("$(", i):
+            end = close_paren(text, i + 2)
+            subs.append(text[i + 2:end])
             i = end + 1
         elif c == "`":
-            end = close_backtick(body, i + 1)
-            subs.append(body[i + 1:end])
+            end = close_backtick(text, i + 1)
+            subs.append(text[i + 1:end])
             i = end + 1
         else:
             i += 1
     return subs
 
 
+def arithmetic_substitutions(expression):
+    if "\n" in expression.replace(CONTINUATION, ""):
+        raise Deny("a multi-line arithmetic expression cannot be inspected")
+    return literal_text_substitutions(expression)
+
+
+def skip_continuations(text, i):
+    while text.startswith(CONTINUATION, i):
+        i += 2
+    return i
+
+
 def read_word(text, i):
-    """Raw shell word starting at text[i] (quotes kept), and the end index."""
-    state, j, n = None, i, len(text)
-    while j < n:
-        c = text[j]
+    """A shell word from text[i] with L2 applied, and the index after it."""
+    word, state, n = [], None, len(text)
+    while i < n:
+        if state != "'" and text.startswith(CONTINUATION, i):
+            i += 2
+            continue
+        c = text[i]
         if state:
             if c == state:
                 state = None
-            elif c == "\\" and state == '"':
-                j += 1
-        elif c == "\\":
-            j += 1
+            elif c == "\\" and state == '"' and i + 1 < n:
+                word.append(text[i:i + 2])
+                i += 2
+                continue
+        elif c == "\\" and i + 1 < n:
+            word.append(text[i:i + 2])
+            i += 2
+            continue
         elif c in "'\"":
             state = c
         elif c in WORD_END:
             break
-        j += 1
-    return text[i:j], j
+        word.append(c)
+        i += 1
+    return "".join(word), i
 
 
-def read_heredoc_body(text, i, delimiter, strip_tabs):
-    """Body lines from text[i] up to the delimiter line, and the next index."""
+def unescaped_trailing_backslash(line):
+    stripped = line.rstrip("\\")
+    return (len(line) - len(stripped)) % 2 == 1
+
+
+def read_heredoc_body(text, i, delimiter, strip_tabs, quoted):
+    """Body of a here-document from text[i] (L5), and the index after it."""
     body, n = [], len(text)
     while i < n:
         end = text.find("\n", i)
         line = text[i:] if end < 0 else text[i:end]
         i = n if end < 0 else end + 1
-        if (line.lstrip("\t") if strip_tabs else line) == delimiter:
+        if strip_tabs:
+            line = line.lstrip("\t")
+        if not quoted:
+            while unescaped_trailing_backslash(line) and i < n:
+                end = text.find("\n", i)
+                more = text[i:] if end < 0 else text[i:end]
+                i = n if end < 0 else end + 1
+                line = line[:-1] + (more.lstrip("\t") if strip_tabs else more)
+        if line == delimiter:
             break
         body.append(line)
     return "\n".join(body), i
 
 
 def scan(command):
-    """Split a command into shell code and the command substitutions it runs.
-
-    Returns the command text with here-document bodies removed (they are
-    data, not commands) and every `$(...)` / backtick body the shell would
-    execute: in plain and double-quoted text and in here-documents whose
-    delimiter is unquoted. A quoted delimiter (<<'EOF', <<"EOF", <<E"OF",
-    <<\\EOF) keeps the body literal, so it is not inspected. Here-document
-    operators inside quotes or comments are not operators.
-    """
+    """Shell code of a command (here-document bodies removed, L2 applied) and
+    every command-substitution body the shell would run, per the contract."""
     code, subs, pending = [], [], []
     state, word_start, i, n = None, True, 0, len(command)
     while i < n:
@@ -190,6 +260,9 @@ def scan(command):
                 state = None
             i += 1
             continue
+        if command.startswith(CONTINUATION, i):  # L2
+            i += 2
+            continue
         if c == "\\":
             code.append(command[i:i + 2])
             i += 2
@@ -197,14 +270,18 @@ def scan(command):
             continue
         if command.startswith("$(", i):
             end = close_paren(command, i + 2)
-            subs.append(command[i + 2:end])
-            code.append(command[i:end + 1])
+            if command.startswith("$((", i) and command[end - 1] == ")":  # L6
+                subs.extend(arithmetic_substitutions(command[i + 3:end - 1]))
+                code.append("0")
+            else:  # L7
+                subs.append(command[i + 2:end])
+                code.append(SUBSTITUTED)
             i, word_start = end + 1, False
             continue
         if c == "`":
             end = close_backtick(command, i + 1)
             subs.append(command[i + 1:end])
-            code.append(command[i:end + 1])
+            code.append(SUBSTITUTED)
             i, word_start = end + 1, False
             continue
         if state == '"':
@@ -218,16 +295,31 @@ def scan(command):
             code.append(c)
             i += 1
             continue
-        if c == "#" and word_start:
+        if c == "#" and word_start:  # L3
             end = command.find("\n", i)
-            i = n if end < 0 else end  # a comment; keep the newline
+            i = n if end < 0 else end
             continue
-        if command.startswith("<<", i) and not command.startswith("<<<", i):
-            j = i + 2
+        if word_start and command.startswith("((", i):  # L6
+            end = close_paren(command, i + 1)
+            if command[end - 1] == ")":
+                expression = command[i + 2:end - 1]
+                arithmetic_substitutions(expression)  # refuses multi-line
+                # dash reads `((...))` as nested subshells, so the content is
+                # also checked as code.
+                subs.append(expression)
+                code.append("true")
+                i, word_start = end + 1, False
+                continue
+        if command.startswith("<<<", i):  # L4
+            code.append("<<<")
+            i, word_start = i + 3, True
+            continue
+        if command.startswith("<<", i):  # L5
+            j = skip_continuations(command, i + 2)
             strip_tabs = j < n and command[j] == "-"
-            j += strip_tabs
+            j = skip_continuations(command, j + strip_tabs)
             while j < n and command[j] in " \t":
-                j += 1
+                j = skip_continuations(command, j + 1)
             word, j = read_word(command, j)
             if not word:
                 raise Deny("a here-document without a delimiter cannot be inspected")
@@ -237,16 +329,16 @@ def scan(command):
                 raise Deny("a here-document delimiter that cannot be parsed cannot be inspected")
             quoted = any(q in word for q in "'\"\\")
             pending.append((delimiter, strip_tabs, quoted))
-            code.append(command[i:j])
+            code.append("<< _")
             i, word_start = j, False
             continue
         if c == "\n":
             code.append(c)
             i, word_start = i + 1, True
             for delimiter, strip_tabs, quoted in pending:
-                body, i = read_heredoc_body(command, i, delimiter, strip_tabs)
+                body, i = read_heredoc_body(command, i, delimiter, strip_tabs, quoted)
                 if not quoted:
-                    subs.extend(body_substitutions(body))
+                    subs.extend(literal_text_substitutions(body))
             pending = []
             continue
         word_start = c in " \t;&|()<>"
@@ -288,7 +380,7 @@ def simple_commands(tokens):
 def check_command(command, depth=0):
     if depth > 8:
         raise Deny("command nesting is too deep to inspect")
-    if PROC_ENVIRON.search(command):
+    if PROC_ENVIRON.search(command) or PROC_ENVIRON.search(command.replace(CONTINUATION, "")):
         raise Deny("reading /proc/<pid>/environ dumps a process environment")
     command, substitutions = scan(command)
     for inner in substitutions:
@@ -358,11 +450,11 @@ def check_words(words, depth):
     if name == "env":
         return check_env(args, depth)
     if name == "printenv":
-        if not [a for a in args if not a.startswith("-")]:
+        if not [a for a in args if not a.startswith("-") and a != SUBSTITUTED]:
             raise Deny("`printenv` without a variable name dumps the whole environment")
         return
     if name == "export":
-        if not args or all(a.startswith("-") for a in args):
+        if not args or all(a.startswith("-") or a == SUBSTITUTED for a in args):
             raise Deny("`export -p` / bare `export` dumps every exported variable")
         return
     if name == "set":
@@ -370,7 +462,7 @@ def check_words(words, depth):
             raise Deny("bare `set` dumps every shell variable")
         return
     if name in {"declare", "typeset", "readonly", "local"}:
-        if not [a for a in args if not a.startswith(("-", "+"))]:
+        if not [a for a in args if not a.startswith(("-", "+")) and a != SUBSTITUTED]:
             if name == "local" and not args:
                 return  # prints only function locals
             raise Deny(f"`{name}` without a name (e.g. `declare -x`, `declare -p`) dumps variables")
@@ -410,7 +502,7 @@ def check_env(args, depth):
                 i += 1
         else:
             break
-    while i < len(args) and ASSIGNMENT.match(args[i]):
+    while i < len(args) and (ASSIGNMENT.match(args[i]) or args[i] == SUBSTITUTED):
         i += 1
     if i >= len(args):
         if empty_env:

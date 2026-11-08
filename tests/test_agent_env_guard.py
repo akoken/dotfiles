@@ -162,10 +162,66 @@ HEREDOC_ALLOW = [
     "cat <<<\"$(date)\"",
     "echo '$(env)'",
 ]
+# ENV-GUARD-01 round 3: here-string operator, and line continuation
+# (backslash-newline) in delimiters, bodies, words and arithmetic, per the
+# lexing contract in bin/agent-env-guard.
+B = "\\"
+LEXING_DENY = [
+    'cat <<<"$(env)"',
+    'cat <<<"`env`"',
+    "cat <<<`env`",
+    'cat <<<"$(echo $(env))"',
+    f"cat <<EO{B}\nF\nEOF\nenv",
+    f"cat <<EOF\nEO{B}\nF\nenv\n# EOF",
+    f"cat <<-EOF\n\tEO{B}\nF\nenv\n# EOF",
+    f"cat <<-EO{B}\nF\n\tEOF\nenv",
+    f"cat <<{B}\nEOF\nx\nEOF\nenv",
+    f"cat <{B}\n<EOF\nx\nEOF\nenv",
+    f"cat <<A <<B\nA\nB{B}\n\nB\nenv",
+    f"cat <<EOF\nline {B}\n$(env)\nEOF",
+    f"en{B}\nv",
+    f"e{B}\nn{B}\nv",
+    f"printen{B}\nv",
+    f"env {B}\n| cat",
+    f'echo "$(en{B}\nv)"',
+    "((x = 1 << 2))\nenv\n2",
+    "x=$((1<<2)); env",
+    'echo "# <<EOF"\nenv\nEOF',
+    # Executed, but the output does not reach the terminal: still denied.
+    'cat <<A <<"B"\n$(env)\nA\nliteral\nB',
+    "echo $(( $(env | grep -c SYNTH) ))",
+    f"cat /proc/self/envi{B}\nron",
+    # A substitution's value is unknown, so it never counts as a name.
+    "printenv $(echo HOME)",
+    "env $(true)",
+]
+LEXING_ALLOW = [
+    "cat <<<'$(env)'",
+    f"cat <<<{B}`env{B}`",
+    f"cat <<'EOF'\nEO{B}\nF\nenv\nEOF",
+    f"cat <<'EO'{B}\nF\n$(env)\nEOF",
+    f'cat <<"EOF"\nEOF{B}\nenv\nEOF',
+    "echo x#<<EOF\nenv\nEOF",
+    "echo $((1 << 2))",
+    'printf "%s\\n" "$(date)"',
+    f'env FOO=1 {B}\n  sh -c "echo ok"',
+    "env FOO=1 date",
+    "cat <<EOF\n$(date)\nEOF",
+    "cat <<'EOF'\n$(env)\n`env`\nEOF",
+]
+NO_VISIBLE_LEAK = LEXING_DENY[-5:]
+
 # Cases the shell can run in the synthetic environment, to tie the guard's
 # decision to what /bin/sh actually expands: deny exactly when the canary
 # reaches the output. Excludes ps and the unterminated form (a syntax error).
-SHELL_COUPLED = [c for c in HEREDOC_DENY + HEREDOC_ALLOW if "ps eww" not in c and "$(env\nEOF" not in c]
+SHELL_COUPLED = [
+    c for c in HEREDOC_DENY + HEREDOC_ALLOW + LEXING_DENY + LEXING_ALLOW
+    if "ps eww" not in c and "$(env\nEOF" not in c and c not in NO_VISIBLE_LEAK
+]
+SHELLS_UNDER_TEST = [
+    argv for argv in (["/bin/sh", "-c"], ["/bin/bash", "--noprofile", "--norc", "-c"])
+    if os.path.exists(argv[0])
+]
 
 def run_guard(payload):
     proc = subprocess.run(
@@ -218,28 +274,37 @@ class GuardDecisions(unittest.TestCase):
     def test_heredoc_literal_bodies_and_safe_expansions_allowed(self):
         self.check(HEREDOC_ALLOW, "allow")
 
+    def test_lexing_executable_forms_denied(self):
+        self.check(LEXING_DENY, "deny")
+
+    def test_lexing_literal_and_legitimate_forms_allowed(self):
+        self.check(LEXING_ALLOW, "allow")
+
     def test_codex_shape(self):
         self.assertEqual(decide("ps eww", shape="codex")[0], "deny")
         self.assertEqual(decide("ps aux", shape="codex")[0], "allow")
 
 
 class GuardMatchesShellExpansion(unittest.TestCase):
-    """Runs /bin/sh with only PATH and a synthetic canary, never the real env."""
+    """Runs /bin/sh and /bin/bash with only PATH and a synthetic canary, never the real env."""
 
     def test_guard_denies_exactly_the_bodies_the_shell_expands(self):
         clean = {"PATH": "/usr/bin:/bin", "FAKE_TEST_API_KEY": MARKER}
         for command in SHELL_COUPLED:
             with self.subTest(command=command):
-                with tempfile.TemporaryDirectory() as cwd:
-                    shell = subprocess.run(
-                        ["/bin/sh", "-c", command], capture_output=True, text=True,
-                        env=clean, cwd=cwd, timeout=10,
-                    )
-                    output = shell.stdout + shell.stderr
-                    for name in os.listdir(cwd):
-                        with open(os.path.join(cwd, name), encoding="utf-8", errors="replace") as fh:
-                            output += fh.read()
-                leaked = MARKER in output
+                leaked = False
+                for argv in SHELLS_UNDER_TEST:
+                    with tempfile.TemporaryDirectory() as cwd:
+                        shell = subprocess.run(
+                            argv + [command], capture_output=True, text=True,
+                            env=clean, cwd=cwd, timeout=10,
+                        )
+                        output = shell.stdout + shell.stderr
+                        for name in os.listdir(cwd):
+                            with open(os.path.join(cwd, name), encoding="utf-8", errors="replace") as fh:
+                                output += fh.read()
+                    leaked = leaked or MARKER in output
+                # Deny exactly when some supported shell expands the canary.
                 self.assertEqual(decide(command)[0], "deny" if leaked else "allow")
 
 class GuardOutputCarriesNoMarker(unittest.TestCase):
