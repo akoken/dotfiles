@@ -2,8 +2,10 @@
 """Validate review evidence accounting; never execute commands or authenticate evidence."""
 
 import argparse
+import hashlib
 import json
 import math
+import os
 from pathlib import Path, PurePosixPath
 import re
 import sys
@@ -11,6 +13,10 @@ import sys
 MAX_BYTES = 5 * 1024 * 1024
 SHA = re.compile(r'(?:[0-9a-f]{40}|[0-9a-f]{64})\Z')
 DIGEST = re.compile(r'[0-9a-f]{64}\Z')
+VERSION = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+\Z')
+PACKAGE_PARTS = ('SKILL.md', 'references', 'scripts')
+PRESENCE = ('yes', 'no', 'unknown')
+CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 
 
 class InvalidRecord(ValueError):
@@ -71,15 +77,65 @@ def validate_timing(timing):
                 'timing category exceeds elapsed: ' + field)
 
 
+def skill_fingerprint(directory):
+    """Hash a skill package: sorted '<sha256>  <path>' lines of SKILL.md, references/, scripts/."""
+    require(isinstance(directory, (str, Path)) and str(directory).strip(), 'skill directory')
+    root = Path(directory)
+    require((root / 'SKILL.md').is_file(), 'skill directory lacks SKILL.md')
+    files = []
+    for part in PACKAGE_PARTS:
+        top = root / part
+        require(not top.is_symlink(), 'symlink in skill package: ' + part)
+        candidates = [top] if top.is_file() else sorted(top.rglob('*')) if top.is_dir() else []
+        for path in candidates:
+            relative = path.relative_to(root)
+            if '__pycache__' in relative.parts or path.name == '.DS_Store':
+                continue
+            require(not path.is_symlink(), 'symlink in skill package: ' + relative.as_posix())
+            # One record per line: a separator inside a path could forge or hide records.
+            require(not CONTROL.search(relative.as_posix()),
+                    'control character in skill package path: ' + repr(relative.as_posix()))
+            if path.is_file():
+                files.append(relative.as_posix())
+    lines = b''.join(hashlib.sha256((root / name).read_bytes()).hexdigest().encode() + b'  '
+                     + os.fsencode(name) + b'\n' for name in sorted(files, key=os.fsencode))
+    return hashlib.sha256(lines).hexdigest()
+
+
+def validate_skill(skill, expected_version, expected_fingerprint):
+    """Check the self-reported skill identity; absent identity is a legacy record."""
+    if skill is None:
+        require(expected_version is None and expected_fingerprint is None,
+                'skill identity absent; expected identity cannot be confirmed')
+        return None
+    require(isinstance(skill, dict) and text(skill['name']), 'skill name')
+    require(isinstance(skill['version'], str) and VERSION.fullmatch(skill['version']), 'skill version')
+    require(isinstance(skill['fingerprint'], str) and DIGEST.fullmatch(skill['fingerprint']),
+            'skill fingerprint')
+    require(expected_version is None or skill['version'] == expected_version,
+            'skill version differs from expected')
+    require(expected_fingerprint is None or skill['fingerprint'] == expected_fingerprint,
+            'skill fingerprint differs from expected')
+    return {key: skill[key] for key in ('name', 'version', 'fingerprint')}
+
+
 def evaluate(record, *, expected_profile, expected_base, expected_head, changed_files, required_checks=(),
              policy_known=False, expected_patch_digest=None, baseline_head=None,
-             delta_files=None):
+             delta_files=None, expected_skill_version=None, expected_skill_fingerprint=None,
+             expected_previous_head=None):
     """Return canonical verdict and reasons, or reject malformed/inconsistent evidence."""
     try:
         require(isinstance(record, dict) and type(record['schema_version']) is int
                 and record['schema_version'] == 1, 'unsupported schema')
         if 'timing' in record:
             validate_timing(record['timing'])
+        require(expected_skill_version is None or (isinstance(expected_skill_version, str)
+                and VERSION.fullmatch(expected_skill_version)), 'expected skill version')
+        require(expected_skill_fingerprint is None or (isinstance(expected_skill_fingerprint, str)
+                and DIGEST.fullmatch(expected_skill_fingerprint)), 'expected skill fingerprint')
+        require(expected_previous_head is None or (isinstance(expected_previous_head, str)
+                and SHA.fullmatch(expected_previous_head)), 'expected previous head')
+        skill = validate_skill(record.get('skill'), expected_skill_version, expected_skill_fingerprint)
         profile = record['profile']
         require(expected_profile in ('general', 'aura-peer', 'aura-self')
                 and profile == expected_profile, 'profile differs from trusted review mode')
@@ -133,6 +189,26 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             if state == 'unreviewed':
                 gaps.add('unreviewed file')
 
+        rereview, prior_ids = record.get('rereview'), set()
+        if rereview is None:
+            require(expected_previous_head is None, 'previous reviewed head expected but not recorded')
+            require(skill is None or coverage['mode'] != 'delta',
+                    'delta re-review must record the previously reviewed head')
+        else:
+            require(isinstance(rereview, dict) and isinstance(rereview['previous_head'], str)
+                    and SHA.fullmatch(rereview['previous_head']), 'previous reviewed head')
+            require(expected_previous_head is None or rereview['previous_head'] == expected_previous_head,
+                    'previous reviewed head differs from expected')
+            require(coverage['mode'] != 'delta' or rereview['previous_head'] == coverage['baseline_head'],
+                    'previous reviewed head differs from delta baseline')
+            prior = rereview['prior_finding_ids']
+            require(isinstance(prior, list) and all(text(item) for item in prior)
+                    and len(set(prior)) == len(prior), 'prior finding ids')
+            prior_ids = set(prior)
+            recorded = {item.get('id') for item in record['findings'] if isinstance(item, dict)}
+            require(prior_ids <= recorded, 'prior finding missing from findings; record its current state')
+        presence = {value: [] for value in PRESENCE}
+
         required = paths(list(required_checks), 'required check identities')
         checks = object_list(record, 'checks')
         check_ids = {item['id'] for item in checks}
@@ -163,6 +239,13 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             require(boolean(finding['verified'], 'finding verified'), 'unverified finding')
             require(finding['origin'] in ('change', 'base', 'unknown'), 'finding origin')
             references(finding['evidence'], 'finding/state evidence')
+            if rereview is not None and finding['id'] not in prior_ids:
+                require(finding.get('present_at_previous_head') in PRESENCE,
+                        'new re-review finding needs present_at_previous_head yes/no/unknown')
+                presence[finding['present_at_previous_head']].append(finding['id'])
+            else:
+                require('present_at_previous_head' not in finding,
+                        'present_at_previous_head applies only to new re-review findings')
             references(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
             if 'class' in finding or 'instances' in finding:
                 require(text(finding.get('class')), 'finding class')
@@ -213,6 +296,13 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                   'author_recorded_requirements': sorted(author_recorded)}
         if 'timing' in record:
             result['timing'] = record['timing']
+        result['skill'] = skill
+        if rereview is not None:
+            result['previous_head'] = rereview['previous_head']
+            result['previous_head_verified'] = (expected_previous_head is not None
+                                                or coverage['mode'] == 'delta')
+            result['new_findings_present_at_previous_head'] = {
+                key: sorted(value) for key, value in presence.items()}
         return result
     except (KeyError, TypeError, AttributeError) as error:
         raise InvalidRecord('missing or malformed record field') from error
@@ -240,24 +330,45 @@ def read_json(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('record')
-    parser.add_argument('--expected-profile', choices=('general', 'aura-peer', 'aura-self'), required=True)
-    parser.add_argument('--expected-base', required=True)
-    parser.add_argument('--expected-head', required=True)
+    parser.add_argument('record', nargs='?')
+    parser.add_argument('--skill-fingerprint', metavar='SKILL_DIR',
+                        help='print the package fingerprint of a skill directory and exit')
+    parser.add_argument('--expected-profile', choices=('general', 'aura-peer', 'aura-self'))
+    parser.add_argument('--expected-base')
+    parser.add_argument('--expected-head')
     parser.add_argument('--expected-patch-digest')
-    parser.add_argument('--changed-files', required=True)
+    parser.add_argument('--changed-files')
     parser.add_argument('--baseline-head')
     parser.add_argument('--delta-files')
     parser.add_argument('--require-check', action='append', default=[])
     parser.add_argument('--policy-known', action='store_true')
+    parser.add_argument('--expected-skill-version')
+    parser.add_argument('--expected-skill-fingerprint')
+    parser.add_argument('--expected-previous-head')
     args = parser.parse_args()
+    if args.skill_fingerprint is not None:
+        if args.record is not None:
+            parser.error('--skill-fingerprint takes no review record')
+        try:
+            print(skill_fingerprint(args.skill_fingerprint))
+            return 0
+        except (InvalidRecord, OSError) as error:
+            print('skill fingerprint failed: ' + str(error), file=sys.stderr)
+            return 2
+    missing = [name for name in ('record', 'expected_profile', 'expected_base', 'expected_head',
+                                 'changed_files') if getattr(args, name) is None]
+    if missing:
+        parser.error('missing required arguments: ' + ', '.join(missing))
     try:
         result = evaluate(read_json(args.record), expected_profile=args.expected_profile,
                           expected_base=args.expected_base,
                           expected_head=args.expected_head, changed_files=read_json(args.changed_files),
                           required_checks=args.require_check, policy_known=args.policy_known,
                           expected_patch_digest=args.expected_patch_digest, baseline_head=args.baseline_head,
-                          delta_files=read_json(args.delta_files) if args.delta_files else None)
+                          delta_files=read_json(args.delta_files) if args.delta_files else None,
+                          expected_skill_version=args.expected_skill_version,
+                          expected_skill_fingerprint=args.expected_skill_fingerprint,
+                          expected_previous_head=args.expected_previous_head)
         print(json.dumps(result, sort_keys=True))
         return 0 if result['verdict'] == 'APPROVE' else 1
     except (InvalidRecord, OSError, ValueError, RecursionError) as error:

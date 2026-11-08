@@ -1,6 +1,7 @@
 """Exercise externally observable review-record safety decisions and CLI behavior."""
 
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -346,6 +347,267 @@ class ReviewRecordTests(unittest.TestCase):
             self.assertEqual(2, result.returncode)
             self.assertFalse(json.loads(result.stdout)['valid'])
             self.assertEqual('NEEDS_REVIEW', json.loads(result.stdout)['verdict'])
+
+
+SKILL_FILES = {'SKILL.md': 'name: demo\n', 'references/a.md': 'alpha\n',
+               'scripts/tool.py': 'print(1)\n'}
+
+
+def identity(**overrides):
+    value = {'name': 'pr-review2', 'version': '2.7.0', 'fingerprint': 'e' * 64}
+    value.update(overrides)
+    return value
+
+
+def rereview_record(*presence):
+    value = record()
+    value['rereview'] = {'previous_head': PRIOR, 'prior_finding_ids': ['F0']}
+    value['findings'] = [finding(id='F0', status='fixed-and-verified')]
+    for number, state in enumerate(presence, 1):
+        value['findings'].append(finding(id=f'F{number}', origin='base', defect=False,
+                                         present_at_previous_head=state))
+    return value
+
+
+class SkillIdentityTests(unittest.TestCase):
+    evaluate = ReviewRecordTests.evaluate
+
+    def write_skill(self, root, files=SKILL_FILES):
+        for name, content in files.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+
+    def test_legacy_record_without_identity_still_validates(self):
+        legacy = json.loads(json.dumps(record()))
+        self.assertNotIn('skill', legacy)
+        result = self.evaluate(legacy)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertIsNone(result['skill'])
+        self.assertNotIn('new_findings_present_at_previous_head', result)
+        legacy['skill'] = None
+        self.assertIsNone(self.evaluate(legacy)['skill'])
+
+    def test_recorded_identity_is_reported_and_matches_expectations(self):
+        value = record()
+        value['skill'] = identity()
+        result = self.evaluate(value, expected_skill_version='2.7.0',
+                               expected_skill_fingerprint='e' * 64)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(identity(), result['skill'])
+        self.assertEqual(identity(), self.evaluate(value)['skill'])
+
+    def test_malformed_or_mismatched_identity_is_rejected(self):
+        cases = [
+            ({'version': 'v2.7'}, {}, 'skill version'),
+            ({'version': 270}, {}, 'skill version'),
+            ({'version': '\uff12.7.0'}, {}, 'skill version'),
+            ({'fingerprint': 'E' * 64}, {}, 'skill fingerprint'),
+            ({'fingerprint': 'e' * 40}, {}, 'skill fingerprint'),
+            ({'name': ' '}, {}, 'skill name'),
+            ({}, {'expected_skill_version': '2.6.0'}, 'version differs'),
+            ({}, {'expected_skill_fingerprint': 'f' * 64}, 'fingerprint differs'),
+            ({}, {'expected_skill_version': 'latest'}, 'expected skill version'),
+            ({}, {'expected_skill_fingerprint': 'abc'}, 'expected skill fingerprint'),
+        ]
+        for overrides, options, message in cases:
+            with self.subTest(overrides=overrides, options=options):
+                value = record()
+                value['skill'] = identity(**overrides)
+                with self.assertRaisesRegex(MODULE.InvalidRecord, message):
+                    self.evaluate(value, **options)
+        for skill in ({'name': 'pr-review2', 'version': '2.7.0'}, 'pr-review2', []):
+            with self.subTest(skill=skill):
+                value = record()
+                value['skill'] = skill
+                with self.assertRaises(MODULE.InvalidRecord):
+                    self.evaluate(value)
+
+    def test_expected_identity_refuses_a_legacy_record(self):
+        for options in ({'expected_skill_version': '2.7.0'},
+                        {'expected_skill_fingerprint': 'e' * 64}):
+            with self.subTest(options=options):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'identity absent'):
+                    self.evaluate(record(), **options)
+
+    def test_fingerprint_covers_package_and_ignores_eval_and_caches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_skill(root)
+            first = MODULE.skill_fingerprint(root)
+            self.assertRegex(first, r'^[0-9a-f]{64}$')
+            lines = ''.join(f"{hashlib.sha256(SKILL_FILES[name].encode()).hexdigest()}  {name}\n"
+                            for name in sorted(SKILL_FILES))
+            self.assertEqual(hashlib.sha256(lines.encode()).hexdigest(), first)
+            self.write_skill(root, {'eval/cases/x/oracle.md': 'hidden\n',
+                                    'tests/test_x.py': 'outside package\n',
+                                    'scripts/__pycache__/tool.cpython-312.pyc': 'cache',
+                                    'references/.DS_Store': 'finder'})
+            self.assertEqual(first, MODULE.skill_fingerprint(root))
+            self.write_skill(root, {'references/a.md': 'alpha changed\n'})
+            self.assertNotEqual(first, MODULE.skill_fingerprint(root))
+            for extra in ('references/b.md', 'scripts/.hidden.py', 'scripts/stale.pyc'):
+                with self.subTest(extra=extra):
+                    self.write_skill(root, {'references/a.md': 'alpha\n', extra: 'new\n'})
+                    self.assertNotEqual(first, MODULE.skill_fingerprint(root))
+                    (root / extra).unlink()
+            self.assertEqual(first, MODULE.skill_fingerprint(root))
+
+    def test_fingerprint_refuses_record_separators_in_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            left, right = Path(directory) / 'left', Path(directory) / 'right'
+            first, second = 'first reference\n', 'second reference\n'
+            self.write_skill(left, {'SKILL.md': 'name: demo\n', 'references/a.md': first,
+                                    'references/b.md': second})
+            digest = hashlib.sha256(second.encode()).hexdigest()
+            self.write_skill(right, {'SKILL.md': 'name: demo\n',
+                                     f'references/a.md\n{digest}  references/b.md': first})
+            with self.assertRaisesRegex(MODULE.InvalidRecord, 'control character'):
+                MODULE.skill_fingerprint(right)
+            self.assertRegex(MODULE.skill_fingerprint(left), r'^[0-9a-f]{64}$')
+            for number, name in enumerate(('references/tab\there.md', 'references/cr\rhere.md')):
+                with self.subTest(name=name):
+                    other = Path(directory) / f'other-{number}'
+                    self.write_skill(other, {'SKILL.md': 'name: demo\n', name: first})
+                    with self.assertRaisesRegex(MODULE.InvalidRecord, 'control character'):
+                        MODULE.skill_fingerprint(other)
+
+    def test_fingerprint_refuses_missing_entry_and_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(MODULE.InvalidRecord, 'lacks SKILL.md'):
+                MODULE.skill_fingerprint(root)
+            self.write_skill(root)
+            (root / 'references/link.md').symlink_to(root / 'references/a.md')
+            with self.assertRaisesRegex(MODULE.InvalidRecord, 'symlink'):
+                MODULE.skill_fingerprint(root)
+            (root / 'references/link.md').unlink()
+            (root / 'references/nested').symlink_to(root / 'scripts', target_is_directory=True)
+            with self.assertRaisesRegex(MODULE.InvalidRecord, 'symlink'):
+                MODULE.skill_fingerprint(root)
+            for empty in ('', ' '):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'skill directory'):
+                    MODULE.skill_fingerprint(empty)
+
+    def test_cli_prints_fingerprint_and_checks_expected_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            self.write_skill(folder / 'skill')
+            result = subprocess.run([sys.executable, str(SCRIPT), '--skill-fingerprint',
+                                     str(folder / 'skill')], capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(MODULE.skill_fingerprint(folder / 'skill'), result.stdout.strip())
+            result = subprocess.run([sys.executable, str(SCRIPT), '--skill-fingerprint', str(folder)],
+                                    capture_output=True, text=True)
+            self.assertEqual(2, result.returncode)
+            artifact, changed = folder / 'review.json', folder / 'changed.json'
+            changed.write_text(json.dumps(['src/paging.py']))
+            value = record()
+            value['skill'] = identity()
+            artifact.write_text(json.dumps(value))
+            args = [sys.executable, str(SCRIPT), str(artifact), '--expected-profile', 'general',
+                    '--expected-base', BASE, '--expected-head', HEAD, '--changed-files', str(changed),
+                    '--require-check', 'tests', '--policy-known']
+            for extra, code in [(['--expected-skill-version', '2.7.0'], 0),
+                                (['--expected-skill-version', '2.6.0'], 2),
+                                (['--expected-skill-fingerprint', 'e' * 64], 0),
+                                (['--expected-skill-fingerprint', 'f' * 64], 2),
+                                (['--expected-previous-head', PRIOR], 2)]:
+                with self.subTest(extra=extra):
+                    result = subprocess.run(args + extra, capture_output=True, text=True)
+                    self.assertEqual(code, result.returncode, result.stdout + result.stderr)
+            value['rereview'] = {'previous_head': PRIOR, 'prior_finding_ids': []}
+            artifact.write_text(json.dumps(value))
+            result = subprocess.run(args + ['--expected-previous-head', PRIOR],
+                                    capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertTrue(json.loads(result.stdout)['previous_head_verified'])
+            for bad in (['--skill-fingerprint', ''], ['--skill-fingerprint', str(folder / 'skill'),
+                                                       str(artifact)]):
+                with self.subTest(bad=bad):
+                    result = subprocess.run([sys.executable, str(SCRIPT)] + bad,
+                                            capture_output=True, text=True)
+                    self.assertEqual(2, result.returncode)
+            result = subprocess.run(args[:3], capture_output=True, text=True)
+            self.assertEqual(2, result.returncode)
+            self.assertIn('missing required arguments', result.stderr)
+
+
+class PreviousHeadPresenceTests(unittest.TestCase):
+    evaluate = ReviewRecordTests.evaluate
+
+    def test_new_findings_record_yes_no_or_unknown(self):
+        value = rereview_record('yes', 'no', 'unknown')
+        result = self.evaluate(value, expected_previous_head=PRIOR)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual({'yes': ['F1'], 'no': ['F2'], 'unknown': ['F3']},
+                         result['new_findings_present_at_previous_head'])
+        self.assertTrue(result['previous_head_verified'])
+        self.assertFalse(self.evaluate(value)['previous_head_verified'])
+
+    def test_presence_is_observational_not_a_verdict_input(self):
+        for state in ('yes', 'no', 'unknown'):
+            with self.subTest(state=state):
+                value = rereview_record()
+                value['findings'].append(finding(id='F9', present_at_previous_head=state))
+                value['claimed_verdict'] = 'REQUEST_CHANGES'
+                self.assertEqual(['finding:F9'], self.evaluate(value)['blockers'])
+
+    def test_missing_or_invalid_presence_is_rejected(self):
+        for state in ('maybe', 'Yes', '', True, None, ['yes']):
+            with self.subTest(state=state):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'yes/no/unknown'):
+                    self.evaluate(rereview_record(state))
+        value = rereview_record()
+        value['findings'].append(finding(id='F1', origin='base', defect=False))
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'yes/no/unknown'):
+            self.evaluate(value)
+
+    def test_presence_only_on_new_findings_of_a_rereview(self):
+        value = rereview_record()
+        value['findings'][0]['present_at_previous_head'] = 'yes'
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'only to new re-review findings'):
+            self.evaluate(value)
+        value = record()
+        value['findings'] = [finding(origin='base', defect=False, present_at_previous_head='no')]
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'only to new re-review findings'):
+            self.evaluate(value)
+
+    def test_previous_head_identity_is_bound(self):
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'differs from expected'):
+            self.evaluate(rereview_record('no'), expected_previous_head='d' * 40)
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'expected but not recorded'):
+            self.evaluate(record(), expected_previous_head=PRIOR)
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'expected previous head'):
+            self.evaluate(rereview_record('no'), expected_previous_head=PRIOR[:12])
+        value = rereview_record('no')
+        value['rereview']['prior_finding_ids'].append('F7')
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'prior finding missing'):
+            self.evaluate(value)
+        for rereview in ({'previous_head': PRIOR[:12], 'prior_finding_ids': []},
+                         {'previous_head': PRIOR, 'prior_finding_ids': ['F0', 'F0']},
+                         {'previous_head': PRIOR}, 'c' * 40):
+            with self.subTest(rereview=rereview):
+                value = record()
+                value['rereview'] = rereview
+                with self.assertRaises(MODULE.InvalidRecord):
+                    self.evaluate(value)
+
+    def test_delta_rereview_needs_previous_head_once_identity_is_recorded(self):
+        value = record()
+        value['coverage'].update(mode='delta', baseline_head=PRIOR, delta_files=['src/paging.py'])
+        delta = {'baseline_head': PRIOR, 'delta_files': ['src/paging.py']}
+        self.assertEqual('APPROVE', self.evaluate(value, **delta)['verdict'])
+        value['skill'] = identity()
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'must record the previously reviewed head'):
+            self.evaluate(value, **delta)
+        value['rereview'] = {'previous_head': 'd' * 40, 'prior_finding_ids': []}
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'differs from delta baseline'):
+            self.evaluate(value, **delta)
+        value['rereview']['previous_head'] = PRIOR
+        result = self.evaluate(value, **delta)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertTrue(result['previous_head_verified'])
 
 
 if __name__ == '__main__':

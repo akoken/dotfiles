@@ -1,0 +1,20 @@
+# Per-command API key wrappers (sourced by .zshrc; POSIX function syntax so
+# tests/agent-keys.sh can also load it under bash).
+#
+# Each wrapper fetches exactly one key from the 1Password `agent-keys` vault
+# at call time and passes it to exactly one command through `with-secret`.
+# Nothing here exports a key into the interactive shell, so agent sessions
+# started from this shell do not inherit any of them. See README "Agent keys"
+# for adding a key and for the residual risks.
+
+# Grok CLI reads XAI_API_KEY when it has no active session token.
+grok() { with-secret xai XAI_API_KEY grok "$@"; }
+
+# jira-cli reads JIRA_API_TOKEN.
+jira() { with-secret jira JIRA_API_TOKEN jira "$@"; }
+
+# Ad-hoc consumers without a dedicated CLI: prefix any one command, e.g.
+#   with-openrouter python agent/main.py
+#   with-obss-llm ./run-eval.sh
+with-openrouter() { with-secret openrouter OPENROUTER_API_KEY "$@"; }
+with-obss-llm() { with-secret obss-llm OBSS_LLM_API_KEY "$@"; }

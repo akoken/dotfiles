@@ -34,7 +34,7 @@ not real incidents, a complete behavioral benchmark, or evidence of production r
 
 Score against the oracle only after preserving the reviewer's raw output. Record the
 reviewer identity fields that results/README.md lists (reviewer `pr-review2`, its
-`metadata.version`, candidate tree SHA-256, case ID, host and model id), plus tool policy,
+`metadata.version`, package fingerprint, case ID, host and model id), plus tool policy,
 command/input, output, and observed result. A result measures that reviewer at that version only: results of AURA's
 pr-review, the no-mistakes reviewer, code-review-expert2 or an earlier pr-review2 version
 are never aggregated with, compared as, or cited for this version.
