@@ -38,7 +38,8 @@ other_ctx="synthetic-other-ctx-45"
 other_or="synthetic-other-openrouter-46"
 other_obss="synthetic-other-obss-47"
 stale_xai="synthetic-stale-xai-48"
-markers=("$token" "$xai_value" "$jira_value" "$ctx_value" "$other_jira" "$other_ctx" "$other_or" "$other_obss" "$stale_xai")
+caller_value="synthetic-caller-value-49"
+markers=("$token" "$xai_value" "$jira_value" "$ctx_value" "$other_jira" "$other_ctx" "$other_or" "$other_obss" "$stale_xai" "$caller_value")
 key_names=(CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN)
 
 fakebin="$work/fakebin"
@@ -114,12 +115,12 @@ exit 0
 EOF
 
 # probe-var <name> <out>: records whether one arbitrary variable holds the
-# xAI marker.
+# xAI marker ("match"), something else ("other") or nothing ("missing").
 cat >"$fakebin/probe-var" <<EOF
 #!/bin/sh
 set +x
 eval "v=\\\${\$1-}"
-if [ "\$v" = '$xai_value' ]; then echo match >"\$2"; else echo missing >"\$2"; fi
+if [ "\$v" = '$xai_value' ]; then echo match >"\$2"; elif [ -n "\$v" ]; then echo other >"\$2"; else echo missing >"\$2"; fi
 EOF
 chmod +x "$fakebin/security" "$fakebin/op" "$fakebin/probe" "$fakebin/probe-var"
 
@@ -205,6 +206,18 @@ expect_probe "$work/child.env" "XAI_API_KEY=match" "with-secret inherited keys"
 for name in value item var here getter; do
   with-secret xai "$name" probe-var "$name" "$work/var.out" || fail "with-secret into '$name' failed"
   [ "$(cat "$work/var.out")" = match ] || fail "with-secret into '$name' did not deliver the value"
+done
+
+# A caller that already exports a variable named like the script's temporary
+# must not get the key under that name as well, and an explicit target of
+# that name must still receive it.
+for tmp in value _with_secret_value; do
+  env "$tmp=$caller_value" with-secret xai XAI_API_KEY probe-var "$tmp" "$work/var.out" ||
+    fail "with-secret with exported '$tmp' failed"
+  [ "$(cat "$work/var.out")" != match ] || fail "with-secret leaked the key under the caller's exported '$tmp'"
+  env "$tmp=$caller_value" with-secret xai "$tmp" probe-var "$tmp" "$work/var.out" ||
+    fail "with-secret into exported '$tmp' failed"
+  [ "$(cat "$work/var.out")" = match ] || fail "with-secret into exported '$tmp' did not deliver the value"
 done
 
 check_failure "with-secret bad var" 2 with-secret xai '1BAD' probe "$work/never"
