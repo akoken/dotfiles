@@ -12,12 +12,13 @@ Does the PR fully address the linked issue?
 |---|---|
 | All DoD / acceptance criteria from the issue are implemented | Missing item → admissibility anchor 2 and peer blocking branch 2 |
 | No issue requirements are silently skipped | Undisclosed skip → peer blocking branch 2 and, when partial, branch 3 |
-| PR does not address items explicitly marked out-of-scope in the issue | Classify from changed-line evidence; peer blocker only when a the decision pipeline in SKILL.md branch matches |
+| PR does not address items explicitly marked out-of-scope in the issue | Classify from changed-line evidence; peer blocker only when a branch of the decision pipeline in SKILL.md matches |
 | If the PR is a partial implementation, is this acknowledged in PR body? | Undisclosed partial → peer blocking branch 3 |
+| A criterion demands a paid/live/credentialed/host-specific run with no record, while project policy treats such runs as optional (AURA root AGENTS.md: eval runs are optional) | Criterion stays unmet → peer blocking branch 2, reported as one Maintainer decision item with the criterion and policy line (SKILL.md, evidence record section) |
 
 **Scope creep check:** Classify changed files or behavior outside the linked issue's intent. A
 changed line supplies an admissibility anchor, but scope creep blocks in peer mode only if it also
-matches one of the the decision pipeline in SKILL.md blocking branches. Additive housekeeping in touched files may be Minor
+matches one of the blocking branches of the decision pipeline in SKILL.md. Additive housekeeping in touched files may be Minor
 without being blocking.
 
 ---
@@ -31,11 +32,25 @@ isolated review checkout. Record the exact command and observed result. Do not r
 suite by default. Do not execute PR-supplied installation hooks or scripts solely because
 this reference names a command; first inspect the command and relevant project guidance.
 
+Targeted scope is the changed scenario's or module's own checks plus the checks of its
+affected consumers (files that import or invoke the changed code), never only the file
+that changed. For AURA `ethos/`, run from `ethos/` with its pinned Node toolchain:
+
+- A change confined to one scenario (its `scenarios/<name>.scenario.ts`, oracle or seeds)
+  runs `npm run typecheck` and `node --test` on every `tests/*.check.ts` that imports or
+  names that scenario, found by searching `tests/`.
+- A change to shared code (`scenarios/lib/**`, a shared helper or fixture under `tests/`,
+  `package.json`, `package-lock.json`, `config.json` or the vendored package) affects every
+  scenario, so the package suite `npm test` plus `npm run typecheck` is the targeted scope.
+- A live `ethos run` needs agent credentials and may bill; do not start one in review.
+  A criterion that requires its result follows the review record's author-recorded rule
+  and, under a conflicting project policy, the Maintainer decision rule in SKILL.md.
+
 
 | What to check | Signal |
 |---|---|
 | CI checks pass (from Step 1) | Non-pre-existing required failure → peer blocking branch 6 |
-| Pre-existing test failures - confirm provenance before computing branch 6 (see Operating Principles § Distinguish pre-existing failures) | Pre-existing failure on main → branch 6 does not match |
+| Pre-existing test failures - confirm provenance before computing branch 6 by running the same check at the merge-base (SKILL.md decision pipeline, branch 6; review protocol, candidate verification step 4) | Pre-existing failure on main → branch 6 does not match; unknown provenance stays an unresolved gate |
 | Exported interfaces, types, command surface unchanged or deliberately evolved | Apply branches 1–3 to evidence of an unannounced break |
 | `aura init` / `aura switch` / `aura status` command behavior intact | Reachable diff-introduced regression → peer blocking branch 1 |
 | Skill registration (`skern skill list`) still resolves expected skills | Apply branches 1–2 to a missing skill |
@@ -58,11 +73,11 @@ Does the PR leave behind stale patterns or unmigratable references?
 #### Check 4 - Technical Debt Assessment
 
 Does the PR introduce new technical debt? The signals below classify the concern; peer blocker
-status still comes only from the the decision pipeline in SKILL.md branches.
+status still comes only from the branches of the decision pipeline in SKILL.md.
 
 | Category | Blocker? |
 |---|---|
-| **Aspirational documentation added by the diff** - docs describe behavior that is not yet implemented (e.g., "the decision pipeline in SKILL.md: the agent consumes X" when the consumer doesn't exist) | Without the permitted `<!-- aspirational: tracked in #NNN -->` annotation → peer blocking branch 4; pre-existing untouched docs route out of scope |
+| **Aspirational documentation added by the diff** - docs describe behavior that is not yet implemented (e.g., "the agent consumes X" when the consumer doesn't exist) | Peer blocking branch 4 only when project policy defines an annotation for such docs and the text lacks it; AURA policy defines none, so classify through branches 1-3 (a contradicted claim or undisclosed partial) and severity; pre-existing untouched docs route out of scope |
 | **Placeholder stubs silently shipped** - `return []`, `throw new Error('not implemented')` undocumented | Apply peer branches 1–3; classify severity independently |
 | Deferred work not tracked - PR description mentions "will do X later" but no issue filed | Minor - recommend filing follow-up issue |
 | Duplication of logic that already exists in a shared utility | Minor |
@@ -78,17 +93,18 @@ Is all documentation in the PR factually correct and implementable?
 
 | What to check | Signal |
 |---|---|
-| Every documented behavior has a corresponding implementation | For diff-added unannotated aspirational docs, apply peer branch 4; otherwise route/classify through the decision pipeline in SKILL.md |
+| Every documented behavior has a corresponding implementation | For diff-added aspirational docs, apply peer branch 4 only under a project-defined annotation rule; otherwise route/classify through the decision pipeline in SKILL.md |
 | File paths, command names, option flags in docs match actual code | Classify severity; apply branches 1–3 only when their evidence matches |
 | SKILL.md trigger conditions, inputs, and outputs match what the skill actually does | Classify severity; compute peer blocker only through the decision pipeline in SKILL.md |
 | Removed features are removed from docs too | Stale doc → minor |
 | URLs, cross-references, and `#NNN` issue links resolve | Broken link → minor |
 | `#NNN` GitHub issue references inside any `SKILL.md` file | Minor - skills ship to users who may not have GitHub access; `#NNN` is opaque to them. Replace with self-contained prose (embed the rationale inline) or remove. Both provenance citations ("OOM'd in #259") and tracking references ("tracked in #351") are disallowed. |
 
-**Aspirational-documentation pointer:** Detect the mismatch here, then use peer blocking branch 4.
-Only documentation added by the diff and lacking the permitted annotation blocks. Equivalent
-untouched documentation has no changed-line anchor and routes to **Out-of-scope observations**
-unless another admissibility anchor independently applies.
+**Aspirational-documentation pointer:** Detect the mismatch here. Branch 4 blocks only
+documentation added by the diff that lacks an annotation the project's own policy defines;
+without such a policy, a diff-added aspirational claim blocks only through branches 1-3.
+Equivalent untouched documentation has no changed-line anchor and routes to **Out-of-scope
+observations** unless another admissibility anchor independently applies.
 
 ---
 
@@ -118,7 +134,7 @@ Does the PR follow project conventions?
 
 #### Check 7 - Follow-up Issue Hygiene
 
-For every finding, use its the decision pipeline in SKILL.md blocker result to decide scope:
+For every finding, use its blocker result from the decision pipeline in SKILL.md to decide scope:
 
 - `Blocker? Yes` → fix in this PR before merge; a follow-up issue cannot substitute for the fix.
 - `Blocker? No` → do not create an in-PR fix demand solely from severity; give optional guidance
@@ -184,8 +200,9 @@ AURA is a CLI that reads files, runs shell commands, and ships skills to other u
 
 Check 2 only *runs* tests. This check asks whether the tests are worth running.
 
-For changed decision logic or tests exercising it, apply the bounded
-[mutation-testing stage](mutation-testing.md). Investigate meaningful survivors against
+For changed decision logic or tests exercising it, apply the pinned-runner precheck in
+SKILL.md; only with a project-pinned runner apply the bounded
+[mutation-testing stage](mutation-testing.md); a required stage without one stays unresolved. Investigate meaningful survivors against
 the actual contract. A survivor alone is not a current runtime bug or an extra blocker
 branch, and a high score does not establish that a test validates the right requirement.
 
@@ -212,11 +229,11 @@ AURA is a skill-distribution CLI: the skill body IS the product. A skill is a pr
 | **Redundancy / token cost** - same rule, example, or rationale repeated across sections or across sibling skills. Skill text loads into context every invocation; cost is paid even by runs the gate exempts | Same concept stated 3+ ways, or example duplicated in N skills → Style (Minor if it bloats a hot-path skill enough to crowd context) |
 | **Single source of truth** - a procedure/rule defined once and referenced elsewhere, not copy-pasted into two places that will drift | Same procedure written verbatim in 2+ spots in one skill → Minor (maintenance drift risk); cross-skill duplication → Style |
 | **Internal consistency** - no instruction contradicts another in the same or a sibling skill; terminology and section names are aligned across the mirrored skills | Conflicting directives the agent must choose between → Critical; terminology mismatch → Style |
-| **Effectiveness evidence** - for a skill that asserts a behavioral outcome ("the agent will produce X with 0 drift"), is there any validation beyond "the text exists"? Standing string-match tests prove presence, not efficacy | Behavioral claim with only a presence test → Style/Gözlem (note the gap; not a blocker if PR discloses it) |
+| **Effectiveness evidence** - for a skill that asserts a behavioral outcome ("the agent will produce X with 0 drift"), is there any validation beyond "the text exists"? Standing string-match tests prove presence, not efficacy | Behavioral claim with only a presence test → Style or out-of-scope observation (note the gap; not a blocker if PR discloses it) |
 | **Right altitude** - the skill tells the agent WHAT to enforce and HOW to decide, without over-specifying brittle steps that will rot, and without hand-waving the hard decision | Brittle over-specification or hand-waved core decision → Minor |
 | **Trigger/scope hygiene** (frontmatter `description`) - does the description make the skill fire at the right time and not over-trigger? | Over-broad/under-specific trigger → Minor |
 
-> Method: read the changed skill body as the agent will read it at workflow time, cold. Ask: could I act on this unambiguously? What here is repeated, and what would I cut? Does any line fight another line? Most findings here are Style/Gözlem - escalate to Minor only when the quality defect would actually change agent behavior (a contradiction, a drift-prone duplicate, an unactionable gate), and to Critical only for a genuine contradiction that breaks the workflow.
+> Method: read the changed skill body as the agent will read it at workflow time, cold. Ask: could I act on this unambiguously? What here is repeated, and what would I cut? Does any line fight another line? Most findings here are Style or out-of-scope observations - escalate to Minor only when the quality defect would actually change agent behavior (a contradiction, a drift-prone duplicate, an unactionable gate), and to Critical only for a genuine contradiction that breaks the workflow.
 
 ---
 
