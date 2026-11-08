@@ -30,11 +30,12 @@
   },
   "mcp": {
     "context7": {
-      "type": "remote",
-      "url": "https://mcp.context7.com/mcp",
-      "headers": {
-        "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
-      },
+      "type": "local",
+      "command": [
+        "sh",
+        "-c",
+        "exec \"$HOME/bin/with-secret\" context7 CONTEXT7_API_KEY npx -y @upstash/context7-mcp"
+      ],
       "enabled": true
     },
     "MCP_DOCKER": {

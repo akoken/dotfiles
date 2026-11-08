@@ -38,12 +38,17 @@ last_revision = "67a666efc8524ff7abaa266f84e514aa77aee48f"
 source_type = "git"
 source = "https://github.com/anthropics/claude-plugins-official.git"
 
+# The Context7 key never goes on argv (a key flag is visible to every `ps`)
+# and never into Codex's own environment: with-secret fetches it from the
+# 1Password agent-keys vault at launch and sets CONTEXT7_API_KEY for this
+# server process alone. `sh -c` resolves $HOME, which Codex forwards to stdio
+# servers, so this works when Codex runs without ~/bin on PATH.
 [mcp_servers.context7]
 args = [
-    "-y",
-    "@upstash/context7-mcp",
+    "-c",
+    'exec "$HOME/bin/with-secret" context7 CONTEXT7_API_KEY npx -y @upstash/context7-mcp',
 ]
-command = "npx"
+command = "sh"
 startup_timeout_sec = 20
 
 [mcp_servers.cua_repl]

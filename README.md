@@ -14,6 +14,7 @@ Personal dotfiles for my macOS development environment.
 - [Repository Structure](#repository-structure)
 - [Install Script](#install-script)
 - [Codex Configuration](#codex-configuration)
+- [Agent Keys](#agent-keys)
 - [ZSH Configuration](#zsh-configuration)
 - [Neovim](#neovim)
 - [Tmux](#tmux)
@@ -149,6 +150,86 @@ copy anything Codex wrote back into `config.local.toml` first, or `codex-sync`
 will drop it. Codex's own state (auth, sessions, sqlite, plugin caches) lives
 next to those links in `~/.codex` and never inside the repo.
 
+## Agent Keys
+
+API keys that agents and CLIs need (Context7, OBSS LLM, OpenRouter, xAI,
+Jira) are never exported into the shell. Each key reaches only the one command
+that needs it, at the moment it starts, so an agent session started from an
+interactive shell does not inherit any of them.
+
+### How the flow works
+
+1. The keys live in a dedicated 1Password vault, `agent-keys`: one API
+   Credential item per key, value in the `credential` field, the env var name
+   in a `key name` field. A read-only 1Password service account can see that
+   vault and nothing else; its token is in the macOS Keychain as generic
+   password service `op-sa-agent-keys`, account `$USER`.
+2. `bin/secret-get <item>` reads that token from the Keychain and runs
+   `op read op://agent-keys/<item>/credential` with
+   `OP_SERVICE_ACCOUNT_TOKEN` set for that one `op` process only. It prints
+   the value on stdout for a caller to capture. On failure it prints one short
+   line on stderr (never the value, never the token), nothing on stdout, and
+   exits non-zero.
+3. `bin/with-secret <item> <VAR> <command> [args...]` captures that value,
+   sets `VAR` in its own process and `exec`s the command. The command (and
+   its children) is the only process that gets the key; the calling shell
+   gets nothing. If the key cannot be read, the command is not started.
+4. Consumers:
+
+   | Consumer | Key (item → variable) | How it gets the key |
+   |----------|-----------------------|---------------------|
+   | `grok` (Grok CLI) | `xai` → `XAI_API_KEY` | shell function in `config/zsh/.zsh_agent_keys` |
+   | `jira` (jira-cli) | `jira` → `JIRA_API_TOKEN` | shell function in `config/zsh/.zsh_agent_keys` |
+   | anything needing OpenRouter / OBSS LLM | `openrouter` → `OPENROUTER_API_KEY`, `obss-llm` → `OBSS_LLM_API_KEY` | prefix the one command: `with-openrouter <cmd>`, `with-obss-llm <cmd>` |
+   | Codex Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/codex/config.toml` starts the server through `with-secret`; the key is in that server's environment only, never on argv and never in Codex's own environment |
+   | OpenCode Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/opencode/opencode.json`, same `with-secret` launch as Codex |
+   | Claude Code Context7 MCP (HTTP) | `context7` → `Authorization` header | `headersHelper` running `bin/context7-headers`; no static header in `~/.claude.json` |
+
+Claude Code keeps MCP servers in `~/.claude.json`, which this repo does not
+manage. Register Context7 there once (the single quotes keep `$HOME` for the
+shell Claude Code runs the helper in):
+
+```bash
+claude mcp remove context7 -s user
+claude mcp add-json -s user context7 \
+  '{"type":"http","url":"https://mcp.context7.com/mcp","headersHelper":"\"$HOME/bin/context7-headers\""}'
+```
+
+`tests/agent-keys.sh` (CI job "Agent key wrappers") checks all of this with a
+fake `op` and `security` and synthetic values: each wrapper passes exactly its
+own variable to its child and nothing to the parent shell (under bash and
+zsh), every failure path prints neither value nor token and starts nothing,
+and the tracked Context7 configs carry no key and no key flag.
+
+### Adding a key
+
+1. In 1Password, add an API Credential item to the `agent-keys` vault: value
+   in `credential`, the env var name in `key name`. Item names may contain
+   only letters, digits, `.`, `_` and `-`.
+2. Check it without displaying it: `secret-get <item> | wc -c` (a non-zero
+   count and exit status 0).
+3. Give its consumer a wrapper in `config/zsh/.zsh_agent_keys`, for example
+   `mytool() { with-secret myitem MYTOOL_API_KEY mytool "$@"; }`, or for an
+   MCP server launch it as `with-secret <item> <VAR> <server command...>`.
+   Never add an `export` of the key anywhere, and never pass it as a command
+   line flag.
+4. Extend `tests/agent-keys.sh` for the new consumer.
+
+### Residual risks
+
+- A key inside a running process is readable by other processes of the same
+  user (for example through its environment); `with-secret` narrows which
+  processes hold a key and for how long, it does not isolate them from one
+  another.
+- Long-running consumers, MCP servers in particular, hold their key in their
+  environment for as long as they run. Restart them after rotating a key.
+- The Claude Code helper's output is held by Claude Code for that connection,
+  so the Context7 key is in Claude Code's memory (not its environment) while
+  the server is connected.
+- Anyone who can run commands as you can run `secret-get` and read every key
+  in the `agent-keys` vault (but nothing outside it). Keep only agent-usable
+  keys in that vault.
+
 ## ZSH Configuration
 
 The shell environment is managed through [Zinit](https://github.com/zdharma-continuum/zinit) and organized across several files in `config/zsh/`:
@@ -159,6 +240,7 @@ The shell environment is managed through [Zinit](https://github.com/zdharma-cont
 | `.zshrc`           | Loads plugins, completions, key bindings, and tool integrations |
 | `.zsh_aliases`     | Shell, git, tmux, and tool aliases |
 | `.zsh_functions`   | Helper functions (`g`, `md`, `docker open/close/flush`, etc.) |
+| `.zsh_agent_keys`  | Per-command API key wrappers (`grok`, `jira`, `with-openrouter`, `with-obss-llm`), see [Agent Keys](#agent-keys) |
 | `.zprofile`        | Homebrew and tool-specific PATH setup |
 
 ### Plugins (via Zinit)
@@ -230,6 +312,7 @@ Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
 | Script               | Description |
 |----------------------|-------------|
 | `brew-why`           | List installed packages and their dependents |
+| `context7-headers`   | Claude Code `headersHelper` for Context7, see [Agent Keys](#agent-keys) |
 | `extract`            | Extract any archive format automatically |
 | `git-bare-clone`     | Clone a repo as a bare repository for worktrees |
 | `git-create-worktree`| Create a new git worktree |
@@ -237,8 +320,10 @@ Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
 | `ip`                 | Print your public IP address |
 | `jwt`                | Decode a JWT token |
 | `sbx-sync`           | Sync Codex/Claude config into a sandbox environment |
+| `secret-get`         | Read one key from the 1Password `agent-keys` vault, see [Agent Keys](#agent-keys) |
 | `update`             | Update Homebrew packages and Neovim plugins|
 | `wgh`                | Clean up ghost windows in AeroSpace |
+| `with-secret`        | Run one command with one key in its environment, see [Agent Keys](#agent-keys) |
 | `wtfport`            | Find which process is listening on a given port |
 
 ## Docker

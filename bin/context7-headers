@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# context7-headers
+#
+# Claude Code `headersHelper` for the Context7 HTTP MCP server. Claude Code
+# runs this when it connects and merges the JSON object printed on stdout
+# into the request headers, so the key lives in no config file and on no
+# command line. Fails closed: any problem prints one short line on stderr,
+# nothing on stdout, and exits non-zero. See README "Agent keys".
+
+set -Eeuo pipefail
+
+fail() {
+  echo "context7-headers: $1" >&2
+  exit 1
+}
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+getter="$here/secret-get"
+[ -x "$getter" ] || getter="secret-get"
+
+key="$("$getter" context7)" || exit 1
+
+# Emitted inside a JSON string without an encoder, so accept only characters
+# that need no escaping (Context7 keys are ctx7sk-<alphanumerics>).
+case "$key" in
+  *[!A-Za-z0-9._-]*) fail "unexpected characters in the Context7 key" ;;
+esac
+
+printf '{"Authorization":"Bearer %s"}\n' "$key"
