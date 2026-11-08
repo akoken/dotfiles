@@ -1,17 +1,24 @@
 """Decision table for bin/agent-env-guard (PreToolUse command guard).
 
-Runs the guard as a subprocess with Claude Code / Codex shaped hook input and
-checks the decision only; no command under test is ever executed. Marker
-values are synthetic.
+Runs the guard as a subprocess with Claude Code / Codex shaped hook input.
+The decision tables never execute their commands. The corpus tests
+(agent_env_guard_shell_corpus.py) also run each corpus command under sh,
+bash and zsh inside agent_env_guard_harness.Sandbox: a synthetic
+environment with a synthetic canary, shims for env/printenv/ps, and no user
+startup files. Nothing reads the real environment or /proc.
 """
 
+import ast
 import json
 import os
 import pathlib
 import subprocess
 import sys
-import tempfile
 import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import agent_env_guard_harness as harness  # noqa: E402
+from agent_env_guard_shell_corpus import CASES, PROFILES, WHY  # noqa: E402
 
 # AGENT_ENV_GUARD_UNDER_TEST runs the same table against another copy of the
 # guard (used to show a regression test is red on an older head).
@@ -20,6 +27,8 @@ GUARD = pathlib.Path(
     or pathlib.Path(__file__).resolve().parent.parent / "bin" / "agent-env-guard"
 )
 MARKER = "SYNTH-MARKER-guard-7f3c"
+CATEGORIES = {"visible", "ran", "none", "parse_error"}
+DUMPED = {"visible", "ran"}
 
 DENY = [
     # ps with an environment flag, any spelling or order
@@ -209,19 +218,7 @@ LEXING_ALLOW = [
     "cat <<EOF\n$(date)\nEOF",
     "cat <<'EOF'\n$(env)\n`env`\nEOF",
 ]
-NO_VISIBLE_LEAK = LEXING_DENY[-5:]
 
-# Cases the shell can run in the synthetic environment, to tie the guard's
-# decision to what /bin/sh actually expands: deny exactly when the canary
-# reaches the output. Excludes ps and the unterminated form (a syntax error).
-SHELL_COUPLED = [
-    c for c in HEREDOC_DENY + HEREDOC_ALLOW + LEXING_DENY + LEXING_ALLOW
-    if "ps eww" not in c and "$(env\nEOF" not in c and c not in NO_VISIBLE_LEAK
-]
-SHELLS_UNDER_TEST = [
-    argv for argv in (["/bin/sh", "-c"], ["/bin/bash", "--noprofile", "--norc", "-c"])
-    if os.path.exists(argv[0])
-]
 
 def run_guard(payload):
     proc = subprocess.run(
@@ -285,27 +282,190 @@ class GuardDecisions(unittest.TestCase):
         self.assertEqual(decide("ps aux", shape="codex")[0], "allow")
 
 
-class GuardMatchesShellExpansion(unittest.TestCase):
-    """Runs /bin/sh and /bin/bash with only PATH and a synthetic canary, never the real env."""
+class CorpusTable(unittest.TestCase):
+    """The written corpus is complete and self-consistent (no shell needed)."""
 
-    def test_guard_denies_exactly_the_bodies_the_shell_expands(self):
-        clean = {"PATH": "/usr/bin:/bin", "FAKE_TEST_API_KEY": MARKER}
-        for command in SHELL_COUPLED:
-            with self.subTest(command=command):
-                leaked = False
-                for argv in SHELLS_UNDER_TEST:
-                    with tempfile.TemporaryDirectory() as cwd:
-                        shell = subprocess.run(
-                            argv + [command], capture_output=True, text=True,
-                            env=clean, cwd=cwd, timeout=10,
-                        )
-                        output = shell.stdout + shell.stderr
-                        for name in os.listdir(cwd):
-                            with open(os.path.join(cwd, name), encoding="utf-8", errors="replace") as fh:
-                                output += fh.read()
-                    leaked = leaked or MARKER in output
-                # Deny exactly when some supported shell expands the canary.
-                self.assertEqual(decide(command)[0], "deny" if leaked else "allow")
+    def test_every_case_states_a_consistent_expectation(self):
+        seen = set()
+        for case in CASES:
+            with self.subTest(case=case["id"]):
+                self.assertNotIn(case["id"], seen)
+                seen.add(case["id"])
+                self.assertIn(case["decision"], {"allow", "deny"})
+                if not case["run"]:
+                    self.assertEqual(case["decision"], "deny")
+                    continue
+                observed = case["observed"]
+                self.assertEqual(set(observed), set(PROFILES))
+                self.assertLessEqual(set(observed.values()), CATEGORIES)
+                dumped = DUMPED & set(observed.values())
+                if case["decision"] == "allow":
+                    # An allow is written out and never runs a dump anywhere.
+                    self.assertFalse(dumped)
+                    self.assertIsNone(case["why"])
+                elif dumped:
+                    self.assertIsNone(case["why"])
+                else:
+                    # "No dump seen" never implies allow: the deny says why.
+                    self.assertIn(case["why"], WHY)
+
+    def test_guard_decision_matches_the_table(self):
+        for case in CASES:
+            with self.subTest(case=case["id"]):
+                self.assertEqual(decide(case["command"])[0], case["decision"])
+
+
+class ShellCase(unittest.TestCase):
+    """Runs sh, bash and zsh in harness.Sandbox: synthetic env, shims, no
+    user startup files, never the real environment or /proc."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.box = harness.Sandbox()
+        cls.addClassCleanup(cls.box.close)
+        cls.profiles = harness.profiles()
+
+    def measure(self, command):
+        return {key: self.box.run(shell, command) for shell, key in self.profiles.items()}
+
+
+class ShellProfiles(ShellCase):
+    def test_every_shell_is_a_verified_profile(self):
+        # A missing shell or an unmeasured version fails instead of being skipped.
+        self.assertEqual(set(self.profiles), set(harness.SHELL_ARGV))
+        for shell, key in self.profiles.items():
+            with self.subTest(shell=shell):
+                self.assertIn(key, PROFILES)
+
+    def test_startup_files_leave_the_synthetic_environment_alone(self):
+        # zsh -f still sources the system zshenv; the report names it and
+        # every shell must keep PATH, HOME and the canary unchanged.
+        report = harness.startup_report(self.box)
+        for shell in self.profiles:
+            with self.subTest(shell=shell, system_zshenv=report["system_zshenv"]):
+                self.assertEqual(report[shell], {
+                    "path_unchanged": True, "home_unchanged": True, "canary_unchanged": True,
+                })
+
+
+class CorpusMatchesShells(ShellCase):
+    def test_measured_categories_match_the_table(self):
+        for case in CASES:
+            if not case["run"]:
+                continue
+            with self.subTest(case=case["id"]):
+                measured = self.measure(case["command"])
+                expected = {key: case["observed"][key] for key in measured}
+                self.assertEqual(measured, expected)
+
+
+def continuation_variants(command):
+    """`command` with one backslash-newline inserted at every position."""
+    for i in range(1, len(command)):
+        yield command[:i] + B + "\n" + command[i:]
+
+
+class ContinuationSweep(ShellCase):
+    def test_guard_denies_every_variant_a_shell_dumps(self):
+        bases = [case for case in CASES if case["sweep"]]
+        self.assertTrue(bases)
+        for case in bases:
+            for variant in continuation_variants(case["command"]):
+                measured = self.measure(variant)
+                if DUMPED & set(measured.values()):
+                    with self.subTest(case=case["id"], variant=variant, measured=measured):
+                        self.assertEqual(decide(variant)[0], "deny")
+
+
+# Structural rule (lexing contract): only LogicalSource reads the raw text.
+# Outside it, the typed command may only be handed to LogicalSource (or
+# type-checked, compared with "" and passed on to check_command).
+RAW_NAMES = {"main": {"payload", "tool_input", "command"}, "check_command": {"command", "text"}}
+RAW_SINKS = {"LogicalSource", "isinstance", "check_command"}
+
+
+def raw_access_violations(source):
+    tree = ast.parse(source)
+    parent = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+
+    def enclosing(node, kind):
+        while node in parent:
+            node = parent[node]
+            if isinstance(node, kind):
+                return node
+        return None
+
+    def allowed(name):
+        up = parent[name]
+        if isinstance(up, ast.Call) and name in up.args and isinstance(up.func, ast.Name):
+            return up.func.id in RAW_SINKS
+        if isinstance(up, ast.Attribute) and up.attr == "get":
+            call = parent[up]
+            return (isinstance(call, ast.Call) and len(call.args) == 1
+                    and isinstance(call.args[0], ast.Constant))
+        if isinstance(up, ast.Compare):
+            return (up.left is name and len(up.ops) == 1 and isinstance(up.ops[0], ast.Eq)
+                    and isinstance(up.comparators[0], ast.Constant) and up.comparators[0].value == "")
+        if isinstance(up, ast.comprehension) and up.iter is name:
+            call = parent[enclosing(up, ast.GeneratorExp)]
+            return (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "join" and getattr(call.func.value, "id", None) == "shlex")
+        return False
+
+    violations = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in {"_text", "_pos"}:
+            owner = enclosing(node, ast.ClassDef)
+            if owner is None or owner.name != "LogicalSource":
+                violations.append(f"line {node.lineno}: .{node.attr} outside LogicalSource")
+        if isinstance(node, ast.FunctionDef) and node.name in RAW_NAMES:
+            for name in ast.walk(node):
+                if (isinstance(name, ast.Name) and isinstance(name.ctx, ast.Load)
+                        and name.id in RAW_NAMES[node.name] and not allowed(name)):
+                    violations.append(f"line {name.lineno}: raw `{name.id}` used in {node.name}()")
+    return violations
+
+
+SEEDED_RAW_ACCESS = [
+    # the pre-lexer guard's whitespace test on the raw command
+    ('command == ""', "not command.strip()"),
+    # a raw-text /proc belt next to the lexer
+    ("    lexer = Lexer(LogicalSource(command), depth)\n",
+     '    if "/proc/" in command:\n        raise Deny("proc")\n    lexer = Lexer(LogicalSource(command), depth)\n'),
+    # a lexer reaching around LogicalSource
+    ("        self.src = src\n", "        self.src = src\n        self.raw = src._text\n"),
+]
+
+
+class StructuralRule(unittest.TestCase):
+    def test_guard_reads_raw_text_only_through_logical_source(self):
+        self.assertEqual(raw_access_violations(GUARD.read_text()), [])
+
+    def test_seeded_raw_access_is_caught(self):
+        source = GUARD.read_text()
+        for old, new in SEEDED_RAW_ACCESS:
+            with self.subTest(seed=new):
+                self.assertIn(old, source)
+                self.assertTrue(raw_access_violations(source.replace(old, new, 1)))
+
+
+class Limits(unittest.TestCase):
+    def test_oversized_command_is_denied_visibly(self):
+        decision, reason = decide("echo " + "a" * 200_001)
+        self.assertEqual(decision, "deny")
+        self.assertIn("too large", reason)
+
+    def test_deep_nesting_is_denied_visibly(self):
+        for command in ("echo " + "$(" * 12 + "date" + ")" * 12, "eval " * 12 + "date"):
+            with self.subTest(command=command[:40]):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertIn("too deep", reason)
+
+    def test_moderate_nesting_is_allowed(self):
+        self.assertEqual(decide("echo $(echo $(echo $(date)))")[0], "allow")
+        self.assertEqual(decide("eval eval eval date")[0], "allow")
+
 
 class GuardOutputCarriesNoMarker(unittest.TestCase):
     def test_deny_message_does_not_echo_command(self):

@@ -171,14 +171,21 @@ protection**, not a fix:
   `declare -x`/`-p`), `ps` with environment flags (`-E`, BSD `e` as in
   `ps eww`) and reads of `/proc/<pid>/environ`. Ordinary `ps`,
   `printenv NAME`, `env NAME=value command` and `env -u NAME command` still
-  run. It splits the command by a written lexing contract (top of
-  `bin/agent-env-guard`): quoting, line continuation, comments, here-strings,
-  here-documents (an unquoted `<<EOF` body's `$(...)` is checked, a quoted
-  `<<'EOF'` body is literal) and arithmetic. Forms inside that contract it
-  cannot resolve, such as an unterminated substitution, are denied. Shell
-  syntax outside it (for example `case` inside `$(...)`) is not modelled and
-  can be misread. Codex runs the hook only after it is trusted with `/hooks`. Decision
-  table: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`.
+  run. One lexer reads the command by a written contract (top of
+  `bin/agent-env-guard`) for the shells the agents use: POSIX `sh` (dash,
+  or bash in sh mode), bash and zsh. It covers quoting, line continuation,
+  comments, here-strings, here-documents (an unquoted `<<EOF` body's
+  `$(...)` is checked, a quoted `<<'EOF'` body is literal), arithmetic and
+  compound commands (`{ ...; }`, `if`, loops, functions). A command is denied
+  when any of those shells would run a denied form. It is also denied,
+  visibly, when the shells read it differently in a way the guard cannot
+  settle, when the lexer cannot resolve it (an unterminated substitution,
+  `case` inside `$(...)`), or when it uses a zsh form that runs code
+  (`*(e:...:)` glob qualifiers, `${(e)...}`, `=(...)`). Codex runs the hook
+  only after it is trusted with `/hooks`. Tests:
+  `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
+  (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
+  synthetic environment, never the real one).
 
 What this does **not** solve:
 
