@@ -32,7 +32,10 @@ C = B + NL  # line continuation
 #   unknown             an operand or command text is only known at run time
 #   branch              the dump sits in a branch this environment skipped
 #   parse_error         the lexer refuses the text (unterminated construct)
-WHY = {"builtin_suppressed", "unknown", "branch", "parse_error"}
+#   limit               a size or nesting limit is exceeded
+#   narrow              the text is outside the accepted grammar (positive
+#                       allow rule); refused although this form dumps nothing
+WHY = {"builtin_suppressed", "unknown", "branch", "parse_error", "limit", "narrow"}
 CASES = []
 
 
@@ -146,6 +149,53 @@ case("N1", "cat /proc/self/environ", "deny", run=False)
 case("N2", f"cat /proc/self/envi{C}ron", "deny", run=False)
 case("N3", "cat /proc/self/env*", "deny", run=False)
 case("N4", "sudo ps -E", "deny", run=False)
+# Round 6 (re-review of 4e70394): bypasses of the 4e70394 guard
+case("B1", "<<EOF env\nEOF", "deny")
+case("B2", "cat <<EOF\n$(<<X env\nX\n)\nEOF", "deny")
+case("B3", "cat <<$'E\\x4fF'\nEOF\nenv", "deny")
+case("B4", 'cat <<"E\\OF"\nE\\OF\nenv', "deny")
+case("B5", "env -S 'X=1' env", "deny")
+case("B6", "$'en\\x76'", "deny")
+case("B7", "print -r -- /tmp(ea'env >&2'a)", "deny")
+case("B8", "echo " + "${a:-" * 40 + "ok" + "}" * 40, "deny", why="limit")
+case("B9", "{env,printenv}", "deny")
+case("B10", "nohup <<EOF env\nEOF", "deny")
+case("B11", "exec -a x env", "deny")
+case("B12", "caffeinate -t 1 env", "deny", run=False)  # macOS only
+case("B13", "echo env | sh", "deny")
+case("B14", "sh <<'EOF'\nenv\nEOF", "deny")
+# bash 3.2 races `source <(...)` (visible in some runs only): decision-only
+case("B15", ". <(echo env)", "deny", run=False)
+case("B26", ". /dev/stdin <<'EOF'\nenv\nEOF", "deny")
+case("B16", "trap env EXIT", "deny")
+case("B17", "alias x=env\nx", "deny")
+case("B18", "x=env; $x", "deny")
+case("B19", "/usr/bin/e?v", "deny")
+case("B20", "=env", "deny")
+case("B21", 'for v in $(compgen -e); do echo "${!v}"; done', "deny")
+case("B22", "for v in ${(k)parameters}; do print -r -- ${(P)v}; done", "deny")
+case("B23", "hash -p /usr/bin/env x; x", "deny")
+case("B24", "cd /proc/self && cat environ", "deny", run=False)
+case("B25", "cat /pro?/self/environ", "deny", run=False)
+# Legitimate forms the narrow grammar refuses (see round6-grammar-table)
+case("L1", "2>/dev/null true", "deny", why="narrow")
+case("L2", "printf $'a\\tb\\n'", "deny", why="narrow")
+case("L3", "$UNSET_EDITOR x", "deny", why="narrow")
+case("L4", "ls *(.)", "deny", why="narrow")
+case("L5", "cat <<$'EOF'\nliteral\nEOF", "deny", why="narrow")
+# Everyday forms that must stay allowed
+case("K1", "git status && git diff", "allow")
+case("K2", "env FOO=1 true", "allow")
+case("K3", "cat <<'EOF'\nhello $(env)\nEOF", "allow")
+case("K4", '"$HOME/bin/tool" --flag', "allow")
+case("K5", "mkdir -p a/{b,c} && ls a", "allow")
+case("K6", 'for f in *.txt; do wc -l "$f"; done', "allow")
+case("K7", "true 2>/dev/null >out.txt", "allow")
+case("K8", "echo $'plain text'", "allow")
+case("K9", "bash -c 'echo ok' && sh -c \"echo ok\"", "allow")
+case("K10", "cat <<EOF >note.txt\nbuilt $(date +%Y)\nEOF", "allow")
+case("K11", "env -i PATH=/usr/bin:/bin true", "allow")
+case("K12", 'printf "%s\\n" "$HOME" | wc -c', "allow")
 # Literal, quoted and legitimate forms: allowed (explicit list)
 case("A1", "cat <<'EOF'\n$(env)\nEOF", "allow", sweep=True)
 case("A2", 'cat <<"EOF"\n`env`\nEOF', "allow")
@@ -182,7 +232,8 @@ case("A32", "echo ${#PATH}", "allow")
 # $(\<NL>( joins to $(( in every profile: arithmetic on a variable named env
 case("A33", f"x=$({C}(env))", "allow")
 
-# Measured categories per verified profile, in PROFILES order. Source:
+# Measured categories per verified profile, in PROFILES order (round 6
+# rows B, L, K measured the same way). Source:
 # `python3 -I tests/agent_env_guard_harness.py` on macOS 27 (sh=bash3, bash3,
 # zsh5) and on ubuntu:24.04 (sh=dash, bash5, zsh5; both zsh5 columns agree).
 PROFILES = ("sh=bash3", "bash3", "zsh5", "sh=dash", "bash5")
@@ -308,6 +359,45 @@ OBSERVED = {
     "A31": "none none none none none",
     "A32": "none none none none none",
     "A33": "none none none none none",
+    "B1": "visible visible visible visible visible",
+    "B2": "visible visible visible visible visible",
+    "B3": "visible visible visible none visible",
+    "B4": "visible visible visible visible visible",
+    "B5": "visible visible visible visible visible",
+    "B6": "visible visible visible none visible",
+    "B7": "parse_error parse_error visible parse_error parse_error",
+    "B8": "none none none none none",
+    "B9": "visible visible none none visible",
+    "B10": "visible visible visible visible visible",
+    "B11": "visible visible visible none visible",
+    "B13": "visible visible visible visible visible",
+    "B14": "visible visible visible visible visible",
+    "B16": "visible visible visible visible visible",
+    "B17": "visible none none visible none",
+    "B18": "visible visible visible visible visible",
+    "B19": "visible visible visible visible visible",
+    "B20": "none none visible none none",
+    "B21": "visible visible none none visible",
+    "B22": "parse_error parse_error visible parse_error parse_error",
+    "B23": "visible visible none none visible",
+    "B26": "visible visible visible visible visible",
+    "L1": "none none none none none",
+    "L2": "none none none none none",
+    "L3": "none none none none none",
+    "L4": "parse_error parse_error none parse_error parse_error",
+    "L5": "none none none none none",
+    "K1": "none none none none none",
+    "K2": "none none none none none",
+    "K3": "none none none none none",
+    "K4": "none none none none none",
+    "K5": "none none none none none",
+    "K6": "none none none none none",
+    "K7": "none none none none none",
+    "K8": "none none none none none",
+    "K9": "none none none none none",
+    "K10": "none none none none none",
+    "K11": "none none none none none",
+    "K12": "none none none none none",
 }
 
 # A case missing here stays unmeasured ({}) and fails the table test.

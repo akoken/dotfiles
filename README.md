@@ -171,19 +171,21 @@ protection**, not a fix:
   `declare -x`/`-p`), `ps` with environment flags (`-E`, BSD `e` as in
   `ps eww`) and reads of `/proc/<pid>/environ`. Ordinary `ps`,
   `printenv NAME`, `env NAME=value command` and `env -u NAME command` still
-  run. One lexer reads the command by a written contract (top of
-  `bin/agent-env-guard`) for the shells the agents use: POSIX `sh` (dash,
-  or bash in sh mode), bash and zsh. It covers quoting, line continuation,
-  comments, here-strings, here-documents (an unquoted `<<EOF` body's
-  `$(...)` is checked, a quoted `<<'EOF'` body is literal), arithmetic and
-  compound commands (`{ ...; }`, `if`, loops, functions). A command is denied
-  when any of those shells would run a denied form. It is also denied,
-  visibly, when the shells read it differently in a way the guard cannot
-  settle, when the lexer cannot resolve it (an unterminated substitution,
-  `case` inside `$(...)`), or when it uses a zsh form that runs code
-  (`*(e:...:)` glob qualifiers, `${(e)...}`, `=(...)`). Codex runs the hook
-  only after it is trusted with `/hooks`. Tests:
-  `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
+  run. The allow rule is positive: a command passes only when one lexer
+  reads the whole text by a written grammar (top of `bin/agent-env-guard`)
+  and every shell the agents use - POSIX `sh` (dash, or bash in sh mode),
+  bash and zsh - would allow it. Anything outside that grammar is refused
+  with a short reason that does not quote the command: unknown syntax such
+  as zsh glob qualifiers or ANSI-C escapes, a redirection before the
+  command name, a command name built from a variable or a glob, an option a
+  wrapper table does not know, `env -S`, a shell reading stdin, and nesting
+  or size over the limits. Everyday forms such as `git status && git diff`,
+  `env FOO=1 true` and quoted here-documents still pass. **The guarantee
+  covers only the command text that passes through this hook and the
+  dump forms listed above**; it says nothing about what a started program,
+  script file or interpreter does, or about variables set outside the
+  command. Codex runs the hook only after it is trusted with `/hooks`.
+  Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
   (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
   synthetic environment, never the real one).
 
@@ -196,7 +198,7 @@ What this does **not** solve:
 - Same-user access to other processes' environments: any program running as
   your user can read them. The guard only inspects the command line the agent
   typed; it cannot see what a test, script or interpreter (node, python, ...)
-  does once it runs, and indirections such as `p=ps; $p -E` get past it.
+  does once it runs.
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is intentionally not set: on Claude Code
   2.1.319 it forces the permission mode to `default` (bypass is ignored), and
   it cannot remove keys that shell startup files export again.

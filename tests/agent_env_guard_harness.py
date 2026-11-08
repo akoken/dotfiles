@@ -8,6 +8,13 @@ sources the system zshenv (/etc/zshenv, or /etc/zsh/zshenv on Debian), so
 the profile check records whether one exists and verifies that PATH and the
 canary are unchanged after startup.
 
+The startup surface is checked, not assumed (startup_report): after a shell
+has started, the exported variable names must be the synthetic ones plus
+the names the shell itself sets, every synthetic value must be unchanged,
+no function may be defined, and zsh must show only its built-in default
+aliases and the options -f and -c give it. A system zshenv that exported,
+changed, aliased or set anything would fail that check.
+
 The shims make dumps observable without real data: env and printenv record
 a trace when they would dump and then run the real tool on the synthetic
 environment; ps never runs the real ps, it records whether an environment
@@ -118,10 +125,12 @@ class Sandbox:
                 env=self.environment(trace), cwd=cwd, timeout=20, stdin=subprocess.DEVNULL,
             )
             seen = proc.stdout + proc.stderr
-            for name in os.listdir(cwd):
-                if name != ".trace":
-                    with open(os.path.join(cwd, name), encoding="utf-8", errors="replace") as fh:
-                        seen += fh.read()
+            for folder, _dirs, names in os.walk(cwd):
+                for name in names:
+                    path = os.path.join(folder, name)
+                    if path != trace and os.path.isfile(path):
+                        with open(path, encoding="utf-8", errors="replace") as fh:
+                            seen += fh.read()
             with open(trace) as fh:
                 ran = fh.read().strip()
         if CANARY in seen:
@@ -133,14 +142,16 @@ class Sandbox:
         return "none"
 
 
-def profile_key(shell):
-    """Shell identity and major version, or None if the shell is absent."""
+def profile_key(shell, sandbox):
+    """Shell identity and major version, or None if the shell is absent.
+    The probe runs in the same isolated environment as the corpus."""
     argv = SHELL_ARGV[shell]
     if not os.path.exists(argv[0]):
         return None
     probe = 'printf "%s|%s" "${BASH_VERSION-}" "${ZSH_VERSION-}"'
-    out = subprocess.run(argv + [probe], capture_output=True, text=True,
-                         env={"PATH": "/usr/bin:/bin"}, timeout=10).stdout
+    with tempfile.TemporaryDirectory(dir=sandbox.root) as cwd:
+        out = subprocess.run(argv + [probe], capture_output=True, text=True, cwd=cwd,
+                             env=sandbox.environment(os.path.join(cwd, ".trace")), timeout=10).stdout
     bash_version, zsh_version = (out.split("|") + [""])[:2]
     if shell == "sh":
         if bash_version:
@@ -153,29 +164,49 @@ def profile_key(shell):
     return "zsh" + zsh_version.split(".")[0] if zsh_version else "zsh=unknown"
 
 
-def profiles():
-    return {shell: key for shell in SHELL_ARGV if (key := profile_key(shell))}
+def profiles(sandbox):
+    return {shell: key for shell in SHELL_ARGV if (key := profile_key(shell, sandbox))}
+
+
+# Names a shell adds to the environment by itself (zsh also exports LOGNAME).
+SHELL_EXPORTS = {"PWD", "OLDPWD", "SHLVL", "_", "LOGNAME"}
+# What `zsh -f -c` shows with no startup file changing anything (measured on
+# macOS and Ubuntu: identical).
+ZSH_DEFAULT_OPTIONS = ["nohashdirs", "norcs"]
+ZSH_DEFAULT_ALIASES = ["run-help=man", "which-command=whence"]
+SURFACE_PROBE = {
+    "zsh": "setopt; echo :aliases; alias; echo :functions; print -l ${(k)functions}",
+    "bash": "echo :aliases; alias; echo :functions; declare -F",
+    "sh": "echo :aliases; alias; echo :functions; (declare -F) 2>/dev/null",
+}
 
 
 def startup_report(sandbox):
-    """Evidence that startup files did not change PATH or the canary."""
+    """What a started shell carries beyond the synthetic environment."""
     report = {"system_zshenv": {p: os.path.exists(p) for p in SYSTEM_ZSHENV}}
-    for shell in profiles():
+    for shell in profiles(sandbox):
         with tempfile.TemporaryDirectory(dir=sandbox.root) as cwd:
-            trace = os.path.join(cwd, ".trace")
-            env = sandbox.environment(trace)
-            out = subprocess.run(
-                SHELL_ARGV[shell] + ['printf "%s\\n%s" "$PATH" "$HOME"'], capture_output=True,
-                text=True, env=env, cwd=cwd, timeout=10,
+            env = sandbox.environment(os.path.join(cwd, ".trace"))
+            run = lambda script, extra=None: subprocess.run(  # noqa: E731
+                SHELL_ARGV[shell] + [script], capture_output=True, text=True,
+                env={**env, **(extra or {})}, cwd=cwd, timeout=10, stdin=subprocess.DEVNULL,
             ).stdout
-            canary_name = subprocess.run(
-                SHELL_ARGV[shell] + ['[ "$FAKE_TEST_API_KEY" = "$EXPECT" ] && echo same'],
-                capture_output=True, text=True, env={**env, "EXPECT": CANARY}, cwd=cwd, timeout=10,
-            ).stdout.strip()
+            # Names only; the absolute path bypasses the env shim.
+            names = {line.split("=", 1)[0] for line in run("/usr/bin/env").splitlines() if "=" in line}
+            unchanged = {
+                name: run('[ "$(printenv %s)" = "$EXPECT" ] && echo same' % name,
+                          {"EXPECT": value}).strip() == "same"
+                for name, value in env.items()
+            }
+            surface = run(SURFACE_PROBE[shell])
+        options, _, rest = surface.partition(":aliases\n")
+        aliases, _, functions = rest.partition(":functions\n")
         report[shell] = {
-            "path_unchanged": out.split("\n")[0] == env["PATH"],
-            "home_unchanged": out.split("\n")[-1] == env["HOME"],
-            "canary_unchanged": canary_name == "same",
+            "extra_exports": sorted(names - set(env) - SHELL_EXPORTS),
+            "changed_values": sorted(name for name, same in unchanged.items() if not same),
+            "options": options.split(),
+            "aliases": aliases.split(),
+            "functions": functions.split(),
         }
     return report
 
@@ -186,7 +217,7 @@ if __name__ == "__main__":
 
     box = Sandbox()
     try:
-        keys = profiles()
+        keys = profiles(box)
         print(json.dumps({"profiles": keys, "startup": startup_report(box)}))
         for c in CASES:
             if c["run"]:

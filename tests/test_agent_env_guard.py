@@ -323,7 +323,7 @@ class ShellCase(unittest.TestCase):
     def setUpClass(cls):
         cls.box = harness.Sandbox()
         cls.addClassCleanup(cls.box.close)
-        cls.profiles = harness.profiles()
+        cls.profiles = harness.profiles(cls.box)
 
     def measure(self, command):
         return {key: self.box.run(shell, command) for shell, key in self.profiles.items()}
@@ -337,15 +337,42 @@ class ShellProfiles(ShellCase):
             with self.subTest(shell=shell):
                 self.assertIn(key, PROFILES)
 
+    def expected_surface(self, shell):
+        zsh = shell == "zsh"
+        return {
+            "extra_exports": [], "changed_values": [], "functions": [],
+            "options": harness.ZSH_DEFAULT_OPTIONS if zsh else [],
+            "aliases": harness.ZSH_DEFAULT_ALIASES if zsh else [],
+        }
+
     def test_startup_files_leave_the_synthetic_environment_alone(self):
-        # zsh -f still sources the system zshenv; the report names it and
-        # every shell must keep PATH, HOME and the canary unchanged.
+        # zsh -f still sources the system zshenv (/etc/zshenv or
+        # /etc/zsh/zshenv); the report names it, and every shell must start
+        # with exactly the synthetic environment, no extra exports, aliases,
+        # functions or options.
         report = harness.startup_report(self.box)
         for shell in self.profiles:
             with self.subTest(shell=shell, system_zshenv=report["system_zshenv"]):
-                self.assertEqual(report[shell], {
-                    "path_unchanged": True, "home_unchanged": True, "canary_unchanged": True,
-                })
+                self.assertEqual(report[shell], self.expected_surface(shell))
+
+    def test_startup_check_detects_a_startup_file(self):
+        # Control: a startup file that exports, aliases and defines something
+        # (zsh without -f reads $ZDOTDIR/.zshenv) must show up in the report.
+        with open(os.path.join(self.box.home, ".zshenv"), "w") as fh:
+            fh.write("export SYNTH_STARTUP_EXTRA=1\nexport HOME=/elsewhere\n"
+                     "alias zz=true\nzz_fn() { :; }\nsetopt extendedglob\n")
+        argv = harness.SHELL_ARGV["zsh"]
+        try:
+            harness.SHELL_ARGV["zsh"] = ["/bin/zsh", "-c"]
+            report = harness.startup_report(self.box)["zsh"]
+        finally:
+            harness.SHELL_ARGV["zsh"] = argv
+            os.remove(os.path.join(self.box.home, ".zshenv"))
+        self.assertIn("SYNTH_STARTUP_EXTRA", report["extra_exports"])
+        self.assertIn("HOME", report["changed_values"])
+        self.assertIn("zz=true", report["aliases"])
+        self.assertIn("zz_fn", report["functions"])
+        self.assertIn("extendedglob", report["options"])
 
 
 class CorpusMatchesShells(ShellCase):
@@ -382,6 +409,14 @@ class ContinuationSweep(ShellCase):
 # type-checked, compared with "" and passed on to check_command).
 RAW_NAMES = {"main": {"payload", "tool_input", "command"}, "check_command": {"command", "text"}}
 RAW_SINKS = {"LogicalSource", "isinstance", "check_command"}
+# Reflection could reach LogicalSource's private text without naming it.
+REFLECTION = {"getattr", "setattr", "delattr", "vars", "eval", "exec", "compile",
+              "globals", "locals", "__import__", "attrgetter", "methodcaller"}
+ALLOWED_DUNDERS = {"__name__", "__new__"}
+PRIVATE = {"_text", "_pos"}
+# The reader API of LogicalSource; only the lexing layer may call it.
+READER_API = {"peek", "at", "take", "take_physical_line", "physical_eof", "_skip"}
+LAYER = {"LogicalSource", "Lexer"}
 
 
 def raw_access_violations(source):
@@ -412,12 +447,25 @@ def raw_access_violations(source):
                     and call.func.attr == "join" and getattr(call.func.value, "id", None) == "shlex")
         return False
 
+    def owner(node):
+        cls = enclosing(node, ast.ClassDef)
+        return cls.name if cls else None
+
     violations = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and node.attr in {"_text", "_pos"}:
-            owner = enclosing(node, ast.ClassDef)
-            if owner is None or owner.name != "LogicalSource":
-                violations.append(f"line {node.lineno}: .{node.attr} outside LogicalSource")
+        if isinstance(node, ast.Attribute) and node.attr in PRIVATE and owner(node) != "LogicalSource":
+            violations.append(f"line {node.lineno}: .{node.attr} outside LogicalSource")
+        if isinstance(node, ast.Constant) and node.value in PRIVATE and owner(node) != "LogicalSource":
+            violations.append(f"line {node.lineno}: private name as a string outside LogicalSource")
+        if isinstance(node, ast.Name) and node.id in REFLECTION:
+            violations.append(f"line {node.lineno}: reflective `{node.id}`")
+        if isinstance(node, ast.Attribute) and node.attr in {"attrgetter", "methodcaller"}:
+            violations.append(f"line {node.lineno}: reflective `.{node.attr}`")
+        if (isinstance(node, ast.Attribute) and node.attr.startswith("__")
+                and node.attr not in ALLOWED_DUNDERS):
+            violations.append(f"line {node.lineno}: dunder access `.{node.attr}`")
+        if isinstance(node, ast.Attribute) and node.attr in READER_API and owner(node) not in LAYER:
+            violations.append(f"line {node.lineno}: reader `.{node.attr}` outside the lexing layer")
         if isinstance(node, ast.FunctionDef) and node.name in RAW_NAMES:
             for name in ast.walk(node):
                 if (isinstance(name, ast.Name) and isinstance(name.ctx, ast.Load)
@@ -427,6 +475,13 @@ def raw_access_violations(source):
 
 
 SEEDED_RAW_ACCESS = [
+    # re-review ENV-GUARD-07: a reflective read of the private text
+    ("        self.src = src\n", '        self.src = src\n        self.debug_prefix = getattr(src, "_text")[:80]\n'),
+    ("        self.src = src\n", "        self.src = src\n        self.debug = vars(src)\n"),
+    ("        self.src = src\n", "        self.src = src\n        self.debug = src.__dict__\n"),
+    # the reader API used outside the lexing layer
+    ("    tokens = lexer.lex_code()\n",
+     '    if "environ" in lexer.src.take_physical_line():\n        raise Deny("x")\n    tokens = lexer.lex_code()\n'),
     # the pre-lexer guard's whitespace test on the raw command
     ('command == ""', "not command.strip()"),
     # a raw-text /proc belt next to the lexer
@@ -462,7 +517,17 @@ class Limits(unittest.TestCase):
                 self.assertEqual(decision, "deny")
                 self.assertIn("too deep", reason)
 
+    def test_deep_expression_nesting_is_denied_visibly(self):
+        # re-review ENV-GUARD-08: ${...} recursion shares the nesting budget
+        for command in ("echo " + "${a:-" * 40 + "ok" + "}" * 40,
+                        "echo " + '"$(' * 20 + "date" + ')"' * 20):
+            with self.subTest(command=command[:40]):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertIn("too deep", reason)
+
     def test_moderate_nesting_is_allowed(self):
+        self.assertEqual(decide("echo ${a:-${b:-${c:-ok}}}")[0], "allow")
         self.assertEqual(decide("echo $(echo $(echo $(date)))")[0], "allow")
         self.assertEqual(decide("eval eval eval date")[0], "allow")
 
