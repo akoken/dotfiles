@@ -42,6 +42,22 @@ No score, row count, JSON field or validator output proves that those observatio
 
 Use schema_version 1 and profile general, aura-peer or aura-self. The record contains:
 
+- skill: the identity of the skill that ran: name, version (its SKILL.md metadata.version,
+  X.Y.Z) and fingerprint. Compute the fingerprint with
+  `python3 scripts/review_record.py --skill-fingerprint <skill directory>` on the installed
+  directory you read; never copy it from an earlier report. It is the SHA-256 of one line
+  `<file sha256>  <path>` plus newline per file in SKILL.md, references/ and scripts/,
+  sorted by path bytes (eval/, `__pycache__` and .DS_Store excluded; symlinks refused). On
+  a clean tree it equals `find SKILL.md references scripts -type f | LC_ALL=C sort | xargs
+  shasum -a 256 | shasum -a 256`. Write the same three values in the report header. A
+  record without skill (or with null) is a legacy record: it stays valid and reads as
+  identity unknown, never as the current version.
+- rereview: include it on every re-review (any round after the first, full or delta) and
+  omit it on a first review. previous_head is the full SHA of the previously reviewed head
+  (in delta mode it equals coverage.baseline_head); prior_finding_ids lists the IDs already
+  reported before this round, and each of them stays in findings with its current state.
+  The validator can enforce presence only in delta mode for a record with skill identity
+  or when --expected-previous-head is supplied; elsewhere it is the reviewer's duty.
 - subject: base and head full commit IDs; patch_digest is null or the SHA-256 of the full
   reviewed dirty input, including included untracked files.
 - contract: state resolved, none, missing_reference or unavailable; evidence references.
@@ -64,6 +80,13 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   contradicted_claim, introduced_gate_failure, plus aspirational_doc/missing_issue for AURA.
   Optional class (nonempty string) names a recurring defect class; instances then lists
   every verified instance as nonempty path:line anchors. Give both or neither.
+  On a re-review, every finding whose ID is not in rereview.prior_finding_ids records
+  present_at_previous_head: yes when evidence (code at previous_head, a probe there) shows
+  the defect already existed at the previously reviewed head, no when evidence shows a later
+  commit introduced it, and unknown when neither is evidenced. Prior findings and first
+  reviews omit the field. A new finding without a valid value makes the record invalid, but
+  the value itself is never a verdict input: it measures cross-round recall, and a yes does
+  not route a change-introduced defect away from blocking.
   Use only verified admitted findings; unresolved suspicions belong in verification_gaps.
 - requirements: unique id, text, state met/unmet/partial/unverified, implementation and
   verification evidence arrays, and optional verification_basis reviewer/ci/static/
@@ -132,7 +155,14 @@ pointing to a JSON array of all current changed paths from the verified diff. Su
 and repeat --require-check for each required gate/pass from trusted policy and the review
 plan. Requiredness and completeness of that list must be resolved outside the artifact;
 do not trust the record to define its own policy. Pass --policy-known only after that step.
-An unknown required-check policy produces NEEDS_REVIEW.
+An unknown required-check policy produces NEEDS_REVIEW. To bind the record to the skill
+that should have run, pass --expected-skill-version and --expected-skill-fingerprint taken
+from a trusted source, such as the pinned release commit hashed with a script copy outside
+the installed package; a package's own script cannot vouch for that package. On a re-review
+pass --expected-previous-head from the pinned prior report. Each supplied expectation must
+match the record, and a legacy record lacking the field is rejected rather than assumed
+current. Without them the identity is self-reported, and the previous head is verified only
+through the delta baseline; the output says which (previous_head_verified).
 
 The tool reads JSON and emits a decision; it never runs commands from records or reads
 evidence targets. Its exit codes are 0 for a consistent positive review, 1 for a consistent
@@ -141,7 +171,8 @@ never authorizes approval. A claimed positive verdict inconsistent with the evid
 rejected; do not edit evidence to satisfy the claimed verdict.
 
 The validator checks identity, coverage accounting, requirement states, finding lifecycle,
-required check outcomes and verdict consistency. It cannot authenticate evidence or replace
-source review. A changed head/config/test selection invalidates affected evidence under
-the protocol even when JSON syntax remains valid. Public review publication still requires
+required check outcomes and verdict consistency. Its output echoes skill (null for a legacy
+record) and, on a re-review, the new finding IDs grouped by present_at_previous_head. It
+cannot authenticate evidence or replace source review. A changed head/config/test selection
+invalidates affected evidence under the protocol even when JSON syntax remains valid. Public review publication still requires
 the session's explicit authorization and final current-head check.

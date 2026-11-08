@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.6.0"
+  version: "2.7.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -73,11 +73,15 @@ correctness, security, tests, skill quality, and PR-description truthfulness. Co
 governance checks do not replace tracing real changed code and its callers. State each
 non-applicable dimension. Run only inspected, targeted commands appropriate to the change.
 
-For changed decision logic or tests exercising it, apply the bounded
-[mutation-testing stage](references/mutation-testing.md) after normal tests pass. State
-applicability even when skipped. Use StrykerJS for compatible JS/TS projects and Stryker.NET
-for compatible C# projects; use the actual project's pinned runner rather than assuming
-AURA has mutation tooling installed. Survivors/score do not add a blocking branch.
+For changed decision logic or tests exercising it, first look for a project-pinned mutation
+runner: a StrykerJS or Stryker.NET dependency, tool manifest entry or committed config in
+the reviewed tree. If none is pinned and neither project policy nor the user requires
+mutation testing, report mutation as applicable, skipped: no project-pinned runner, and do
+not read the mutation reference or install a runner. If policy or the user requires it but
+no runner is pinned, the mutation gate stays unresolved; do not skip or install. With a
+pinned runner apply the bounded [mutation-testing stage](references/mutation-testing.md)
+after normal tests pass. State applicability even when skipped. Survivors/score do not add a
+blocking branch.
 
 Pure style/cleanup suggestions are omitted unless requested. Concrete skill contradictions,
 false docs, broken paths, misrouting config, and unenforceable guard instructions remain
@@ -103,7 +107,9 @@ available; a normal code review or green mutation score cannot stand in for it.
    1. A reachable correctness, security, or regression defect introduced by the change.
    2. A failed linked-issue requirement/DoD.
    3. An undisclosed partial implementation or contradicted PR-body claim.
-   4. Diff-added aspirational documentation lacking the project's permitted annotation.
+   4. Diff-added aspirational documentation lacking the annotation that the project's own
+      policy defines for it. When project policy defines no such annotation, this branch
+      does not apply; judge that text through branches 1-3 and severity instead.
    5. A peer PR body with no linked-issue reference.
    6. An applicable required gate failure introduced by the change. Compare the same
       check at merge-base where feasible; unknown provenance remains an unresolved gate,
@@ -171,13 +177,24 @@ Use [review record](references/review-record.md) for real peer/self reviews. Map
 acceptance criterion to implementation and verification against its exact text, preserve
 unmet/unverified criteria, accept an author-recorded run under the record's rule without
 adding evidence requirements the contract does not contain, and validate review.json against
-independently obtained revision/file/gate inputs before a positive verdict. This verifies consistency, not source truth. Missing-target and fixture-only
-exercises do not fabricate a record for unavailable metadata.
+independently obtained revision/file/gate inputs before a positive verdict. This verifies
+consistency, not source truth. Missing-target and fixture-only exercises do not fabricate a
+record for unavailable metadata.
+
+A criterion can demand a paid, live, credentialed or host-specific run while a trusted
+project policy line treats such runs as optional or post-merge. When the run's record is
+absent, the criterion stays unmet as its text requires (branch 2); do not drop it, pass it,
+or downgrade it to unverified because of the policy. Directly after the verdict, give one
+Maintainer decision item that quotes the criterion and the policy line together and names the two
+options: authorize the run and record its result, or move the criterion post-merge in the
+issue. That choice belongs to the maintainer, not the reviewer or the author.
 
 Lead with the verdict and number of verified findings/blockers. When no actionable finding
 remains, say so first in one plain sentence, for example "Nothing to fix: 0 new findings;
 2 prior findings verified fixed." Include:
 
+- Skill identity: name, metadata.version and package fingerprint of the skill that ran,
+  computed under the review record from the directory actually read, never copied.
 - PR URL/title or self branch, linked contract, base/head full SHAs; for dirty input add
   the reviewed patch digest. Record reviewed instruction/REVIEW.md paths.
 - Required gate states at that head and exact commands/outcomes observed locally. Distinguish
@@ -194,6 +211,8 @@ remains, say so first in one plain sentence, for example "Nothing to fix: 0 new 
   unavailable; local self baselines are never labeled published.
 - Published blocker status on re-review: stable ID, state, current evidence, author reply
   disposition, and cause for reopening if any. No repeated finding without new evidence.
+- On re-review, for each new finding: was the defect present at the previously reviewed
+  head? yes or no with the evidence, or unknown when not evidenced. Never guess yes or no.
 - Findings: ID, location, severity, Blocker?, trigger/path, expected/actual result, causal
   anchor, verification method, and remedy; for a recurring defect class, its class name,
   every instance as path:line, and a remedy covering every instance plus further copies.

@@ -6,7 +6,10 @@ these `key: value` lines, all required and nonempty:
 
 - reviewer: always `pr-review2`; results of any other reviewer never count here.
 - skill-version: the `metadata.version` of the SKILL.md that ran.
-- candidate-sha256: SHA-256 of the candidate skill tree that ran.
+- candidate-sha256: package fingerprint of the candidate skill that ran, printed by
+  `python3 scripts/review_record.py --skill-fingerprint <skill directory>` (eval/ excluded).
+  Results recorded before skill-version 2.7.0 used an unrecorded recipe; compare them only
+  by skill-version.
 - case: the case directory name under `cases/`.
 - host: the runner, for example the agent CLI and its version.
 - model: the exact model id.

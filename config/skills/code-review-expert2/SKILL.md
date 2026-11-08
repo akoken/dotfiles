@@ -2,7 +2,7 @@
 name: code-review-expert2
 description: "Review a diff, branch, commit range, or PR using verified findings, explicit coverage, risk-based re-review, and an incomplete-review verdict. Use for general code reviews; use pr-review2 for AURA merge-readiness or pre-PR self-review."
 metadata:
-  version: "2.5.0"
+  version: "2.6.0"
   derived-from: code-review-expert
 ---
 
@@ -147,6 +147,7 @@ missing metadata honestly; never invent a record just to satisfy the schema.
 
 Lead with the verdict and finding count. Include:
 
+- Skill identity: name, metadata.version and package fingerprint under the review record.
 - Contract; base/head SHAs or working-patch digest; reviewed source and REVIEW.md scope.
 - Coverage, risk tier with reasons, review round/mode, and baseline evidence or unavailable.
 - Commands/checks actually run, outcomes, skipped work and unresolved verification.
@@ -156,8 +157,10 @@ Lead with the verdict and finding count. Include:
 - Findings table: stable ID, location, severity, Blocker?, trigger/call path, expected vs
   actual result, causal diff, verification method, and concrete remedy. Keep rows readable;
   longer evidence can follow below the table. Never claim execution from static reasoning.
-- Prior finding states and new-commit attribution on re-review; independently capped
-  Out-of-scope and Carried sections when applicable. Empty sections may simply say None.
+- Prior finding states and new-commit attribution on re-review, including for each new
+  finding whether it was present at the previously reviewed head (yes/no with evidence,
+  unknown otherwise; never guess); independently capped Out-of-scope and Carried sections
+  when applicable. Empty sections may simply say None.
 - Risky behavior, required human review, rollback method, and remaining uncertainty.
 
 A clean review names the implementation and behavior inspected and its relevant test or
