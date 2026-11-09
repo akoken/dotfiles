@@ -41,7 +41,8 @@ stale_xai="synthetic-stale-xai-48"
 caller_value="synthetic-caller-value-49"
 or_value="synthetic-openrouter-value-50"
 obss_value="synthetic-obss-value-51"
-markers=("$token" "$xai_value" "$jira_value" "$ctx_value" "$other_jira" "$other_ctx" "$other_or" "$other_obss" "$stale_xai" "$caller_value" "$or_value" "$obss_value")
+stale_copilot="synthetic-stale-copilot-52"
+markers=("$token" "$xai_value" "$jira_value" "$ctx_value" "$other_jira" "$other_ctx" "$other_or" "$other_obss" "$stale_xai" "$caller_value" "$or_value" "$obss_value" "$stale_copilot")
 key_names=(CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN)
 
 fakebin="$work/fakebin"
@@ -142,7 +143,31 @@ probe "$out.env"
 } >"$out.argv"
 exit "${FAKE_QWEN_EXIT:-0}"
 EOF
-chmod +x "$fakebin/security" "$fakebin/op" "$fakebin/probe" "$fakebin/probe-var" "$fakebin/qwen"
+
+# A Copilot CLI stand-in: `copilot <out> [args...]` records its managed keys
+# through probe in <out>.env; in <out>.provider whether
+# COPILOT_PROVIDER_API_KEY holds the obss-llm marker ("match"), something
+# else ("other") or nothing ("missing"), followed by the non-secret
+# COPILOT_PROVIDER_TYPE and COPILOT_PROVIDER_BASE_URL; and its argument count
+# and arguments, one per line, in <out>.argv. Exits with FAKE_COPILOT_EXIT
+# (default 0).
+cat >"$fakebin/copilot" <<EOF
+#!/bin/sh
+set +x
+out="\$1"
+shift
+probe "\$out.env"
+if [ "\${COPILOT_PROVIDER_API_KEY-}" = '$obss_value' ]; then k=match
+elif [ -n "\${COPILOT_PROVIDER_API_KEY-}" ]; then k=other
+else k=missing; fi
+printf 'key:%s\ntype:%s\nurl:%s\n' "\$k" "\${COPILOT_PROVIDER_TYPE-unset}" "\${COPILOT_PROVIDER_BASE_URL-unset}" >"\$out.provider"
+{
+  printf '%s\n' "\$#"
+  for a in "\$@"; do printf '[%s]\n' "\$a"; done
+} >"\$out.argv"
+exit "\${FAKE_COPILOT_EXIT:-0}"
+EOF
+chmod +x "$fakebin/security" "$fakebin/op" "$fakebin/probe" "$fakebin/probe-var" "$fakebin/qwen" "$fakebin/copilot"
 
 # Private PATH: fakes first, then the repo's bin, then the system.
 export PATH="$fakebin:$repo/bin:/usr/bin:/bin"
@@ -251,10 +276,12 @@ ln -s probe "$fakebin/grok"
 ln -s probe "$fakebin/jira"
 
 # Every managed key and the service account token with a value the wrapped
-# child must not see, sourced by the wrapper checks in a subshell only.
+# child must not see, plus stale Copilot provider settings the wrapper must
+# override; sourced by the wrapper checks in a subshell only.
 cat >"$work/stale.env" <<EOF
 export CONTEXT7_API_KEY='$other_ctx' OBSS_LLM_API_KEY='$other_obss' OPENROUTER_API_KEY='$other_or'
 export XAI_API_KEY='$stale_xai' JIRA_API_TOKEN='$other_jira' OP_SERVICE_ACCOUNT_TOKEN='$token'
+export COPILOT_PROVIDER_API_KEY='$stale_copilot' COPILOT_PROVIDER_TYPE=azure COPILOT_PROVIDER_BASE_URL=https://stale.invalid
 EOF
 
 run_wrappers() { # <shell> [startup-file flags]
@@ -283,7 +310,20 @@ run_wrappers() { # <shell> [startup-file flags]
         [ ! -e "$2/$w.$mode.env" ] || { echo "$w started qwen on vault $mode" >&2; exit 19; }
       done
     done
-    for n in CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN; do
+
+    # copilot-obss: clean and inherited environments, arguments and exit
+    # code pass through, and a failed vault read never starts copilot.
+    copilot-obss "$2/copilot.clean" "a b" "" "--flag=x y" || exit 15
+    (. "$2/stale.env"; copilot-obss "$2/copilot.stale") || exit 16
+    (export FAKE_COPILOT_EXIT=7; copilot-obss "$2/copilot.exit" one); s=$?
+    [ "$s" -eq 7 ] || { echo "copilot-obss returned $s, want 7" >&2; exit 17; }
+    for mode in fail empty; do
+      (export FAKE_OP_MODE=$mode; copilot-obss "$2/copilot.$mode"); s=$?
+      [ "$s" -ne 0 ] || { echo "copilot-obss exited 0 on vault $mode" >&2; exit 18; }
+      [ ! -e "$2/copilot.$mode.env" ] || { echo "copilot-obss started copilot on vault $mode" >&2; exit 19; }
+    done
+    for n in CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN \
+      COPILOT_PROVIDER_API_KEY COPILOT_PROVIDER_TYPE COPILOT_PROVIDER_BASE_URL; do
       eval "v=\${$n-}"
       [ -z "$v" ] || { echo "parent shell holds $n" >&2; exit 14; }
     done
@@ -302,6 +342,17 @@ run_wrappers() { # <shell> [startup-file flags]
     [ "$(cat "$work/$w.exit.argv")" = "$(printf '1\n[one]')" ] || fail "$sh $w wrapper changed its arguments"
   done
   rm -f "$work"/qwen.* "$work"/qwen-or.*
+  local run provider
+  provider="$(printf 'key:match\ntype:openai\nurl:https://ai.obss.tech/llm/v1')"
+  for run in clean stale exit; do
+    expect_probe "$work/copilot.$run.env" "" "$sh copilot-obss wrapper ($run)"
+    [ "$(cat "$work/copilot.$run.provider")" = "$provider" ] ||
+      fail "$sh copilot-obss wrapper ($run): wrong provider key, type or URL"
+  done
+  [ "$(cat "$work/copilot.clean.argv")" = "$(printf '3\n[a b]\n[]\n[--flag=x y]')" ] ||
+    fail "$sh copilot-obss wrapper changed its arguments"
+  [ "$(cat "$work/copilot.exit.argv")" = "$(printf '1\n[one]')" ] || fail "$sh copilot-obss wrapper changed its arguments"
+  rm -f "$work"/copilot.*
 }
 run_wrappers bash --norc --noprofile
 if command -v zsh >/dev/null 2>&1; then
