@@ -380,6 +380,57 @@ SECRET_DENY = [
     "op --account * item list",
     "op --account {a,b} vault list",
     "touch read; op r??d op://agent-keys/obss-llm/credential",
+    # SG23-QUOTED-MULTIWORD: a quoted "$@" or "${a[@]}" is several words, the
+    # suffix lands on the last (set -- echo SYNTH; "$@/tail" prints SYNTH/tail)
+    'set -- secret-get fake; "$@/true"',
+    'set -- secret-get fake; "${@}/true"',
+    'set -- secret-get fake; "$@"',
+    'set -- secret-get fake; "${@:1}/true"',
+    'a=(secret-get fake); "${a[@]}/x"',
+    'a=(secret-get fake); "${a[@]}"',
+    'a=(secret-get fake); "${a[@]:0}/x"',
+    'a=(secret-get fake); "${(@)a}/x"',
+    'a=(secret-get fake); "${(@kv)a}/x"',
+    'a=(secret-get fake); "$a[@]/x"',
+    'set -- secret-get fake; with-secret obss-llm KEY "$@/true"',
+    'set -- secret-get fake; with-openrouter "$@/true"',
+    'set -- secret-get fake; with-obss-llm "${@}/true"',
+    'a=(secret-get fake); with-secret obss-llm KEY "${a[@]}/x"',
+    'set -- op read x; env "$@/true"',
+    'set -- op read x; time "$@/true"',
+    'set -- op read x; nohup "$@/true"',
+    'set -- secret-get fake; sudo "$@/true"',
+    'set -- secret-get fake; command "$@/true"',
+    'set -- secret-get fake; xargs "$@/true"',
+    # SUDO-K: -k, -K and -v skip nothing when a command follows
+    "sudo -k secret-get fake",
+    "sudo -u root -k secret-get fake",
+    "sudo -vk secret-get fake",
+    "sudo -kv secret-get fake",
+    "sudo -K secret-get fake",
+    "sudo -v secret-get fake",
+    "sudo --reset-timestamp secret-get fake",
+    "sudo --remove-timestamp secret-get fake",
+    "sudo --validate secret-get fake",
+    "sudo -k op read op://agent-keys/obss-llm/credential",
+    "sudo -k env",
+    # option tokens built by command or arithmetic expansion, or changed by quoting
+    "bash -$(echo c) 'secret-get fake'",
+    "bash -`echo c` 'secret-get fake'",
+    "bash -$((1)) 'secret-get fake'",
+    "bash -$((0+99)) 'secret-get fake'",
+    "env -u$(echo X) true secret-get fake",
+    "env -u`echo X` true secret-get fake",
+    "env -u$((1)) true secret-get fake",
+    "sudo -$(echo u) root secret-get fake",
+    "bash '-c' 'secret-get fake'",
+    'bash "-c" "secret-get fake"',
+    'bash -"c" "secret-get fake"',
+    "bash -\\c 'secret-get fake'",
+    "bash ''-c 'secret-get fake'",
+    "bash $'-c' 'secret-get fake'",
+    "sudo '-u' root secret-get fake",
+    "env '-S' 'secret-get fake'",
     # SG23-MASK, class: a word with an unresolved expansion in the op run
     # option area is ambiguous, and every --no-masking[=value] is masking off
     "touch -- --no-masking=1; op run --no-mask*=1 -- true",
@@ -536,6 +587,25 @@ SECRET_ALLOW = [
     "op run --env-file -- -- true",
     "op run -- --no-masking",
     "op run --env-file x -- sh -c 'echo --no-masking'",
+    # scalar quoted expansions stay one word: the documented neighbours
+    '"$HOME/bin/tool" --flag',
+    '"${HOME}/bin/tool" --flag',
+    '"${x:-/usr/bin}/true"',
+    '"${a[0]}/true"',
+    '"${a[*]}/true"',
+    '"$*/true"',
+    '"${#a}/true"',
+    '"$(echo /bin)/true"',
+    # sudo modes that run no command
+    "sudo -k",
+    "sudo -K",
+    "sudo -v",
+    "sudo -V",
+    "sudo -kv",
+    "sudo -l",
+    "sudo -l secret-get",
+    "sudo --list",
+    "sudo -e /etc/hosts",
 ]
 
 # Forms the guard cannot see; each one has a KNOWN_LIMITS row and a README line.
@@ -1324,7 +1394,8 @@ class ExpansionRoles(unittest.TestCase):
 # form; every result must still be denied. A token that is already pure data
 # for the command (an argument of the command that is denied) stays denied
 # too, because the denial does not depend on it.
-TOKEN_FORMS = ["$X", "${X}", "$(x)", "`x`", "*", "{a,b}"]
+TOKEN_FORMS = ["$X", "${X}", "$(x)", "`x`", "*", "{a,b}", '"$@"', '"${a[@]}"', '"x$@"',
+               "-$(echo c)", "-$((1))", "-`echo c`"]
 # `ps` reads its options and operands without the gate: the documented
 # limitation ENV-GUARD-15 (README), measured by corpus row X12.
 GENERATIVE_SKIP = re.compile(r"\bps\b|/proc/|environ")  # ps: ENV-GUARD-15; /proc paths: the datum is the denial
@@ -1340,8 +1411,8 @@ def partial_forms(token):
 
 def word_only(command):
     """Tokens of a single-line, operator-light command, or None."""
-    if "\n" in command or any(ch in command for ch in "<>()`{}\\") or "$(" in command:
-        return None
+    if "\n" in command or any(ch in command for ch in "<>()`{}\\") or "$(" in command or "''" in command:
+        return None  # (shlex would split a word at an empty quote pair and change its meaning)
     import shlex
     lexer = shlex.shlex(command, posix=False)
     lexer.whitespace_split = True

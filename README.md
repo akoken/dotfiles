@@ -408,11 +408,18 @@ protection**, not a fix:
   structural test fails when a reader takes raw words. What a reader has not
   read leaves only through `Reader.data()`, as plain data for the command it
   found. Consequences: a command name keeps an expansion in its directory
-  part only when it is quoted (`"$HOME/bin/tool"` runs, `$HOME/bin/tool` does
-  not); a command word a wrapper runs (`time`, `sudo`, `nohup`, `with-secret`)
+  part only when it is quoted and scalar (`"$HOME/bin/tool"` runs,
+  `$HOME/bin/tool` does not); a quoted expansion that yields several words
+  counts as unquoted (`"$@"`, `"${a[@]}"`, `"${@:1}"`, `"$a[@]"`, zsh
+  `"${(@)a}"`, `"${=a}"`, `"${~a}"`, so `set -- secret-get x; "$@/true"` is
+  denied: the suffix lands on the last word and the command word becomes
+  `secret-get`); a command word a wrapper runs (`time`, `sudo`, `nohup`, `with-secret`)
   may not carry an expansion at all; a plain assignment prefix of a simple
   command (`A=$X cmd`) is not split by the shell and stays allowed; words after
-  the selected `op` subcommand do not decide it and stay free. A generative
+  the selected `op` subcommand do not decide it and stay free. `sudo -k`,
+  `-K` and `-v` (and their long forms) run no command only when none follows:
+  `sudo -k secret-get x` runs `secret-get`, so the command after them is
+  checked; `-e`, `-l` and `-V` run none and pass. A generative
   test replaces every token of every single-line command of the deny corpus
   with each expansion form (`$X`, `${X}`, `$(x)`, backticks, glob, brace and
   partial forms such as `-$f` and `-u{X,}`) and requires a deny. Not behind the

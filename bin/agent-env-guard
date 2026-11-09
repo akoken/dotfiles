@@ -342,6 +342,7 @@ class Lexer:
         self.depth = depth
         self.budget = budget if budget is not None else [0]
         self.in_double_quotes = 0
+        self.several_words = False  # the ${...} just read can expand to several words
         self.nested_tokens = []  # token lists of $(...)
         self.nested_texts = []   # backtick, ((...)) and here-doc substitution texts
 
@@ -356,10 +357,12 @@ class Lexer:
         finally:
             self.budget[0] -= 1
 
-    def expansion(self, word):
-        """Add an expansion whose value is unknown; inside double quotes it
-        cannot be split or globbed, outside it can."""
-        word.add("dqunknown" if self.in_double_quotes else "unknown")
+    def expansion(self, word, several=False):
+        """Add an expansion whose value is unknown. Inside double quotes it
+        stays one word, unless it is one of the forms that expand to several
+        words there ($@, ${@...}, ${a[@]}, zsh ${(@)a}, ${=a}, ${~a}, $a[@]);
+        outside quotes it can be split and globbed."""
+        word.add("dqunknown" if self.in_double_quotes and not several else "unknown")
 
     # -- code ---------------------------------------------------------------
     def lex_code(self, closing=None, in_subst=False):
@@ -528,16 +531,20 @@ class Lexer:
             self.expansion(word)
         elif src.at("${"):
             src.take(2)
+            self.several_words = False
             self.read_param()
-            self.expansion(word)
+            self.expansion(word, several=self.several_words)
         elif src.peek(1) is not None and (src.peek(1) in NAME_START or src.peek(1) in SPECIAL_PARAMS):
             src.take()
+            several = False
             if src.peek() in SPECIAL_PARAMS:
+                several = src.peek() == "@"
                 src.take()
             else:
                 while src.peek() is not None and (src.peek().isalnum() or src.peek() == "_"):
                     src.take()
-            self.expansion(word)
+                several = src.peek() == "["  # zsh $a[@]
+            self.expansion(word, several=several)
         else:
             word.add("lit", src.take())
 
@@ -567,7 +574,10 @@ class Lexer:
         src = self.src
         if src.peek() == "!":
             raise Deny("an indirect ${!...} expansion reads a variable named at run time")
+        if src.peek() in ("=", "~", "^"):
+            self.several_words = True  # zsh split, glob and distribute modifiers
         if src.peek() == "(":
+            self.several_words = True  # zsh flags: (@), (s:..:), (f) and more
             flags = []
             src.take()
             while src.peek() not in (None, ")"):
@@ -595,6 +605,8 @@ class Lexer:
                 continue
             if c == "{":
                 depth += 1
+            if c == "@":
+                self.several_words = True  # ${@}, ${a[@]}, ${@:2}, ${a[@]/x/y}
             self.word_char(scratch, mode="param")
 
     def read_arithmetic(self, closing):
@@ -1195,9 +1207,11 @@ def check_words(words, depth, wrapped=False):
         operands(name, reader, WRAPPER_OPTIONS[name], parsed)
         if name == "command" and any(o in {"-v", "-V"} for o in parsed):
             return  # lookup only
-        if name == "sudo" and any(o in {"-e", "--edit", "-l", "--list", "-v", "--validate",
-                                        "-K", "-k", "-V", "--version"} for o in parsed):
-            return  # sudoedit, list, validate: no command runs
+        if name == "sudo" and any(o in {"-e", "--edit", "-l", "--list", "-V", "--version"}
+                                  for o in parsed):
+            return  # sudoedit, list, version: no command runs
+        # -k, -K and -v (and their long forms) run no command only when none
+        # follows; `sudo -k cmd` runs cmd, so what follows is checked.
         if name in {"timeout", "gtimeout"} and reader.more():
             reader.read()  # the duration
         options = reader.consumed()
