@@ -260,8 +260,14 @@ report file names, never the matched text.
 1. In 1Password, add an API Credential item to the `agent-keys` vault: value
    in `credential`, the env var name in `key name`. Item names may contain
    only letters, digits, `.`, `_` and `-`.
-2. Check it without displaying it: `secret-get <item> | wc -c` (a non-zero
-   count and exit status 0).
+2. Check it without displaying it:
+   `with-secret <item> CHECK sh -c 'test -n "$CHECK"' && echo ok` (prints `ok`
+   when the key reads and is not empty; the single quotes keep `$CHECK` for
+   the inner shell, so no shell expands the value on a command line and
+   nothing prints it). An agent cannot run `secret-get` or `op read` for this:
+   the command guard denies them (see "Agent Secret Hygiene"). A human in
+   their own terminal, outside an agent, is unaffected and can still run
+   `secret-get <item>`.
 3. Give its consumer a wrapper in `config/zsh/.zsh_agent_keys`, for example
    `mytool() { with-secret myitem MYTOOL_API_KEY mytool "$@"; }`. If the new
    variable should also be stripped from other consumers, add it to the
@@ -297,8 +303,9 @@ report file names, never the matched text.
   so the Context7 key is in Claude Code's memory (not its environment) while
   the server is connected.
 - Anyone who can run commands as you can run `secret-get` and read every key
-  in the `agent-keys` vault (but nothing outside it). Keep only agent-usable
-  keys in that vault.
+  in the `agent-keys` vault (but nothing outside it). The command guard denies
+  `secret-get` to an agent, but only as a tripwire (see "Agent Secret
+  Hygiene"). Keep only agent-usable keys in that vault.
 
 ## Agent Secret Hygiene (partial)
 
@@ -335,6 +342,41 @@ protection**, not a fix:
   `/hooks`. Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
   (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
   synthetic environment, never the real one).
+- **Secret-read rule**: the same hook denies a command that prints a stored
+  key, so a value never lands in tool output or the session transcript. It
+  denies `secret-get`, `op read`, `op inject`, `op document get`,
+  `op run --no-masking` and `op item get`, run by bare name or by any path
+  (`~/bin/secret-get`, `./bin/secret-get`, an absolute path), inside
+  pipelines, lists, `$(...)`, backticks, `<(...)`, subshells and
+  `sh -c`/`bash -c`/`zsh -c` strings, through the wrappers the guard already
+  reads (`env`, `command`, `time`, `/usr/bin/time`, `nohup`, `sudo`, `xargs`
+  and the others), and when a shell or `source` is run on a file named
+  `secret-get`. The deny message names the matched form and the alternative:
+  `with-secret <item> <VAR> <command>` or a launcher (`grok`, `jira`, `qwen`,
+  `qwen-or`, `copilot-obss`, `with-openrouter`, `with-obss-llm`), which hand
+  the value to one command and never print it. `with-secret`,
+  `with-openrouter` and `with-obss-llm` still run, and the command they run is
+  checked like any other; the `secret-get` call inside them is not an agent
+  command, so it is unaffected. Mentions that are not invocations
+  (`rg secret-get README.md`, `cat bin/secret-get`,
+  `git log -- bin/secret-get`) and `op` commands that print no value
+  (`op --version`, `op whoami`, `op vault list`, `op item list`, `op signin`,
+  `op run` without `--no-masking`) still run. Why it exists: a value read this
+  way is in the output the agent sees; under zsh, `MULTIOS` makes
+  `secret-get obss-llm 2>&1 >/dev/null | cat` send the value to the pipe as
+  well as to `/dev/null` (bash prints nothing), which is how a key reached a
+  session transcript. Decision for `op item get` (1Password CLI reference):
+  `--fields`, `--format json`, `--reveal` and `--otp` print field values, a
+  bare `op item get` conceals sensitive fields only by default (`OP_FORMAT`
+  and later flags change that), and an agent needs only names
+  (`op item list`), so every `op item get` and its plural `op items get` is
+  denied whatever the flag (any flag, any order, any option before the
+  subcommand); `op document get`, `op inject` and the version 1 `op get`
+  print stored values the same way. An `op` option the guard does not know
+  (for example `--cache=false`) or an `op` command built from a variable is
+  refused rather than allowed. Humans running commands in their own terminal,
+  outside an agent, are unaffected: the hook only sees what an agent types.
+  Same limit as the rest of the guard: a tripwire, not a boundary.
 - **Known limitations of the guard** (commands that still dump and pass; kept
   as `KNOWN_LIMITS` rows in `tests/agent_env_guard_shell_corpus.py`):
   - ENV-GUARD-11: a function body without braces is not checked, so
@@ -345,6 +387,21 @@ protection**, not a fix:
     `readonly FAKE_TEST_API_KEY; readonly -p PATH` (dash) list everything.
   - ENV-GUARD-13: `env` skips an operand whose value is unknown as if it were
     an assignment, so `env "$(printf env)" -u X` passes.
+  - SECRET-GUARD-01: a script file that calls `secret-get` is not read, so
+    `printf 'secret-get obss-llm\n' > s.sh; sh s.sh` passes (only a script
+    named `secret-get` is refused).
+  - SECRET-GUARD-02: `find -exec` runs a command the guard does not read, so
+    `find . -maxdepth 0 -exec secret-get obss-llm \;` passes.
+  - SECRET-GUARD-03: an interpreter command string is not read, so
+    `awk 'BEGIN { system("secret-get obss-llm") }'` (and the same in python,
+    node, perl or ruby) passes.
+  - SECRET-GUARD-04: a command run through `with-secret` or a launcher can
+    print its own key, so `with-secret obss-llm KEY printenv KEY` passes.
+  - Not covered either, and not in the corpus: an alias or function defined
+    outside the command that calls `secret-get`, a copy or symlink of it under
+    another name, and any other way to reach the vault, for example reading
+    the service account token from the Keychain with `security
+    find-generic-password` and using `op` with it.
   - Anything the guard cannot see: what a started program, script file or
     interpreter does, and variables set outside the command.
 

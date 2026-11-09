@@ -26,6 +26,16 @@ it recognises; a command that passes is not evidence of security. Known commands
 ("Agent Secret Hygiene") and in tests/agent_env_guard_shell_corpus.py
 (KNOWN_LIMITS).
 
+It also denies a command that prints a stored key: `secret-get`, `op read`,
+`op inject`, `op document get`, `op run --no-masking` and `op item get` (any
+flag), run by bare name or by any path, including through pipelines, lists,
+substitutions, `sh -c` strings, a shell run on a script named secret-get, and
+the wrappers below. Keys stay usable through `with-secret <item> <VAR>
+<command>` and the launchers, which never print the value, and
+`op whoami`, `op vault list`, `op item list` and mentions of these names
+(`rg secret-get README.md`) still run. Humans running commands outside an
+agent are unaffected: the hook only sees what an agent types.
+
 LIMITATION: it inspects only the command text that passes through this
 hook. It cannot see what a test, script, build tool or interpreter (node,
 python, ruby, ...) does once it runs, what a script file contains, or what a
@@ -51,6 +61,16 @@ SAFE_HINT = (
     "Read a single variable with `printenv NAME` (or `[ -n \"${NAME+x}\" ]` to "
     "test presence), list processes without environments (`ps -o pid,ppid,command`), "
     "and pass values with `env NAME=value command`."
+)
+
+# The hint of a denied secret read: the matched form is in the reason; this
+# names what to use instead.
+SECRET_HINT = (
+    "Do not print a stored key: use it through `with-secret <item> <VAR> "
+    "<command>` or a launcher (`grok`, `jira`, `qwen`, `qwen-or`, "
+    "`copilot-obss`, `with-openrouter`, `with-obss-llm`), which hand the value "
+    "to that one command and never print it, and check that a key reads with "
+    "`with-secret <item> VAR sh -c 'test -n \"$VAR\"'`."
 )
 
 # The one limited promise, stated in the docstring above, every deny message,
@@ -157,6 +177,16 @@ DECLARATION_BUILTINS = {"local", "typeset", "declare", "export", "readonly", "in
 #    definitions, hash path bindings, namerefs and cd into /proc are
 #    refused. xargs input is an unknown operand.
 #
+# L12 Secret reads. After wrappers are resolved, a simple command whose
+#    basename is secret-get is denied; so is `op` with the subcommand read,
+#    inject, get (v1), document(s) get, item(s) get, or run --no-masking.
+#    Options before the op subcommand are read with a fixed table (an
+#    unknown one is refused, as for a wrapper); an op command built from an
+#    expansion is refused. with-secret, with-openrouter and with-obss-llm
+#    are wrappers: the command they run is checked. A shell or `source`
+#    run on a file named secret-get is denied; other script files are not
+#    read.
+#
 # Not modelled: functions or aliases defined outside the command, values of
 # variables set outside it, what a started program or script file does, and
 # relative paths when the working directory was changed by an unknown cd.
@@ -171,6 +201,10 @@ DELIMITER_SPLIT = "a here-document delimiter reached through a line continuation
 
 class Deny(Exception):
     """A denied form; the message is safe to show (no command text)."""
+
+
+class SecretRead(Deny):
+    """A denied direct read of a stored key; shown with SECRET_HINT."""
 
 
 class LogicalSource:
@@ -879,6 +913,18 @@ WRAPPER_OPTIONS = {
                "--precise", "--no-wrap"}, {"-n", "-q", "-s", "--interval"}, set()),
 }
 WRAPPER_OPTIONS["gtimeout"] = WRAPPER_OPTIONS["timeout"]
+# Key-injecting wrappers (README "Agent Keys"): the number of operands before
+# the command they run. They print nothing themselves, so they are allowed;
+# the command they run is checked like any other.
+SECRET_WRAPPERS = {"with-secret": 2, "with-openrouter": 0, "with-obss-llm": 0}
+SECRET_GET = "secret-get"
+# op options read before the subcommand: (flags, options taking a value).
+# Global flags per the 1Password CLI reference, plus --vault which `item`
+# subcommands take; an option outside the table is refused, so no option
+# value is ever taken for the subcommand.
+OP_OPTIONS = ({"--cache", "--debug", "--help", "-h", "--iso-timestamps", "--no-color",
+               "--version", "-v"},
+              {"--account", "--config", "--encoding", "--format", "--session", "--vault"}, set())
 ENV_OPTIONS = ({"-i", "-0", "-v", "--ignore-environment", "--null", "--debug"},
                {"-u", "-C", "-P", "--unset", "--chdir"}, set())
 
@@ -973,6 +1019,8 @@ def check_shell(args, depth):
         return check_text([rest[0]], depth)
     if from_stdin or not rest:
         raise Deny("a shell reading commands from standard input is not inspected")
+    if os.path.basename(rest[0]) == SECRET_GET:
+        raise SecretRead("running a shell on a `secret-get` script prints a stored key")
 
 
 def check_words(words, depth):
@@ -998,6 +1046,12 @@ def check_words(words, depth):
     name = os.path.basename(head)
     args = words[1:]
 
+    if name == SECRET_GET:
+        raise SecretRead("`secret-get` prints a stored key")
+    if name == "op":
+        return check_op(args)
+    if name in SECRET_WRAPPERS:
+        return check_words(args[SECRET_WRAPPERS[name]:], depth)
     if name in WRAPPER_OPTIONS:
         j = operands(name, args, WRAPPER_OPTIONS[name])
         if name == "command" and any(a in {"-v", "-V"} for a in args[:j]):
@@ -1022,6 +1076,8 @@ def check_words(words, depth):
             raise Deny("sourcing without a file (process substitution, stdin) is not inspected")
         if rest[0].startswith(("/dev/", "/proc/")) or unknown(rest[0].rsplit("/", 1)[-1]):
             raise Deny("sourcing a device, /proc or substituted file is not inspected")
+        if os.path.basename(rest[0]) == SECRET_GET:
+            raise SecretRead("sourcing a `secret-get` script prints a stored key")
         return
     if name == "eval":
         return check_text(args, depth)
@@ -1144,12 +1200,47 @@ def check_ps(args):
                 break  # the rest of the cluster is this option's argument
 
 
-def decision(reason):
+def check_op(args):
+    """1Password CLI: refuse the subcommands that print a stored value.
+
+    From the CLI reference: `op read` and `op inject` print the value a secret
+    reference names, `op document get` prints a document, `op run
+    --no-masking` turns off the masking of values in the output, and `op item
+    get` prints field values with --fields, --format json, --reveal and --otp.
+    A bare `op item get` conceals sensitive fields, but OP_FORMAT can change
+    that and an agent needs no item details (`op item list` lists names), so
+    every `op item get` is refused whatever its flags. `items` and `documents`
+    are the plural spellings; `op get` is the version 1 command. Commands that
+    print no value (whoami, vault list, item list, signin, run) pass."""
+    i = operands("op", args, OP_OPTIONS)
+    if i >= len(args):
+        return  # op, op --version, op --help
+    command, rest = args[i], list(args[i + 1:])
+    if unknown(command):
+        raise SecretRead("an `op` command built from an expansion cannot be inspected")
+    if command in {"read", "inject"}:
+        raise SecretRead(f"`op {command}` prints a stored value")
+    if command == "get":
+        raise SecretRead("`op get` (version 1) prints a stored value")
+    if command == "run":
+        if "--no-masking" in rest:
+            raise SecretRead("`op run --no-masking` prints stored values unmasked")
+        return
+    if command in {"item", "items", "document", "documents"}:
+        j = operands(f"op {command}", rest, OP_OPTIONS)
+        if j < len(rest) and unknown(rest[j]):
+            raise SecretRead(f"an `op {command}` subcommand built from an expansion cannot be inspected")
+        if j < len(rest) and rest[j] == "get":
+            kind = "item" if command.startswith("item") else "document"
+            raise SecretRead(f"`op {kind} get` can print a stored value")
+
+
+def decision(reason, hint=SAFE_HINT):
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": f"agent-env-guard: {reason}. {SAFE_HINT} {PROMISE}",
+            "permissionDecisionReason": f"agent-env-guard: {reason}. {hint} {PROMISE}",
         }
     }
 
@@ -1169,6 +1260,8 @@ def main():
         return 0
     try:
         check_command(command)
+    except SecretRead as denied:
+        json.dump(decision(str(denied), SECRET_HINT), sys.stdout)
     except Deny as denied:
         json.dump(decision(str(denied)), sys.stdout)
     except Exception as error:  # a guard bug must not silently allow

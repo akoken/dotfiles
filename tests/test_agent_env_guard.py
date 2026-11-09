@@ -223,6 +223,202 @@ LEXING_ALLOW = [
 ]
 
 
+# Direct secret reads (SECRET-GUARD): `secret-get`, `op read` and
+# `op item get` print a stored key, so an agent must not run them; keys stay
+# usable through `with-secret` and the launchers. None of these is executed.
+SECRET_DENY = [
+    # the 2026-11-09 command: zsh MULTIOS sends the value to the pipe as well
+    "/usr/bin/time -p ~/bin/secret-get obss-llm 2>&1 >/dev/null | rg real",
+    # secret-get by bare name and by any path
+    "secret-get obss-llm",
+    "~/bin/secret-get obss-llm",
+    "./bin/secret-get obss-llm",
+    "bin/secret-get obss-llm",
+    "/Users/akoken/bin/secret-get obss-llm",
+    '"$HOME/bin/secret-get" obss-llm',
+    "'secret-get' obss-llm",
+    "\\secret-get obss-llm",
+    "secret-get",
+    "FOO=1 secret-get obss-llm",
+    # pipelines, lists, groups and redirections
+    "secret-get obss-llm | wc -c",
+    "secret-get obss-llm > /dev/null",
+    "secret-get obss-llm 2>&1 >/dev/null | cat",
+    "true && secret-get obss-llm",
+    "false || secret-get obss-llm",
+    "true; secret-get obss-llm",
+    "secret-get obss-llm &",
+    "(secret-get obss-llm)",
+    "{ secret-get obss-llm; }",
+    "if true; then secret-get obss-llm; fi",
+    "for i in 1; do secret-get obss-llm; done",
+    "f() { secret-get obss-llm; }; f",
+    # command, process and here-document substitution
+    "echo $(secret-get obss-llm)",
+    'echo "$(secret-get obss-llm)"',
+    "echo `secret-get obss-llm`",
+    "value=$(secret-get obss-llm)",
+    "cat <(secret-get obss-llm)",
+    "echo $(echo $(secret-get obss-llm))",
+    "cat <<EOF\n$(secret-get obss-llm)\nEOF",
+    "cat <<<\"$(secret-get obss-llm)\"",
+    # shell strings, script operands and sourcing
+    "sh -c 'secret-get obss-llm'",
+    'bash -c "~/bin/secret-get obss-llm"',
+    "zsh -c 'true; secret-get obss-llm'",
+    "bash -lc 'echo a && secret-get obss-llm'",
+    "bash ~/bin/secret-get obss-llm",
+    "sh bin/secret-get obss-llm",
+    "source bin/secret-get obss-llm",
+    ". ./bin/secret-get obss-llm",
+    "eval secret-get obss-llm",
+    # wrappers
+    "env secret-get obss-llm",
+    "env -u FOO BAR=1 secret-get obss-llm",
+    "command secret-get obss-llm",
+    "time secret-get obss-llm",
+    "time -p secret-get obss-llm",
+    "/usr/bin/time -l secret-get obss-llm",
+    "nohup secret-get obss-llm",
+    "exec secret-get obss-llm",
+    "sudo secret-get obss-llm",
+    "nice -n 5 secret-get obss-llm",
+    "timeout 5 secret-get obss-llm",
+    "xargs secret-get",
+    "echo obss-llm | xargs -n1 secret-get",
+    "watch -n 1 secret-get obss-llm",
+    "stdbuf -o0 secret-get obss-llm",
+    "caffeinate secret-get obss-llm",
+    "env FOO=1 nohup time /usr/bin/time -p ~/bin/secret-get obss-llm",
+    # through with-secret and the launchers: the wrapped command is read
+    "with-secret obss-llm OBSS_LLM_API_KEY secret-get xai",
+    "with-obss-llm secret-get xai",
+    "with-openrouter op read op://agent-keys/xai/credential",
+    # op read, op inject and op document get print a stored value
+    "op read op://agent-keys/obss-llm/credential",
+    "op read --no-newline op://agent-keys/obss-llm/credential",
+    "op read -n op://agent-keys/obss-llm/credential",
+    "/opt/homebrew/bin/op read op://agent-keys/obss-llm/credential",
+    "op read",
+    "op inject -i template.tpl",
+    "echo 'op://agent-keys/x/credential' | op inject",
+    "op document get notes",
+    "op documents get notes",
+    "op run --no-masking -- true",
+    # op item get, every spelling and every flag: any of --fields, --reveal,
+    # --otp and --format json prints a value, and OP_FORMAT can change the
+    # output of the bare form, so the whole subcommand is refused
+    "op item get obss-llm",
+    "op item get obss-llm --fields credential",
+    "op item get obss-llm --fields label=credential --reveal",
+    "op item get obss-llm --reveal",
+    "op item get obss-llm --otp",
+    "op item get obss-llm --format json",
+    "op item get --vault agent-keys obss-llm",
+    "op items get obss-llm",
+    "op item get",
+    "op --account obss item get obss-llm",
+    "op --format json item get obss-llm",
+    "op --cache --no-color item get obss-llm",
+    "op --session abc item get obss-llm",
+    "op item --vault agent-keys get obss-llm",
+    "op -- item get obss-llm",
+    "op get item obss-llm",
+    "/opt/homebrew/bin/op item get obss-llm",
+    "env OP_FORMAT=json op item get obss-llm",
+    "time op read op://agent-keys/obss-llm/credential",
+    "sh -c 'op item get obss-llm'",
+    "echo $(op read op://agent-keys/obss-llm/credential)",
+    "op item get obss-llm | wc -c",
+    "OP_SERVICE_ACCOUNT_TOKEN=x op read op://agent-keys/obss-llm/credential",
+    # an op command the guard cannot read is refused, not allowed
+    'op "$@"',
+    "op $SUBCOMMAND obss-llm",
+    "op --unknown-flag item list",
+    "op --cache=false item get obss-llm",
+]
+
+SECRET_ALLOW = [
+    # keys used through with-secret and the launchers never print the value
+    "with-secret obss-llm OBSS_LLM_API_KEY qwen --version",
+    "with-secret obss-llm CHECK sh -c 'test -n \"$CHECK\"'",
+    "with-secret obss-llm CHECK sh -c 'printf %s \"$CHECK\" | wc -c'",
+    "with-obss-llm ./run-eval.sh",
+    "with-openrouter python agent/main.py",
+    "grok --help",
+    "jira issue list",
+    "qwen",
+    "qwen-or --version",
+    "copilot-obss",
+    "~/bin/with-secret xai XAI_API_KEY grok",
+    "bash bin/with-secret xai XAI_API_KEY true",
+    # mentions that are not invocations
+    "rg secret-get README.md",
+    "rg 'op read' README.md",
+    "grep -n 'op item get' README.md",
+    "cat bin/secret-get",
+    "ls -l ~/bin/secret-get",
+    "git log -- bin/secret-get",
+    "git diff HEAD~1 -- bin/secret-get",
+    "git commit -m 'document secret-get and op read'",
+    "echo secret-get",
+    "echo op item get",
+    "echo secret-get | wc -c",
+    "command -v secret-get",
+    "type secret-get",
+    "which secret-get",
+    "shellcheck bin/secret-get",
+    "chmod +x bin/secret-get",
+    "ls bin | rg secret-get",
+    "xargs -n1 echo secret-get",
+    "cat docs/secret-get.md",
+    "cat <<'EOF'\nsecret-get obss-llm\nop read x\nEOF",
+    "cat <<EOF\nrun secret-get obss-llm and op read x\nEOF",
+    "echo 'secret-get obss-llm'",
+    "echo \"$(date) secret-get\"",
+    "FOO=secret-get true",
+    "echo op",
+    "op",
+    # similar names are not the commands
+    "myop read x",
+    "secret-get2 obss-llm",
+    "secret-gets",
+    "not-secret-get obss-llm",
+    "/usr/bin/stop item get x",
+    "oop read x",
+    # op commands that print no value
+    "op --version",
+    "op -v",
+    "op --help",
+    "op help",
+    "op whoami",
+    "op vault list",
+    "op vault list --format json",
+    "op item list",
+    "op item list --vault agent-keys",
+    "op items list",
+    "op item --vault agent-keys list",
+    "op account list",
+    "op --account obss vault list",
+    "op --format json --no-color item list",
+    "op --cache --debug whoami",
+    "op signin",
+    "op run -- true",
+    "op run --env-file .env -- true",
+    "env op whoami",
+    "time op vault list",
+    "sh -c 'op whoami'",
+]
+
+# Forms the guard cannot see; each one has a KNOWN_LIMITS row and a README line.
+SECRET_LIMITS = [
+    "printf 'secret-get obss-llm\\n' > s.sh; sh s.sh",
+    "find . -maxdepth 0 -exec secret-get obss-llm \\;",
+    "awk 'BEGIN { system(\"secret-get obss-llm\") }'",
+    "with-secret obss-llm KEY printenv KEY",
+]
+
+
 def run_guard(payload, guard=None):
     proc = subprocess.run(
         [sys.executable, "-I", str(guard or GUARD)],
@@ -283,6 +479,22 @@ class GuardDecisions(unittest.TestCase):
     def test_codex_shape(self):
         self.assertEqual(decide("ps eww", shape="codex")[0], "deny")
         self.assertEqual(decide("ps aux", shape="codex")[0], "allow")
+
+    def test_secret_reads_denied(self):
+        self.check(SECRET_DENY, "deny")
+
+    def test_secret_free_forms_allowed(self):
+        self.check(SECRET_ALLOW, "allow")
+
+    def test_secret_limits_are_allowed(self):
+        # KNOWN_LIMITS: the guard cannot see these (README "Known limitations").
+        self.check(SECRET_LIMITS, "allow")
+
+    def test_secret_deny_in_codex_shape(self):
+        for command in SECRET_DENY[:3]:
+            with self.subTest(command=command):
+                self.assertEqual(decide(command, shape="codex")[0], "deny")
+        self.assertEqual(decide("with-secret x V true", shape="codex")[0], "allow")
 
 
 class CorpusTable(unittest.TestCase):
@@ -678,6 +890,110 @@ class LimitedGuaranteeIsStated(unittest.TestCase):
                 self.assertEqual(safety_claims(reason), [])
 
 
+SECRET_FORMS = {
+    # command -> text the deny reason must name
+    "secret-get obss-llm": "secret-get",
+    "~/bin/secret-get obss-llm": "secret-get",
+    "op read op://agent-keys/obss-llm/credential": "op read",
+    "op item get obss-llm --fields credential": "op item get",
+    "op inject": "op inject",
+    "op document get notes": "op document get",
+    "op run --no-masking -- true": "op run --no-masking",
+}
+SEED_SECRET_CLAIM = "A key read through this hook is safe because the hook blocks it."
+
+
+class SecretReadMessages(unittest.TestCase):
+    """A denied secret read follows the deny contract: it names the matched
+    form and the alternative, restates the promise and never echoes the
+    command text."""
+
+    def test_reason_names_the_form_and_the_alternative(self):
+        for command, form in SECRET_FORMS.items():
+            with self.subTest(command=command):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertIn(f"`{form}`", reason)
+                self.assertIn("`with-secret <item> <VAR> <command>`", reason)
+                self.assertIn("launcher", reason)
+                self.assertIn(PROMISE, reason)
+                self.assertEqual(contract.deny_frame_violations(reason), [])
+                self.assertEqual(safety_claims(reason), [])
+
+    def test_the_environment_hint_is_not_used_for_a_secret_read(self):
+        reason = decide("secret-get obss-llm")[1]
+        self.assertNotIn("printenv NAME", reason)
+        self.assertIn("printenv NAME", decide("env")[1])
+
+    def test_reason_never_echoes_the_command(self):
+        for command in (
+            f"secret-get {MARKER}",
+            f"echo {MARKER}; ~/bin/secret-get obss-llm",
+            f"op read op://{MARKER}/x/credential",
+            f"op item get {MARKER} --fields credential",
+            f"FAKE_TEST_API_KEY={MARKER} secret-get obss-llm",
+            f"sh -c 'secret-get {MARKER}'",
+        ):
+            with self.subTest(command=command):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertNotIn(MARKER, reason)
+
+    def test_a_secret_read_in_the_codex_shape_carries_the_same_reason(self):
+        self.assertEqual(decide("secret-get obss-llm", shape="codex"),
+                         decide("secret-get obss-llm", shape="claude"))
+
+    def test_edited_secret_hint_fails_the_frame(self):
+        guard = GUARD.read_text()
+        seeds = {
+            "one word of the secret hint": ("Do not print a stored key", "Do not show a stored key"),
+            "seed in the secret hint": ("never print it, and", "never print it. " + SEED_W1 + " And"),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for label, (old, new) in seeds.items():
+                with self.subTest(seed=label):
+                    self.assertEqual(guard.count(old), 1, old)
+                    copy = pathlib.Path(tmp) / "agent-env-guard"
+                    copy.write_text(guard.replace(old, new, 1))
+                    decision, reason = decide("secret-get obss-llm", guard=copy)
+                    self.assertEqual(decision, "deny")
+                    self.assertTrue(contract.deny_frame_violations(reason), reason)
+
+    def test_secret_forms_do_not_widen_the_environment_rules(self):
+        # Healthy neighbours: the environment rules still decide as before.
+        self.assertEqual(decide("printenv HOME")[0], "allow")
+        self.assertEqual(decide("env")[0], "deny")
+
+
+class SecretReadDocs(unittest.TestCase):
+    """The README states the rule and its limits, and no longer tells an
+    agent to run a command the guard denies."""
+
+    README = LimitedGuaranteeIsStated.README
+    CHECK = "with-secret <item> CHECK sh -c 'test -n \"$CHECK\"'"
+
+    def test_readme_documents_the_rule_and_the_op_decision(self):
+        readme = contract.squash(self.README.read_text())
+        for text in ("`secret-get`", "`op read`", "`op item get`", "`op inject`",
+                     "`op document get`", "`op run --no-masking`", "`with-secret`",
+                     "Humans running commands in their own terminal, outside an agent"):
+            with self.subTest(text=text):
+                self.assertIn(text, readme)
+        self.assertIn("any flag", readme)
+
+    def test_readme_no_longer_tells_an_agent_to_print_a_key(self):
+        readme = self.README.read_text()
+        self.assertNotIn("`secret-get <item> | wc -c`", readme)
+        self.assertIn(self.CHECK, readme)
+
+    def test_the_documented_check_is_allowed(self):
+        self.assertEqual(decide(self.CHECK.replace("<item>", "obss-llm"))[0], "allow")
+
+    def test_every_guard_text_mentions_the_secret_rule(self):
+        self.assertIn("secret-get", GUARD.read_text().split('"""')[1])
+        self.assertIn("secret-get", LimitedGuaranteeIsStated.CORPUS.read_text())
+
+
 SEED_W1 = "Allowed commands are safe and do not dump."
 
 # (surface, where the text lives, regex that opens its paragraph)
@@ -792,9 +1108,9 @@ class PinnedContractText(unittest.TestCase):
         seeds = {
             "seed in PROMISE": ('"evidence of security."', f'"evidence of security. {SEED_W1}"'),
             "seed after PROMISE in the message": (
-                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} {PROMISE} " + SEED_W1 + "\""),
+                "{hint} {PROMISE}\"", "{hint} {PROMISE} " + SEED_W1 + "\""),
             "seed before PROMISE in the message": (
-                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} " + SEED_W1 + " {PROMISE}\""),
+                "{hint} {PROMISE}\"", "{hint} " + SEED_W1 + " {PROMISE}\""),
             "one word of PROMISE": ('"The hook blocks the patterns it recognises;',
                                     '"The hook blocks the patterns it knows;'),
             "one word of the safe hint": ("Read a single variable", "Read a single value"),
