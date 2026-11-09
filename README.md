@@ -373,8 +373,12 @@ protection**, not a fix:
   denied whatever the flag (any flag, any order, any option before the
   subcommand); `op document get`, `op inject` and the version 1 `op get`
   print stored values the same way. An `op` option the guard does not know
-  (for example `--cache=false`) or an `op` command built from a variable is
-  refused rather than allowed. Humans running commands in their own terminal,
+  (for example `--cache=false`), an `op` command built from a variable, and a
+  glob or brace in the `op` command or subcommand word (`op r??d ...`) are
+  refused rather than allowed. `op run` is denied with `--no-masking` in any
+  spelling (`--no-masking=true`) before `--`, and whenever `OP_RUN_NO_MASKING`
+  is set in the command text (assignment prefix, `env`, `export`, `declare`);
+  what follows `--` is the child's argv and is not read as `op` options. Humans running commands in their own terminal,
   outside an agent, are unaffected: the hook only sees what an agent types.
   Same limit as the rest of the guard: a tripwire, not a boundary.
 - **Known limitations of the guard** (commands that still dump and pass; kept

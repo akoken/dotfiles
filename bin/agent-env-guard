@@ -182,7 +182,10 @@ DECLARATION_BUILTINS = {"local", "typeset", "declare", "export", "readonly", "in
 #    inject, get (v1), document(s) get, item(s) get, or run --no-masking.
 #    Options before the op subcommand are read with a fixed table (an
 #    unknown one is refused, as for a wrapper); an op command built from an
-#    expansion is refused. with-secret, with-openrouter and with-obss-llm
+#    expansion, or whose command or subcommand word has a glob or brace, is
+#    refused. op run is denied with --no-masking[=value] before `--` (what
+#    follows is the child's argv) and with OP_RUN_NO_MASKING set in the
+#    text. with-secret, with-openrouter and with-obss-llm
 #    are wrappers: the command they run is checked. A shell or `source`
 #    run on a file named secret-get is denied; other script files are not
 #    read.
@@ -918,6 +921,8 @@ WRAPPER_OPTIONS["gtimeout"] = WRAPPER_OPTIONS["timeout"]
 # the command they run is checked like any other.
 SECRET_WRAPPERS = {"with-secret": 2, "with-openrouter": 0, "with-obss-llm": 0}
 SECRET_GET = "secret-get"
+NO_MASKING_FLAG = "--no-masking"
+NO_MASKING_ENV = "OP_RUN_NO_MASKING"
 # op options read before the subcommand: (flags, options taking a value).
 # Global flags per the 1Password CLI reference, plus --vault which `item`
 # subcommands take; an option outside the table is refused, so no option
@@ -1027,6 +1032,7 @@ def check_words(words, depth):
     words = list(words)
     while words:
         if ASSIGNMENT.match(words[0]):
+            refuse_no_masking_assignment(words[0])
             words.pop(0)
         elif words[0] in RESERVED_PREFIXES:
             words.pop(0)
@@ -1105,6 +1111,9 @@ def check_words(words, depth):
         if not any(VARIABLE_NAME.fullmatch(a) for a in args):
             raise Deny("`printenv` without a variable name dumps the whole environment")
         return
+    if name in {"export", "declare", "typeset", "readonly", "local"}:
+        for a in args:
+            refuse_no_masking_assignment(a)
     if name == "export":
         if not any(names_a_variable(a) for a in args):
             raise Deny("`export -p` / bare `export` dumps every exported variable")
@@ -1166,8 +1175,14 @@ def check_env(args, depth):
     parsed = []
     i = operands("env", args, ENV_OPTIONS, parsed) if args[:1] != ["-"] else 1
     empty_env = args[:1] == ["-"] or any(o in {"-i", "--ignore-environment"} for o in parsed)
+    skipped_unknown = False
     while i < len(args) and (ASSIGNMENT.match(args[i]) or unknown(args[i])):
+        refuse_no_masking_assignment(args[i])
+        skipped_unknown = skipped_unknown or unknown(args[i])
         i += 1
+    if skipped_unknown and i < len(args) and os.path.basename(args[i]) == "op":
+        # The skipped operand may be OP_RUN_NO_MASKING=...; it cannot be read.
+        raise SecretRead("an `env` operand built from an expansion before `op` cannot be inspected")
     if i >= len(args):
         if empty_env:
             return
@@ -1200,6 +1215,33 @@ def check_ps(args):
                 break  # the rest of the cluster is this option's argument
 
 
+def ambiguous(word):
+    """A word whose unquoted glob or brace expansion can become other words."""
+    return isinstance(word, Arg) and (word.glob or word.brace)
+
+
+def names_no_masking_flag(word):
+    """Whether `word` can be op's --no-masking flag, with or without a value
+    (any boolean spelling): literally, through a brace expansion, or through a
+    glob that matches it."""
+    values = brace_alternatives(word) if isinstance(word, Arg) and word.brace else [word]
+    for value in values:
+        if value == NO_MASKING_FLAG or value.startswith(NO_MASKING_FLAG + "="):
+            return True
+        if isinstance(word, Arg) and word.glob and any(
+                fnmatch.fnmatchcase(spelling, value) for spelling in (NO_MASKING_FLAG, NO_MASKING_FLAG + "=true")):
+            return True
+    return False
+
+
+def refuse_no_masking_assignment(word):
+    """OP_RUN_NO_MASKING set in the command text (assignment prefix, env
+    operand, export or declare operand) turns off op run's masking like the
+    flag does, whatever value it is given."""
+    if ASSIGNMENT.match(word) and VARIABLE_NAME.match(word).group() == NO_MASKING_ENV:
+        raise SecretRead("setting `OP_RUN_NO_MASKING` turns off the masking of `op run` output")
+
+
 def check_op(args):
     """1Password CLI: refuse the subcommands that print a stored value.
 
@@ -1215,6 +1257,8 @@ def check_op(args):
     i = operands("op", args, OP_OPTIONS)
     if i >= len(args):
         return  # op, op --version, op --help
+    if any(ambiguous(a) for a in args[:i + 1]):
+        raise SecretRead("an `op` option or command with a glob or brace expansion cannot be inspected")
     command, rest = args[i], list(args[i + 1:])
     if unknown(command):
         raise SecretRead("an `op` command built from an expansion cannot be inspected")
@@ -1223,11 +1267,18 @@ def check_op(args):
     if command == "get":
         raise SecretRead("`op get` (version 1) prints a stored value")
     if command == "run":
-        if "--no-masking" in rest:
-            raise SecretRead("`op run --no-masking` prints stored values unmasked")
+        # Options end at `--`: what follows is the child's argv, not op's.
+        for a in rest[:rest.index("--") if "--" in rest else len(rest)]:
+            if unknown(a):
+                raise SecretRead("an `op run` option built from an expansion cannot be inspected")
+            if names_no_masking_flag(a):
+                raise SecretRead("`op run --no-masking` prints stored values unmasked")
         return
     if command in {"item", "items", "document", "documents"}:
         j = operands(f"op {command}", rest, OP_OPTIONS)
+        if any(ambiguous(a) for a in rest[:j + 1]):
+            raise SecretRead(f"an `op {command}` option or subcommand with a glob or brace expansion "
+                             "cannot be inspected")
         if j < len(rest) and unknown(rest[j]):
             raise SecretRead(f"an `op {command}` subcommand built from an expansion cannot be inspected")
         if j < len(rest) and rest[j] == "get":

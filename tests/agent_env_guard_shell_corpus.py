@@ -302,6 +302,9 @@ case("SO4", "op --no-color item get obss-llm", "deny")
 case("SO5", "echo op://agent-keys/obss-llm/credential | op inject", "deny")
 case("SO6", "op document get notes", "deny")
 case("SO7", "op run --no-masking -- true", "deny", run=False)
+# SG23-GLOB: the glob expands to the file the command made first
+case("SO8", "touch read; op r??d op://agent-keys/obss-llm/credential", "deny")
+case("SO9", "touch item; op ite? get obss-llm", "deny")
 # Not invocations, or no value printed: allowed
 case("SA1", "op whoami", "allow")
 case("SA2", "op vault list", "allow")
@@ -504,6 +507,8 @@ OBSERVED = {
     "SO4": "visible visible visible visible visible",
     "SO5": "visible visible visible visible visible",
     "SO6": "visible visible visible visible visible",
+    "SO8": "visible visible visible visible visible",
+    "SO9": "visible visible visible visible visible",
     "SA1": "none none none none none",
     "SA2": "none none none none none",
     "SA3": "none none none none none",
