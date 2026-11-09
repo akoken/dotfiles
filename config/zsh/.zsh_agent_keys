@@ -13,6 +13,14 @@ grok() { with-secret xai XAI_API_KEY grok "$@"; }
 # jira-cli reads JIRA_API_TOKEN.
 jira() { with-secret jira JIRA_API_TOKEN jira "$@"; }
 
+# Qwen Code reads the key from the variable its provider config names
+# (`envKey`). One wrapper per provider, so a session holds only one key:
+# `qwen` gets the OBSS LLM key, `qwen-or` the OpenRouter key. `qwen-or`
+# picks the key only, not the model: choose the OpenRouter model explicitly
+# at startup. To switch provider, restart through the other wrapper.
+qwen() { with-secret obss-llm OBSS_LLM_API_KEY qwen "$@"; }
+qwen-or() { with-secret openrouter OPENROUTER_API_KEY qwen "$@"; }
+
 # Ad-hoc consumers without a dedicated CLI: prefix any one command, e.g.
 #   with-openrouter python agent/main.py
 #   with-obss-llm ./run-eval.sh

@@ -39,7 +39,9 @@ other_or="synthetic-other-openrouter-46"
 other_obss="synthetic-other-obss-47"
 stale_xai="synthetic-stale-xai-48"
 caller_value="synthetic-caller-value-49"
-markers=("$token" "$xai_value" "$jira_value" "$ctx_value" "$other_jira" "$other_ctx" "$other_or" "$other_obss" "$stale_xai" "$caller_value")
+or_value="synthetic-openrouter-value-50"
+obss_value="synthetic-obss-value-51"
+markers=("$token" "$xai_value" "$jira_value" "$ctx_value" "$other_jira" "$other_ctx" "$other_or" "$other_obss" "$stale_xai" "$caller_value" "$or_value" "$obss_value")
 key_names=(CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN)
 
 fakebin="$work/fakebin"
@@ -92,6 +94,8 @@ case "\$3" in
   op://agent-keys/xai/credential) printf '%s' '$xai_value' ;;
   op://agent-keys/jira/credential) printf '%s' '$jira_value' ;;
   op://agent-keys/context7/credential) printf '%s' "\${FAKE_CTX_VALUE:-$ctx_value}" ;;
+  op://agent-keys/openrouter/credential) printf '%s' '$or_value' ;;
+  op://agent-keys/obss-llm/credential) printf '%s' '$obss_value' ;;
   *) exit 5 ;;
 esac
 EOF
@@ -107,7 +111,8 @@ for name in ${key_names[*]}; do
   eval "v=\\\${\$name-}"
   [ -n "\$v" ] || continue
   case "\$name=\$v" in
-    XAI_API_KEY='$xai_value' | JIRA_API_TOKEN='$jira_value' | CONTEXT7_API_KEY='$ctx_value') printf '%s=match\n' "\$name" >>"\$out" ;;
+    XAI_API_KEY='$xai_value' | JIRA_API_TOKEN='$jira_value' | CONTEXT7_API_KEY='$ctx_value' | \\
+      OPENROUTER_API_KEY='$or_value' | OBSS_LLM_API_KEY='$obss_value') printf '%s=match\n' "\$name" >>"\$out" ;;
     *) printf '%s=other\n' "\$name" >>"\$out" ;;
   esac
 done
@@ -122,7 +127,22 @@ set +x
 eval "v=\\\${\$1-}"
 if [ "\$v" = '$xai_value' ]; then echo match >"\$2"; elif [ -n "\$v" ]; then echo other >"\$2"; else echo missing >"\$2"; fi
 EOF
-chmod +x "$fakebin/security" "$fakebin/op" "$fakebin/probe" "$fakebin/probe-var"
+# A Qwen Code stand-in: `qwen <out> [args...]` records its managed keys
+# through probe in <out>.env and its argument count and arguments, one per
+# line, in <out>.argv, then exits with FAKE_QWEN_EXIT (default 0).
+cat >"$fakebin/qwen" <<'EOF'
+#!/bin/sh
+set +x
+out="$1"
+shift
+probe "$out.env"
+{
+  printf '%s\n' "$#"
+  for a in "$@"; do printf '[%s]\n' "$a"; done
+} >"$out.argv"
+exit "${FAKE_QWEN_EXIT:-0}"
+EOF
+chmod +x "$fakebin/security" "$fakebin/op" "$fakebin/probe" "$fakebin/probe-var" "$fakebin/qwen"
 
 # Private PATH: fakes first, then the repo's bin, then the system.
 export PATH="$fakebin:$repo/bin:/usr/bin:/bin"
@@ -230,6 +250,13 @@ check_failure "with-secret on op failure" 1 env FAKE_OP_MODE=fail with-secret xa
 ln -s probe "$fakebin/grok"
 ln -s probe "$fakebin/jira"
 
+# Every managed key and the service account token with a value the wrapped
+# child must not see, sourced by the wrapper checks in a subshell only.
+cat >"$work/stale.env" <<EOF
+export CONTEXT7_API_KEY='$other_ctx' OBSS_LLM_API_KEY='$other_obss' OPENROUTER_API_KEY='$other_or'
+export XAI_API_KEY='$stale_xai' JIRA_API_TOKEN='$other_jira' OP_SERVICE_ACCOUNT_TOKEN='$token'
+EOF
+
 run_wrappers() { # <shell> [startup-file flags]
   local sh="$1" name status=0
   shift
@@ -241,7 +268,21 @@ run_wrappers() { # <shell> [startup-file flags]
     . "$1/config/zsh/.zsh_agent_keys"
     grok "$2/grok.env" || exit 11
     jira "$2/jira.env" || exit 12
-    with-openrouter true; [ $? -ne 0 ] || exit 13   # no such item: fails closed
+    (export FAKE_OP_MODE=fail; with-openrouter true); [ $? -ne 0 ] || exit 13   # vault read fails: fails closed
+
+    # qwen / qwen-or: clean and inherited environments, arguments and exit
+    # code pass through, and a failed vault read never starts qwen.
+    for w in qwen qwen-or; do
+      "$w" "$2/$w.clean" "a b" "" "--flag=x y" || exit 15
+      (. "$2/stale.env"; "$w" "$2/$w.stale") || exit 16
+      (export FAKE_QWEN_EXIT=7; "$w" "$2/$w.exit" one); s=$?
+      [ "$s" -eq 7 ] || { echo "$w returned $s, want 7" >&2; exit 17; }
+      for mode in fail empty; do
+        (export FAKE_OP_MODE=$mode; "$w" "$2/$w.$mode"); s=$?
+        [ "$s" -ne 0 ] || { echo "$w exited 0 on vault $mode" >&2; exit 18; }
+        [ ! -e "$2/$w.$mode.env" ] || { echo "$w started qwen on vault $mode" >&2; exit 19; }
+      done
+    done
     for n in CONTEXT7_API_KEY OBSS_LLM_API_KEY OPENROUTER_API_KEY XAI_API_KEY JIRA_API_TOKEN OP_SERVICE_ACCOUNT_TOKEN; do
       eval "v=\${$n-}"
       [ -z "$v" ] || { echo "parent shell holds $n" >&2; exit 14; }
@@ -251,6 +292,16 @@ run_wrappers() { # <shell> [startup-file flags]
   [ "$status" -eq 0 ] || fail "wrappers under $sh exited $status"
   expect_probe "$work/grok.env" "XAI_API_KEY=match" "$sh grok wrapper"
   expect_probe "$work/jira.env" "JIRA_API_TOKEN=match" "$sh jira wrapper"
+  local w want
+  for w in qwen qwen-or; do
+    if [ "$w" = qwen ]; then want="OBSS_LLM_API_KEY=match"; else want="OPENROUTER_API_KEY=match"; fi
+    expect_probe "$work/$w.clean.env" "$want" "$sh $w wrapper"
+    expect_probe "$work/$w.stale.env" "$want" "$sh $w wrapper inherited keys"
+    [ "$(cat "$work/$w.clean.argv")" = "$(printf '3\n[a b]\n[]\n[--flag=x y]')" ] ||
+      fail "$sh $w wrapper changed its arguments"
+    [ "$(cat "$work/$w.exit.argv")" = "$(printf '1\n[one]')" ] || fail "$sh $w wrapper changed its arguments"
+  done
+  rm -f "$work"/qwen.* "$work"/qwen-or.*
 }
 run_wrappers bash --norc --noprofile
 if command -v zsh >/dev/null 2>&1; then
