@@ -392,6 +392,20 @@ protection**, not a fix:
   `export`, `declare`). Humans running commands in their own terminal,
   outside an agent, are unaffected: the hook only sees what an agent types.
   Same limit as the rest of the guard: a tripwire, not a boundary.
+- **Role rule**: the guard does not assume that a source token is one argv
+  word with a fixed role. An unquoted expansion can split into several words
+  (`X="json read"; op --format $X ...` runs `op read`), and a glob or brace
+  can multiply a word. So every word that decides a role is refused when it
+  carries a glob, a brace, a parameter or a substitution: the command name
+  (and the `op` command and subcommand), every option and option value of
+  `op` and of the wrappers (`sudo`, `doas`, `env`, `time`, `timeout`, `nice`,
+  `xargs`, `watch`, `exec`, `stdbuf`, `caffeinate`), the operands of `env`,
+  `with-secret` and `repeat`, the `timeout` duration, a shell's option values
+  and script operand, and a leading `NAME=value` word a wrapper hands on. A
+  plain assignment prefix of a simple command (`A=$X cmd`) is not split by the
+  shell and stays allowed; words after the selected `op` subcommand do not
+  decide it and stay free. Healthy literal values pass. The one place this
+  does not yet hold is `ps` (ENV-GUARD-15 below).
 - **Known limitations of the guard** (commands that still dump and pass; kept
   as `KNOWN_LIMITS` rows in `tests/agent_env_guard_shell_corpus.py`):
   - ENV-GUARD-11: a function body without braces is not checked, so
@@ -400,8 +414,10 @@ protection**, not a fix:
     `typeset -m PATH '*'` and `typeset -pm PATH '*'` (zsh) and
     `export -p PATH`, `export -p UNUSED` and
     `readonly FAKE_TEST_API_KEY; readonly -p PATH` (dash) list everything.
-  - ENV-GUARD-13: `env` skips an operand whose value is unknown as if it were
-    an assignment, so `env "$(printf env)" -u X` passes.
+  - ENV-GUARD-15: a `ps` option or operand built from an expansion is not
+    read, so an unquoted variable that holds `-E` passes
+    (`x='-p 1 -E'; ps $x`). (ENV-GUARD-13, `env` skipping an operand with an
+    expansion, is closed: see the role rule below.)
   - SECRET-GUARD-01: a script file that calls `secret-get` is not read, so
     `printf 'secret-get obss-llm\n' > s.sh; sh s.sh` passes (only a script
     named `secret-get` is refused).

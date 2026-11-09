@@ -50,7 +50,8 @@ KNOWN_LIMITS = {
     "ENV-GUARD-11": "a function body without braces (`f() env`) is not checked",
     "ENV-GUARD-12": "one named operand makes typeset/export/readonly listing forms pass "
                     "(`typeset -m NAME '*'`, dash `export -p NAME`, `readonly -p NAME`)",
-    "ENV-GUARD-13": "env skips an unknown operand as if it were an assignment",
+    "ENV-GUARD-15": "a ps option or operand built from an expansion is not read, so an "
+                    "unquoted variable that holds `-E` passes (`x='-p 1 -E'; ps $x`)",
     "SECRET-GUARD-01": "a script file that calls secret-get passes (the guard does not read the file)",
     "SECRET-GUARD-02": "`find -exec` runs a command the guard does not read, so "
                        "`find . -maxdepth 0 -exec secret-get obss-llm ;` passes",
@@ -222,7 +223,10 @@ case("X3", "typeset -pm PATH '*'", "allow", limit="ENV-GUARD-12")
 case("X4", "export -p PATH", "allow", limit="ENV-GUARD-12")
 case("X5", "export -p UNUSED", "allow", limit="ENV-GUARD-12")
 case("X6", "readonly FAKE_TEST_API_KEY; readonly -p PATH", "allow", limit="ENV-GUARD-12")
-case("X7", 'env "$(printf env)" -u X', "allow", limit="ENV-GUARD-13")
+# ENV-GUARD-13 (env skipped an unknown operand as if it were an assignment) is
+# closed: an env operand with an expansion may be several words, so it is refused.
+case("X7", 'env "$(printf env)" -u X', "deny")
+case("X12", "x='-p 1 -E'; ps $x", "allow", limit="ENV-GUARD-15")
 # Legitimate forms the narrow grammar refuses (see round6-grammar-table)
 case("L1", "2>/dev/null true", "deny", why="narrow")
 case("L2", "printf $'a\\tb\\n'", "deny", why="narrow")
@@ -495,6 +499,7 @@ OBSERVED = {
     "X5": "none none none visible none",
     "X6": "none none none visible none",
     "X7": "visible visible visible visible visible",
+    "X12": "ran ran ran ran ran",
     "SG1": "visible visible visible visible visible",
     "SG2": "ran ran visible ran ran",
     "SG3": "visible visible visible visible visible",

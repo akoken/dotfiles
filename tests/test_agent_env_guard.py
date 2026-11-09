@@ -1199,6 +1199,108 @@ class OpOptionTables(unittest.TestCase):
                 self.assertEqual(decide(f"op {flag} run -- true")[0], "allow")
 
 
+# SG23-DYNAMIC-VALUE, class: the guard assumed one source token is one argv
+# word with a fixed role. An unquoted expansion can split into several words
+# (X="json read"; op --format $X ...), a glob or brace can multiply a word, so
+# every word that decides a role (command, subcommand, option, option value,
+# wrapper operand) must be free of expansions, or the command is refused.
+EXPANDING = ["$V", "${V}", "$(echo x)", "`echo x`", "*", "{a,b}", '"$V"', "$((1+1))"]
+HEALTHY = ["x", "'x'", '"x"']
+
+
+class ExpansionRoles(unittest.TestCase):
+    def check_matrix(self, template, values, expected):
+        for value in values:
+            command = template.format(v=value)
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], expected)
+
+    def test_the_two_reported_examples_verbatim(self):
+        self.assertEqual(decide("sh -c 'X=\"json read\"; op --format $X op://fake/test/password'")[0], "deny")
+        self.assertEqual(decide("sh -c 'X=\"a get\"; op item --vault $X fake'")[0], "deny")
+
+    def test_every_op_value_option_refuses_an_expansion(self):
+        tables = OpOptionTables.tables()
+        globals_ = sorted(tables["op --help"]["values"])
+        for opt in globals_:
+            self.check_matrix("op " + opt + " {v} vault list", EXPANDING, "deny")
+            self.check_matrix("op " + opt + " {v} vault list", HEALTHY, "allow")
+            self.check_matrix("op " + opt + " {v} item list", EXPANDING, "deny")
+            self.check_matrix("op " + opt + " {v} item list", HEALTHY, "allow")
+        for command in ("item", "items", "document", "documents"):
+            for opt in globals_ + ["--vault"]:
+                template = f"op {command} {opt} {{v}} list"
+                self.check_matrix(template, EXPANDING, "deny")
+                self.check_matrix(template, HEALTHY, "allow")
+        for opt in sorted(tables["op run --help"]["values"]) + globals_:
+            self.check_matrix("op run " + opt + " {v} -- true", EXPANDING, "deny")
+            self.check_matrix("op run " + opt + " {v} -- true", HEALTHY, "allow")
+
+    def test_an_attached_value_with_an_expansion_is_refused(self):
+        tables = OpOptionTables.tables()
+        for opt in sorted(tables["op --help"]["values"]):
+            self.check_matrix("op " + opt + "={v} vault list", EXPANDING, "deny")
+            self.check_matrix("op " + opt + "={v} vault list", HEALTHY, "allow")
+
+    def test_the_op_command_and_subcommand_words_refuse_an_expansion(self):
+        self.check_matrix("op {v} list", EXPANDING, "deny")
+        self.check_matrix("op item {v}", EXPANDING, "deny")
+        self.check_matrix("op document {v} x", EXPANDING, "deny")
+        self.check_matrix("op --format json {v} x", EXPANDING, "deny")
+        self.check_matrix("op item --vault v {v} x", EXPANDING, "deny")
+        self.check_matrix("op {v}", ["vault"], "allow")
+
+    def test_words_after_the_subcommand_do_not_select_it(self):
+        # `op item list <expansion>` stays list whatever the word becomes.
+        self.check_matrix("op item list {v}", EXPANDING, "allow")
+        self.check_matrix("op vault list --format {v}", EXPANDING, "allow")
+
+    def test_wrapper_value_options_and_operands_refuse_an_expansion(self):
+        templates = [
+            "sudo -u {v} true", "sudo --user {v} true", "doas -u {v} true",
+            "env -u {v} true", "env -C {v} true", "env --unset {v} true",
+            "timeout {v} true", "timeout -s {v} 5 true", "gtimeout {v} true",
+            "nice -n {v} true", "time -o {v} true", "time -f {v} true",
+            "xargs -n {v} true", "xargs -I {v} true", "exec -a {v} true",
+            "stdbuf -o {v} true", "caffeinate -t {v} true", "watch -n {v} true",
+            "with-secret {v} KEY true", "with-secret x {v} true",
+            "env A={v} true", "env {v} true", "sudo A={v} true", "doas A={v} true",
+            "bash -o {v} -c true", "bash -O {v} -c true", "bash --rcfile {v} -c true",
+            "bash {v}", "sh {v}", "zsh {v}", "repeat {v} true",
+            "secret-get {v}",
+        ]
+        for template in templates:
+            self.check_matrix(template, EXPANDING if "secret-get" not in template else HEALTHY,
+                              "deny")
+        healthy = [
+            "sudo -u {v} true", "doas -u {v} true", "env -u {v} true", "env -C {v} true",
+            "timeout {v} true", "nice -n {v} true", "time -o {v} true", "xargs -n {v} true",
+            "exec -a {v} true", "stdbuf -o {v} true", "caffeinate -t {v} true",
+            "with-secret {v} KEY true", "with-secret x {v} true", "env A={v} true",
+            "sudo A={v} true", "bash -o {v} -c true", "bash {v}", "repeat {v} true",
+        ]
+        for template in healthy:
+            self.check_matrix(template, HEALTHY, "allow")
+
+    def test_assignment_prefixes_of_a_simple_command_keep_their_expansions(self):
+        # A shell does not split `A=$X cmd`, so a plain prefix stays allowed.
+        for command in ("A=$X true", "A=$(date) B=${C} true", 'A="$X" true', "A=* true"):
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], "allow")
+
+    def test_a_split_word_cannot_hide_the_wrapped_command(self):
+        for command in (
+            "sh -c 'X=\"root secret-get\"; sudo -u $X true'",
+            "sh -c 'X=\"A=1 secret-get\"; env $X true'",
+            "sh -c 'X=\"A=1 secret-get\"; env B=$X true'",
+            "sh -c 'X=\"5 secret-get\"; timeout $X true'",
+            "sh -c 'X=\"-c secret-get\"; bash -o $X true'",
+            "sh -c 'X=\"y secret-get\"; with-secret x $X true'",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], "deny")
+
+
 SEED_W1 = "Allowed commands are safe and do not dump."
 
 # (surface, where the text lives, regex that opens its paragraph)

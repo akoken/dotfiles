@@ -874,6 +874,21 @@ def unknown(word):
     return UNKNOWN in word
 
 
+def ambiguous(word):
+    """A word whose unquoted glob or brace expansion can become other words."""
+    return isinstance(word, Arg) and (word.glob or word.brace)
+
+
+def refuse_expansion(word, where, error=Deny):
+    """The one rule for every word that decides a role (command, subcommand,
+    option, option value, wrapper operand): a word with a glob, a brace or a
+    substitution or parameter (the UNKNOWN marker) may become zero, one or
+    several words, or other text, so its role cannot be read and the command
+    is refused. A source token is not one argv word with a fixed role."""
+    if unknown(word) or ambiguous(word):
+        raise error(f"a word with a glob, brace or expansion in {where} cannot be inspected")
+
+
 VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -961,6 +976,8 @@ def operands(name, args, table, parsed=None):
         if a.startswith("--"):
             key = a.split("=", 1)[0]
             if key in with_value:
+                if "=" not in a and i + 1 < len(args):
+                    refuse_expansion(args[i + 1], f"the value of a `{name}` option")
                 i += 1 if "=" in a else 2
             elif a in flags:
                 i += 1
@@ -977,6 +994,8 @@ def operands(name, args, table, parsed=None):
             if opt in with_value:
                 parsed.append(opt)
                 step = 1 if k + 1 < len(a) else 2  # attached value, or the next word
+                if step == 2 and i + 1 < len(args):
+                    refuse_expansion(args[i + 1], f"the value of a `{name}` option")
                 break
             if opt in attached:
                 parsed.append(opt)
@@ -1011,7 +1030,12 @@ def check_shell(args, depth):
         if a.startswith("--"):
             if a in {"--version", "--help"}:
                 return
-            i += 2 if a in {"--rcfile", "--init-file", "--emulate"} else 1
+            if a in {"--rcfile", "--init-file", "--emulate"}:
+                if i + 1 < len(args):
+                    refuse_expansion(args[i + 1], "the value of a shell option")
+                i += 2
+            else:
+                i += 1
             continue
         if a[:1] in "-+" and len(a) > 1:
             letters = a[1:]
@@ -1023,6 +1047,8 @@ def check_shell(args, depth):
                 command_text = True
             if a[0] == "-" and "s" in letters:
                 from_stdin = True
+            if value_letters and i + 1 < len(args):
+                refuse_expansion(args[i + 1], "the value of a shell option")
             i += 2 if value_letters else 1  # -o NAME / -O NAME take the next word
             continue
         break
@@ -1033,19 +1059,28 @@ def check_shell(args, depth):
         return check_text([rest[0]], depth)
     if from_stdin or not rest:
         raise Deny("a shell reading commands from standard input is not inspected")
+    refuse_expansion(rest[0], "the script operand of a shell")
     if os.path.basename(rest[0]) == SECRET_GET:
         raise SecretRead("running a shell on a `secret-get` script prints a stored key")
 
 
-def check_words(words, depth):
+def check_words(words, depth, wrapped=False):
+    """Check one simple command. `wrapped` is true for the command a wrapper
+    (sudo, env, time, with-secret, ...) runs: its leading NAME=value words are
+    arguments the shell splits and expands, not assignment statements, so one
+    with an expansion cannot be read."""
     words = list(words)
     while words:
         if ASSIGNMENT.match(words[0]):
+            if wrapped:
+                refuse_expansion(words[0], "a wrapper operand")
             refuse_no_masking_assignment(words[0])
             words.pop(0)
         elif words[0] in RESERVED_PREFIXES:
             words.pop(0)
         elif words[0] == "repeat":
+            if len(words) > 1:
+                refuse_expansion(words[1], "the count of `repeat`")
             words = words[2:]
         else:
             break
@@ -1066,7 +1101,9 @@ def check_words(words, depth):
     if name == "op":
         return check_op(args)
     if name in SECRET_WRAPPERS:
-        return check_words(args[SECRET_WRAPPERS[name]:], depth)
+        for operand in args[:SECRET_WRAPPERS[name]]:
+            refuse_expansion(operand, f"the operands of `{name}`")
+        return check_words(args[SECRET_WRAPPERS[name]:], depth, wrapped=True)
     if name in WRAPPER_OPTIONS:
         j = operands(name, args, WRAPPER_OPTIONS[name])
         if name == "command" and any(a in {"-v", "-V"} for a in args[:j]):
@@ -1075,14 +1112,16 @@ def check_words(words, depth):
                                         "-K", "-k", "-V", "--version"} for a in args[:j]):
             return  # sudoedit, list, validate: no command runs
         if name in {"timeout", "gtimeout"}:
+            if j < len(args):
+                refuse_expansion(args[j], f"the duration of `{name}`")
             j += 1  # the duration
         if name == "xargs":
             if j >= len(args):
                 return  # xargs defaults to echo
-            return check_words(xargs_command(args, j), depth)
+            return check_words(xargs_command(args, j), depth, wrapped=True)
         if name == "watch":
             return check_text(args[j:], depth)
-        return check_words(args[j:], depth)
+        return check_words(args[j:], depth, wrapped=True)
     if name in SHELLS:
         return check_shell(args, depth)
     if name in {".", "source"}:
@@ -1184,19 +1223,17 @@ def check_env(args, depth):
     parsed = []
     i = operands("env", args, ENV_OPTIONS, parsed) if args[:1] != ["-"] else 1
     empty_env = args[:1] == ["-"] or any(o in {"-i", "--ignore-environment"} for o in parsed)
-    skipped_unknown = False
     while i < len(args) and (ASSIGNMENT.match(args[i]) or unknown(args[i])):
+        # An operand with an expansion may be several words (the command among
+        # them), or NAME=value text; it cannot be read as an assignment.
+        refuse_expansion(args[i], "an `env` operand")
         refuse_no_masking_assignment(args[i])
-        skipped_unknown = skipped_unknown or unknown(args[i])
         i += 1
-    if skipped_unknown and i < len(args) and os.path.basename(args[i]) == "op":
-        # The skipped operand may be OP_RUN_NO_MASKING=...; it cannot be read.
-        raise SecretRead("an `env` operand built from an expansion before `op` cannot be inspected")
     if i >= len(args):
         if empty_env:
             return
         raise Deny("`env` without a command dumps the whole environment")
-    return check_words(args[i:], depth)
+    return check_words(args[i:], depth, wrapped=True)
 
 
 def check_ps(args):
@@ -1224,30 +1261,22 @@ def check_ps(args):
                 break  # the rest of the cluster is this option's argument
 
 
-def ambiguous(word):
-    """A word whose unquoted glob or brace expansion can become other words."""
-    return isinstance(word, Arg) and (word.glob or word.brace)
-
-
-def refuse_expansion(word, where):
-    if unknown(word) or ambiguous(word):
-        raise SecretRead(f"a word with a glob, brace or substitution in {where} cannot be inspected")
-
-
 def op_option_end(name, words, values, flags):
     """Index of the first operand of `name` (one after a `--` that sits in an
-    option position), reading each option by its arity from the tables."""
+    option position), reading each option by its arity from the tables. Every
+    word read, option value and operand included, passes refuse_expansion()."""
     i = 0
     while i < len(words):
         a = words[i]
+        refuse_expansion(a, f"`{name}` before its subcommand", SecretRead)
         if a == "--":
             return i + 1
         if not a.startswith("-") or a == "-":
             return i
-        if unknown(a):
-            raise SecretRead(f"an option of `{name}` built from an expansion cannot be inspected")
         key, eq, _ = a.partition("=")
         if key in values:
+            if not eq and i + 1 < len(words):
+                refuse_expansion(words[i + 1], f"the value of a `{name}` option", SecretRead)
             i += 1 if eq else 2
         elif key in flags:
             i += 1
@@ -1265,7 +1294,7 @@ def check_op_run(words):
     i = 0
     while i < len(words):
         a = words[i]
-        refuse_expansion(a, "the `op run` options")
+        refuse_expansion(a, "the `op run` options", SecretRead)
         if a == "--":
             return  # the child's argv follows: data, not op options
         if a.startswith("-") and a != "-":
@@ -1274,7 +1303,7 @@ def check_op_run(words):
                 raise SecretRead("`op run --no-masking` prints stored values unmasked")
             if key in values:
                 if not eq and i + 1 < len(words):
-                    refuse_expansion(words[i + 1], "the `op run` options")
+                    refuse_expansion(words[i + 1], "the `op run` options", SecretRead)
                 i += 1 if eq else 2  # the value, even one that looks like an option or `--`
                 continue
             if key not in flags:
@@ -1305,11 +1334,8 @@ def check_op(args):
     i = op_option_end("op", args, OP_GLOBAL_VALUE, OP_GLOBAL_BOOL)
     if i >= len(args):
         return  # op, op --version, op --help
-    if any(ambiguous(a) for a in args[:i + 1]):
-        raise SecretRead("an `op` option or command with a glob or brace expansion cannot be inspected")
     command, rest = args[i], list(args[i + 1:])
-    if unknown(command):
-        raise SecretRead("an `op` command built from an expansion cannot be inspected")
+    refuse_expansion(command, "the `op` command", SecretRead)  # also after a `--`
     if command in {"read", "inject"}:
         raise SecretRead(f"`op {command}` prints a stored value")
     if command == "get":
@@ -1319,11 +1345,8 @@ def check_op(args):
         return
     if command in {"item", "items", "document", "documents"}:
         j = op_option_end(f"op {command}", rest, OP_GLOBAL_VALUE | OP_ITEM_VALUE, OP_GLOBAL_BOOL)
-        if any(ambiguous(a) for a in rest[:j + 1]):
-            raise SecretRead(f"an `op {command}` option or subcommand with a glob or brace expansion "
-                             "cannot be inspected")
-        if j < len(rest) and unknown(rest[j]):
-            raise SecretRead(f"an `op {command}` subcommand built from an expansion cannot be inspected")
+        if j < len(rest):
+            refuse_expansion(rest[j], f"the `op {command}` subcommand", SecretRead)
         if j < len(rest) and rest[j] == "get":
             kind = "item" if command.startswith("item") else "document"
             raise SecretRead(f"`op {kind} get` can print a stored value")
