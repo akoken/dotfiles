@@ -21,6 +21,19 @@ jira() { with-secret jira JIRA_API_TOKEN jira "$@"; }
 qwen() { with-secret obss-llm OBSS_LLM_API_KEY qwen "$@"; }
 qwen-or() { with-secret openrouter OPENROUTER_API_KEY qwen "$@"; }
 
+# Copilot CLI with the OBSS LLM endpoint as its custom (BYOK) provider.
+# Copilot reads the key from COPILOT_PROVIDER_API_KEY, not OBSS_LLM_API_KEY.
+# The wrapper selects the provider and its key, not the model: choose the
+# model at startup (`--model` or COPILOT_MODEL). Plain `copilot` is left
+# alone and keeps GitHub Copilot's own model routing. The two non-secret
+# provider variables go through `env` so they reach only this one command:
+# a prefix assignment on a function call is unspecified by POSIX and stays
+# in the calling shell under some shells (macOS /bin/sh).
+copilot-obss() {
+  env COPILOT_PROVIDER_TYPE=openai COPILOT_PROVIDER_BASE_URL=https://ai.obss.tech/llm/v1 \
+    with-secret obss-llm COPILOT_PROVIDER_API_KEY copilot "$@"
+}
+
 # Ad-hoc consumers without a dedicated CLI: prefix any one command, e.g.
 #   with-openrouter python agent/main.py
 #   with-obss-llm ./run-eval.sh

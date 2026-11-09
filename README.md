@@ -189,6 +189,7 @@ interactive shell does not inherit any of them.
    | `jira` (jira-cli) | `jira` → `JIRA_API_TOKEN` | shell function in `config/zsh/.zsh_agent_keys` |
    | `qwen` (Qwen Code, OBSS LLM provider) | `obss-llm` → `OBSS_LLM_API_KEY` | shell function in `config/zsh/.zsh_agent_keys` |
    | `qwen-or` (Qwen Code, OpenRouter provider) | `openrouter` → `OPENROUTER_API_KEY` | shell function in `config/zsh/.zsh_agent_keys`; it selects the key, not the model |
+   | `copilot-obss` (Copilot CLI, OBSS LLM provider) | `obss-llm` → `COPILOT_PROVIDER_API_KEY` | shell function in `config/zsh/.zsh_agent_keys`; it also sets `COPILOT_PROVIDER_TYPE=openai` and `COPILOT_PROVIDER_BASE_URL=https://ai.obss.tech/llm/v1` for that one command; it selects the provider and key, not the model |
    | anything needing OpenRouter / OBSS LLM | `openrouter` → `OPENROUTER_API_KEY`, `obss-llm` → `OBSS_LLM_API_KEY` | prefix the one command: `with-openrouter <cmd>`, `with-obss-llm <cmd>` |
    | Codex Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/codex/config.toml` runs `bin/context7-mcp`, which starts the pinned server by absolute path through `with-secret`; the key is in that server's environment only, never on argv and never in Codex's own environment |
    | OpenCode Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/opencode/opencode.json`, same `bin/context7-mcp` launch as Codex |
@@ -211,6 +212,16 @@ here). Use the same launcher there instead of a header holding the key:
 ```json
 "context7": { "type": "local", "command": "sh", "args": ["-c", "exec \"$HOME/bin/context7-mcp\""], "tools": ["*"] }
 ```
+
+Copilot CLI does not read `OBSS_LLM_API_KEY`: for a custom (BYOK) provider
+it reads `COPILOT_PROVIDER_BASE_URL`, `COPILOT_PROVIDER_TYPE` and
+`COPILOT_PROVIDER_API_KEY` (`copilot help environment`). `copilot-obss`
+reads the OBSS LLM key once per session into `COPILOT_PROVIDER_API_KEY` and
+sets the other two for that one command only, through `env` rather than a
+prefix assignment on the function call, which some shells (macOS `/bin/sh`)
+keep in the calling shell. It selects the provider and key, not the model:
+choose the model at startup (`--model` or `COPILOT_MODEL`). Plain `copilot`
+is not wrapped and keeps GitHub Copilot's own model routing.
 
 Claude Code keeps MCP servers in `~/.claude.json`, which this repo does not
 manage. Register Context7 there once (the single quotes keep `$HOME` for the
@@ -235,7 +246,10 @@ passes exactly its own variable to its child and nothing to the parent shell
 (under bash and zsh), even when the starting environment still carries the
 other keys and the service account token; the `qwen` and `qwen-or` wrappers also pass their arguments
 (including empty ones and ones with spaces) and the child's exit status
-through unchanged; every failure path, and every path
+through unchanged; `copilot-obss` also gets its provider type and URL,
+overrides stale `COPILOT_PROVIDER_*` values, passes its arguments and exit
+status through the same way, and leaves none of the three
+`COPILOT_PROVIDER_*` variables in the parent shell; every failure path, and every path
 under an inherited `xtrace`, prints neither value nor token and starts
 nothing; the Codex and OpenCode launches, run inside a project that ships its
 own `context7-mcp` package, start only the pinned install; and the leak scans
@@ -272,6 +286,11 @@ report file names, never the matched text.
   measured for key inheritance yet. They may receive the provider key from
   Qwen Code's environment, so protection for Qwen Code is partial until a
   measurement with a sentinel value verifies what they get.
+- Copilot CLI keeps `COPILOT_PROVIDER_API_KEY` in its environment for the
+  whole session. Its own child processes (shell tools, MCP servers) have not
+  been measured for key inheritance yet and may receive it, so protection
+  for Copilot CLI is partial until a measurement with a sentinel value
+  verifies what they get.
 - Long-running consumers, MCP servers in particular, hold their key in their
   environment for as long as they run. Restart them after rotating a key.
 - The Claude Code helper's output is held by Claude Code for that connection,
@@ -353,7 +372,7 @@ The shell environment is managed through [Zinit](https://github.com/zdharma-cont
 | `.zshrc`           | Loads plugins, completions, key bindings, and tool integrations |
 | `.zsh_aliases`     | Shell, git, tmux, and tool aliases |
 | `.zsh_functions`   | Helper functions (`g`, `md`, `docker open/close/flush`, etc.) |
-| `.zsh_agent_keys`  | Per-command API key wrappers (`grok`, `jira`, `qwen`, `qwen-or`, `with-openrouter`, `with-obss-llm`), see [Agent Keys](#agent-keys) |
+| `.zsh_agent_keys`  | Per-command API key wrappers (`grok`, `jira`, `qwen`, `qwen-or`, `copilot-obss`, `with-openrouter`, `with-obss-llm`), see [Agent Keys](#agent-keys) |
 | `.zprofile`        | Homebrew and tool-specific PATH setup |
 
 ### Plugins (via Zinit)
