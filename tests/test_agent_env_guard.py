@@ -1288,6 +1288,22 @@ class ExpansionRoles(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(decide(command)[0], "allow")
 
+    def test_the_command_word_keeps_an_expansion_only_when_quoted(self):
+        # `$D/true` with D="secret-get x" is two words; "$D/true" is one.
+        for command in ("$D/true", "$HOME/bin/tool --flag", "${D}/true x", "$(echo d)/true",
+                        "a/$D/true", "sh -c 'D=\"secret-get x\"; $D/true'"):
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], "deny")
+        for command in ('"$HOME/bin/tool" --flag', '"$D/true" x', '"${D}"/true', "~/bin/tool x"):
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], "allow")
+
+    def test_a_wrapped_command_word_with_an_expansion_is_refused(self):
+        # It could also be an option of the wrapper, so even a quoted one is refused.
+        for command in ('time "$HOME/bin/tool"', 'nohup "$X"', "sudo $X true"):
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], "deny")
+
     def test_a_split_word_cannot_hide_the_wrapped_command(self):
         for command in (
             "sh -c 'X=\"root secret-get\"; sudo -u $X true'",
@@ -1299,6 +1315,176 @@ class ExpansionRoles(unittest.TestCase):
         ):
             with self.subTest(command=command):
                 self.assertEqual(decide(command)[0], "deny")
+
+
+# SG23-OPTION-TOKEN, invariant: no token is interpreted (as command,
+# subcommand, option, option value, operand or wrapper argument) before it has
+# passed refuse_expansion(). Generative form: take every word-only command of
+# the deny corpus and replace each token, one at a time, with each expansion
+# form; every result must still be denied. A token that is already pure data
+# for the command (an argument of the command that is denied) stays denied
+# too, because the denial does not depend on it.
+TOKEN_FORMS = ["$X", "${X}", "$(x)", "`x`", "*", "{a,b}"]
+# `ps` reads its options and operands without the gate: the documented
+# limitation ENV-GUARD-15 (README), measured by corpus row X12.
+GENERATIVE_SKIP = re.compile(r"\bps\b|/proc/|environ")  # ps: ENV-GUARD-15; /proc paths: the datum is the denial
+OPERATOR_TOKENS = {"|", "||", "&&", ";", "&"}
+
+
+def partial_forms(token):
+    """Partial expansions of one token: -c -> -$f, secret-get -> secret-$f ..."""
+    out = {token[:1] + "$f" + token[2:], "$f" + token[1:], token[:-1] + "${f}", token + "{X,}",
+           token[:1] + "{X," + token[1:] + "}", "-$f", "-u{X,}"}
+    return sorted(f for f in out if f != token)
+
+
+def word_only(command):
+    """Tokens of a single-line, operator-light command, or None."""
+    if "\n" in command or any(ch in command for ch in "<>()`{}\\") or "$(" in command:
+        return None
+    import shlex
+    lexer = shlex.shlex(command, posix=False)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    if any(t.endswith((";", "&")) and t not in OPERATOR_TOKENS for t in tokens):
+        return None
+    return tokens
+
+
+def command_with(tokens, index, replacement):
+    return " ".join(replacement if k == index else t for k, t in enumerate(tokens))
+
+
+class GenerativeTokens(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.guard = OpOptionTables.guard_module()
+
+    def denied(self, command):
+        try:
+            self.guard.check_command(command)
+        except self.guard.Deny:
+            return True
+        except Exception:  # main() denies on a guard error too
+            return True
+        return False
+
+    def test_the_reported_examples_verbatim(self):
+        for command in ("env -u{X,} true secret-get x", "f=c; bash -$f 'secret-get fake'"):
+            with self.subTest(command=command):
+                self.assertTrue(self.denied(command))
+                self.assertEqual(decide(command)[0], "deny")
+
+    def test_every_token_of_a_denied_command_refuses_every_expansion_form(self):
+        checked, allowed = 0, []
+        for command in DENY + UNSEEN_DENY + SECRET_DENY:
+            tokens = word_only(command)
+            if not tokens or GENERATIVE_SKIP.search(command):
+                continue
+            for index, token in enumerate(tokens):
+                if token in OPERATOR_TOKENS:
+                    continue
+                # inside quotes a brace or $ stays literal text, so a partial form
+                # is only an expansion in an unquoted token
+                partial = [] if any(q in token for q in "'\"") else partial_forms(token)
+                for form in TOKEN_FORMS + partial:
+                    variant = command_with(tokens, index, form)
+                    checked += 1
+                    if not self.denied(variant):
+                        allowed.append(f"{variant!r} (from {command!r}, token {index})")
+        self.assertGreater(checked, 5000)
+        self.assertEqual(allowed, [])
+
+    def test_literal_neighbours_stay_allowed(self):
+        for command in SECRET_ALLOW + ALLOW:
+            tokens = word_only(command)
+            if not tokens:
+                continue
+            with self.subTest(command=command):
+                self.assertFalse(self.denied(command))
+
+
+# The single interpretation point (SG23-OPTION-TOKEN): every reader receives a
+# Reader, never the raw words, and Reader is the only code that holds them.
+# A reader cannot interpret a word without Reader.look()/read(), which refuse
+# a word with an expansion first.
+READER_FUNCTIONS = {"operands", "check_text", "check_shell", "check_env", "op_options",
+                    "check_op_run", "check_op"}
+RAW_WORD_PARAMS = {"args", "words", "rest"}
+
+
+def gate_violations(source):
+    tree = ast.parse(source)
+    parent = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+
+    def owner(node):
+        while node in parent:
+            node = parent[node]
+            if isinstance(node, ast.ClassDef):
+                return node.name
+        return None
+
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            params = [a.arg for a in node.args.args]
+            if node.name in READER_FUNCTIONS and ("reader" not in params or RAW_WORD_PARAMS & set(params)):
+                out.append(f"line {node.lineno}: {node.name}() takes raw words")
+            if node.name == "check_words":
+                for name in ast.walk(node):
+                    if (isinstance(name, ast.Name) and name.id == "words" and isinstance(name.ctx, ast.Load)):
+                        call = parent[name]
+                        if not (isinstance(call, ast.Call) and getattr(call.func, "id", None) == "Reader"):
+                            out.append(f"line {name.lineno}: raw `words` used in check_words()")
+        if isinstance(node, ast.Attribute) and node.attr == "_words" and owner(node) != "Reader":
+            out.append(f"line {node.lineno}: ._words outside Reader")
+    return out
+
+
+SEEDED_GATE_BYPASS = [
+    # a reader that takes the raw words again
+    ("def op_options(name, reader, values, flags):", "def op_options(name, reader, values, flags, args=()):"),
+    ("def check_text(reader, depth):", "def check_text(words, depth):"),
+    # check_words reading a word before the gate
+    ('    reader = Reader(words, "a command")\n',
+     '    reader = Reader(words, "a command")\n    if words and words[0] == "x":\n        return\n'),
+    # reaching into the Reader
+    ('    if not reader.more():\n        return  # op, op --version, op --help',
+     '    if reader._words and reader._words[0] == "read":\n        return\n'
+     '    if not reader.more():\n        return  # op, op --version, op --help'),
+]
+
+
+class GateInvariant(unittest.TestCase):
+    def test_every_reader_reads_words_only_through_the_gate(self):
+        self.assertEqual(gate_violations(GUARD.read_text()), [])
+
+    def test_seeded_gate_bypasses_are_caught(self):
+        source = GUARD.read_text()
+        for old, new in SEEDED_GATE_BYPASS:
+            with self.subTest(seed=new[:60]):
+                self.assertIn(old, source)
+                self.assertTrue(gate_violations(source.replace(old, new, 1)))
+
+    def test_the_gate_refuses_before_a_reader_decides(self):
+        guard = OpOptionTables.guard_module()
+        for word in ("$X", "${X}", "$(x)", "`x`", "*", "{a,b}", "-$f", "-u{X,}", "x{a,b}"):
+            with self.subTest(word=word):
+                lexer = guard.Lexer(guard.LogicalSource(f"cmd {word}"), 0)
+                tokens = [t for t in lexer.lex_code() if t[0] == "word"]
+                arg = guard.Arg.of(tokens[1][1])
+                reader = guard.Reader([arg], "a test")
+                with self.assertRaises(guard.Deny):
+                    reader.look()
+                with self.assertRaises(guard.Deny):
+                    reader.read()
+        for word in ("x", "-u", "--format", "a=b"):
+            with self.subTest(word=word):
+                reader = guard.Reader([guard.Arg(word, False, False, splits=False)], "a test")
+                self.assertEqual(reader.read(), word)
 
 
 SEED_W1 = "Allowed commands are safe and do not dump."

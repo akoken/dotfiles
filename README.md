@@ -394,18 +394,33 @@ protection**, not a fix:
   Same limit as the rest of the guard: a tripwire, not a boundary.
 - **Role rule**: the guard does not assume that a source token is one argv
   word with a fixed role. An unquoted expansion can split into several words
-  (`X="json read"; op --format $X ...` runs `op read`), and a glob or brace
-  can multiply a word. So every word that decides a role is refused when it
-  carries a glob, a brace, a parameter or a substitution: the command name
-  (and the `op` command and subcommand), every option and option value of
-  `op` and of the wrappers (`sudo`, `doas`, `env`, `time`, `timeout`, `nice`,
-  `xargs`, `watch`, `exec`, `stdbuf`, `caffeinate`), the operands of `env`,
-  `with-secret` and `repeat`, the `timeout` duration, a shell's option values
-  and script operand, and a leading `NAME=value` word a wrapper hands on. A
-  plain assignment prefix of a simple command (`A=$X cmd`) is not split by the
-  shell and stays allowed; words after the selected `op` subcommand do not
-  decide it and stay free. Healthy literal values pass. The one place this
-  does not yet hold is `ps` (ENV-GUARD-15 below).
+  (`X="json read"; op --format $X ...` runs `op read`, `env -u{X,} true
+  secret-get x` and `f=c; bash -$f 'secret-get x'` build an option from an
+  expansion), and a glob or brace can multiply a word. The invariant: no word
+  is interpreted (as command, subcommand, option, option value, operand or
+  wrapper argument) before it has passed the gate, and a word that carries a
+  glob, a brace, a parameter or a substitution fails it, so the command is
+  refused. There is one gate, `Reader.look()`/`Reader.read()` in
+  `bin/agent-env-guard`: every reader (the wrapper option tables, `env`,
+  `sh -c`/`-o` handling, `source`, `eval`, `trap`, `alias`, `hash`, `set`,
+  `with-secret` and the launchers, and all `op` readers) receives a `Reader`,
+  never the raw words, and `Reader` is the only code that holds them; a
+  structural test fails when a reader takes raw words. What a reader has not
+  read leaves only through `Reader.data()`, as plain data for the command it
+  found. Consequences: a command name keeps an expansion in its directory
+  part only when it is quoted (`"$HOME/bin/tool"` runs, `$HOME/bin/tool` does
+  not); a command word a wrapper runs (`time`, `sudo`, `nohup`, `with-secret`)
+  may not carry an expansion at all; a plain assignment prefix of a simple
+  command (`A=$X cmd`) is not split by the shell and stays allowed; words after
+  the selected `op` subcommand do not decide it and stay free. A generative
+  test replaces every token of every single-line command of the deny corpus
+  with each expansion form (`$X`, `${X}`, `$(x)`, backticks, glob, brace and
+  partial forms such as `-$f` and `-u{X,}`) and requires a deny. Not behind the
+  gate: `ps` (ENV-GUARD-15 below), `cd`/`pushd` (a variable target never
+  matches `/proc`, see "not modelled" in the lexing contract) and the
+  declaration builtins and `printenv`, which read an argument only for a
+  literal name, so an expansion never counts as one (`NAME=$X` still counts as
+  a name: the ENV-GUARD-12 family).
 - **Known limitations of the guard** (commands that still dump and pass; kept
   as `KNOWN_LIMITS` rows in `tests/agent_env_guard_shell_corpus.py`):
   - ENV-GUARD-11: a function body without braces is not checked, so
