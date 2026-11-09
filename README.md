@@ -372,13 +372,24 @@ protection**, not a fix:
   (`op item list`), so every `op item get` and its plural `op items get` is
   denied whatever the flag (any flag, any order, any option before the
   subcommand); `op document get`, `op inject` and the version 1 `op get`
-  print stored values the same way. An `op` option the guard does not know
-  (for example `--cache=false`), an `op` command built from a variable, and a
-  glob or brace in the `op` command or subcommand word (`op r??d ...`) are
-  refused rather than allowed. `op run` is denied with `--no-masking` in any
-  spelling (`--no-masking=true`) before `--`, and whenever `OP_RUN_NO_MASKING`
-  is set in the command text (assignment prefix, `env`, `export`, `declare`);
-  what follows `--` is the child's argv and is not read as `op` options. Humans running commands in their own terminal,
+  print stored values the same way. `op` options are read by arity from the flag tables of
+  op 2.42.0 (`op --help` Global Flags and `op run --help` Flags, kept in
+  `tests/fixtures/op-2.42.0-flags.txt` and checked against the guard's tables):
+  a value-taking option (`--env-file`, `--environment`, `--account`,
+  `--config`, `--encoding`, `--format`, `--session`) consumes the next word,
+  or the text after `=`, whatever it looks like, so
+  `op run --env-file --no-masking -- true` runs and
+  `op run --env-file -- --no-masking` is denied (`--` was the value). An `op`
+  option outside those tables has an unknown arity and is refused, never
+  guessed (SECRET-GUARD-05: a newer `op` flag needs a table update). An `op`
+  command built from a variable, and a glob or brace in the `op` command or
+  subcommand word (`op r??d ...`), are refused too. `op run` reads its
+  options up to the `--` that starts the child's argv, which is data
+  (`op run -- printf %s --no-masking` runs); any word there with a glob,
+  brace or substitution is ambiguous and refused first, and
+  `--no-masking` in any spelling (`--no-masking=1`, `=T`, `=yes`) is denied,
+  as is `OP_RUN_NO_MASKING` set in the command text (assignment prefix, `env`,
+  `export`, `declare`). Humans running commands in their own terminal,
   outside an agent, are unaffected: the hook only sees what an agent types.
   Same limit as the rest of the guard: a tripwire, not a boundary.
 - **Known limitations of the guard** (commands that still dump and pass; kept
@@ -401,6 +412,10 @@ protection**, not a fix:
     node, perl or ruby) passes.
   - SECRET-GUARD-04: a command run through `with-secret` or a launcher can
     print its own key, so `with-secret obss-llm KEY printenv KEY` passes.
+  - SECRET-GUARD-05: an `op` option outside the op 2.42.0 flag tables is
+    refused, not allowed, because its arity is unknown, so `op run
+    --future-flag -- true` is denied although it prints nothing; update the
+    tables when a newer `op` adds a flag.
   - Not covered either, and not in the corpus: an alias or function defined
     outside the command that calls `secret-get`, a copy or symlink of it under
     another name, and any other way to reach the vault, for example reading

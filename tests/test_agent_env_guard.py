@@ -380,6 +380,48 @@ SECRET_DENY = [
     "op --account * item list",
     "op --account {a,b} vault list",
     "touch read; op r??d op://agent-keys/obss-llm/credential",
+    # SG23-MASK, class: a word with an unresolved expansion in the op run
+    # option area is ambiguous, and every --no-masking[=value] is masking off
+    "touch -- --no-masking=1; op run --no-mask*=1 -- true",
+    "op run --no-mask*=1 -- true",
+    "op run --no-mask?ng=1 -- true",
+    "op run --no-maskin[g]=1 -- true",
+    "op run --no-{masking,x}=1 -- true",
+    "op run --no-masking=1 -- true",
+    "op run --no-masking=0 -- true",
+    "op run --no-masking=T -- true",
+    "op run --no-masking=TRUE -- true",
+    "op run --no-masking=True -- true",
+    "op run --no-masking=yes -- true",
+    "op run --no-masking= -- true",
+    "op run --env-file *.env -- true",
+    "op run --env-file=*.env -- true",
+    "op run --environment {a,b} -- true",
+    "op run --env-file \"$F\" -- true",
+    "op run --env-file=$(echo x) -- true",
+    "op run `echo --no-masking` -- true",
+    "op run ? -- true",
+    "op run [-]-no-masking -- true",
+    # SG23-ARGV, class: option values and the `--` boundary follow op 2.42.0
+    # arity; a value-taking option's next word is its value, even `--`
+    "op run --env-file --no-masking --no-masking -- true",
+    "op run --env-file -- --no-masking",
+    "op run --environment -- --no-masking=1 -- true",
+    "op run --env-file=x --no-masking -- true",
+    "op --account --no-masking run --no-masking -- true",
+    "op --account -- run --no-masking -- true",
+    "op --format json run --no-masking -- true",
+    "op --format=json run --no-masking -- true",
+    "op run --future-flag --no-masking -- true",
+    "op run --future=1 --no-masking -- true",
+    "op run --future-flag -- true",
+    "op run -x -- true",
+    "op run -hv -- true",
+    "op run printf %s --no-masking",
+    "op run sh -c true",
+    "op --future item list",
+    "op item --future list",
+    "touch read; op --account * r??d x",
 ]
 
 SECRET_ALLOW = [
@@ -470,6 +512,30 @@ SECRET_ALLOW = [
     "op item list *",
     "op vault list --format json *.json",
     "op run --env-file=.env -- true",
+    # SG23-ARGV: a value-taking option consumes the next word, whatever it
+    # looks like (op 2.42.0 `op run --help` and `op --help` flag tables)
+    "op run --env-file --no-masking -- /usr/bin/printf X",
+    "op run --env-file --no-masking=1 -- /usr/bin/printf X",
+    "op run --environment --no-masking -- /usr/bin/printf X",
+    "op run --env-file=--no-masking -- /usr/bin/printf X",
+    "op run --environment=--no-masking -- /usr/bin/printf X",
+    "op run --env-file a.env --env-file b.env --environment e1 -- true",
+    "op run --env-file '*.env' -- true",
+    "op run --env-file '--no-masking' -- true",
+    "op run --help",
+    "op run -h",
+    "op --account --no-masking run -- true",
+    "op --config --no-masking run -- true",
+    "op --encoding --no-masking run -- true",
+    "op --format --no-masking run -- true",
+    "op --session --no-masking run -- true",
+    "op --account=--no-masking run -- true",
+    "op --format json run --env-file .env -- true",
+    "op --cache=false run -- true",
+    "op --debug --no-color --iso-timestamps run -- true",
+    "op run --env-file -- -- true",
+    "op run -- --no-masking",
+    "op run --env-file x -- sh -c 'echo --no-masking'",
 ]
 
 # Forms the guard cannot see; each one has a KNOWN_LIMITS row and a README line.
@@ -1054,6 +1120,83 @@ class SecretReadDocs(unittest.TestCase):
     def test_every_guard_text_mentions_the_secret_rule(self):
         self.assertIn("secret-get", GUARD.read_text().split('"""')[1])
         self.assertIn("secret-get", LimitedGuaranteeIsStated.CORPUS.read_text())
+
+
+class OpOptionTables(unittest.TestCase):
+    """The guard's op option tables equal the flag tables of op 2.42.0
+    (tests/fixtures/op-2.42.0-flags.txt: `op --help` Global Flags and `op run
+    --help` Flags, captured with an empty HOME, no network and no vault). A
+    flag of the real CLI the guard lacks, or one it adds, fails here; at run
+    time an option outside the tables is refused because its arity is unknown."""
+
+    FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "op-2.42.0-flags.txt"
+    FLAG_LINE = re.compile(r"^\s+(?:(-\w), )?(--[\w-]+)(?:\s+(\w+))?\s{2,}\S")
+
+    @classmethod
+    def tables(cls):
+        sections, current = {}, None
+        for line in cls.FIXTURE.read_text().splitlines():
+            if line.startswith("== "):
+                current = sections.setdefault(line[3:], {"values": set(), "flags": set()})
+                continue
+            match = cls.FLAG_LINE.match(line)
+            if match and current is not None:
+                short, long_name, kind = match.groups()
+                names = {long_name} | ({short} if short else set())
+                current["values" if kind else "flags"] |= names
+        return sections
+
+    @staticmethod
+    def guard_module():
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("guard_under_test", str(GUARD))
+        spec = importlib.util.spec_from_loader("guard_under_test", loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def test_fixture_is_the_documented_help_output(self):
+        sections = self.tables()
+        self.assertEqual(set(sections), {"op --help", "op run --help"})
+        self.assertEqual(sections["op run --help"]["values"], {"--env-file", "--environment"})
+        self.assertIn("--no-masking", sections["op run --help"]["flags"])
+        self.assertIn("--account", sections["op --help"]["values"])
+        self.assertIn("--cache", sections["op --help"]["flags"])
+
+    def test_guard_tables_equal_the_cli_tables(self):
+        sections, guard = self.tables(), self.guard_module()
+        self.assertEqual(set(guard.OP_GLOBAL_VALUE), sections["op --help"]["values"])
+        self.assertEqual(set(guard.OP_GLOBAL_BOOL), sections["op --help"]["flags"])
+        self.assertEqual(set(guard.OP_RUN_VALUE), sections["op run --help"]["values"])
+        self.assertEqual(set(guard.OP_RUN_BOOL), sections["op run --help"]["flags"])
+
+    def test_every_documented_value_flag_consumes_a_masking_lookalike(self):
+        sections = self.tables()
+        for flag in sorted(sections["op --help"]["values"]):
+            with self.subTest(flag=flag, form="global, separate value"):
+                self.assertEqual(decide(f"op {flag} --no-masking run -- true")[0], "allow")
+            with self.subTest(flag=flag, form="global, attached value"):
+                self.assertEqual(decide(f"op {flag}=--no-masking run -- true")[0], "allow")
+            with self.subTest(flag=flag, form="then a real flag"):
+                self.assertEqual(decide(f"op {flag} --no-masking run --no-masking -- true")[0], "deny")
+        for flag in sorted(sections["op run --help"]["values"]):
+            with self.subTest(flag=flag, form="run, separate value"):
+                self.assertEqual(decide(f"op run {flag} --no-masking -- true")[0], "allow")
+            with self.subTest(flag=flag, form="run, attached value"):
+                self.assertEqual(decide(f"op run {flag}=--no-masking -- true")[0], "allow")
+            with self.subTest(flag=flag, form="then a real flag"):
+                self.assertEqual(decide(f"op run {flag} --no-masking --no-masking -- true")[0], "deny")
+            with self.subTest(flag=flag, form="consumes the boundary"):
+                self.assertEqual(decide(f"op run {flag} -- --no-masking")[0], "deny")
+
+    def test_every_documented_boolean_flag_takes_no_value_word(self):
+        sections = self.tables()
+        for flag in sorted(f for f in sections["op --help"]["flags"] if f.startswith("--")):
+            with self.subTest(flag=flag):
+                # a boolean flag does not consume the next word: it stays the command
+                self.assertEqual(decide(f"op {flag} run --no-masking -- true")[0], "deny")
+                self.assertEqual(decide(f"op {flag} run -- true")[0], "allow")
 
 
 SEED_W1 = "Allowed commands are safe and do not dump."

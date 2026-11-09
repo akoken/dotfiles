@@ -57,6 +57,8 @@ KNOWN_LIMITS = {
     "SECRET-GUARD-03": "an interpreter command string is not read, so awk's system() "
                        "can run secret-get",
     "SECRET-GUARD-04": "a command run through with-secret or a launcher can print its own key",
+    "SECRET-GUARD-05": "an op option outside the op 2.42.0 flag tables (tests/fixtures/op-2.42.0-flags.txt) "
+                       "is refused, never allowed, because its arity is unknown",
 }
 CASES = []
 
@@ -305,6 +307,8 @@ case("SO7", "op run --no-masking -- true", "deny", run=False)
 # SG23-GLOB: the glob expands to the file the command made first
 case("SO8", "touch read; op r??d op://agent-keys/obss-llm/credential", "deny")
 case("SO9", "touch item; op ite? get obss-llm", "deny")
+# SECRET-GUARD-05: refused although it prints nothing (the shim ignores the flag)
+case("SO10", "op run --future-flag -- true", "deny", why="narrow")
 # Not invocations, or no value printed: allowed
 case("SA1", "op whoami", "allow")
 case("SA2", "op vault list", "allow")
@@ -507,6 +511,7 @@ OBSERVED = {
     "SO4": "visible visible visible visible visible",
     "SO5": "visible visible visible visible visible",
     "SO6": "visible visible visible visible visible",
+    "SO10": "none none none none none",
     "SO8": "visible visible visible visible visible",
     "SO9": "visible visible visible visible visible",
     "SA1": "none none none none none",

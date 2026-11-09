@@ -180,12 +180,14 @@ DECLARATION_BUILTINS = {"local", "typeset", "declare", "export", "readonly", "in
 # L12 Secret reads. After wrappers are resolved, a simple command whose
 #    basename is secret-get is denied; so is `op` with the subcommand read,
 #    inject, get (v1), document(s) get, item(s) get, or run --no-masking.
-#    Options before the op subcommand are read with a fixed table (an
-#    unknown one is refused, as for a wrapper); an op command built from an
-#    expansion, or whose command or subcommand word has a glob or brace, is
-#    refused. op run is denied with --no-masking[=value] before `--` (what
-#    follows is the child's argv) and with OP_RUN_NO_MASKING set in the
-#    text. with-secret, with-openrouter and with-obss-llm
+#    op options are read by arity from tables taken from the op 2.42.0 help
+#    (a value-taking option consumes the next word, even one that looks like
+#    an option or `--`; an option outside the tables is refused, never
+#    guessed); an op command built from an expansion, or whose command or
+#    subcommand word has a glob or brace, is refused. op run reads its
+#    options up to the `--` that starts the child's argv (data, not read),
+#    refuses any word there with a glob, brace or substitution, and denies
+#    --no-masking[=value] and OP_RUN_NO_MASKING set in the text. with-secret, with-openrouter and with-obss-llm
 #    are wrappers: the command they run is checked. A shell or `source`
 #    run on a file named secret-get is denied; other script files are not
 #    read.
@@ -923,13 +925,20 @@ SECRET_WRAPPERS = {"with-secret": 2, "with-openrouter": 0, "with-obss-llm": 0}
 SECRET_GET = "secret-get"
 NO_MASKING_FLAG = "--no-masking"
 NO_MASKING_ENV = "OP_RUN_NO_MASKING"
-# op options read before the subcommand: (flags, options taking a value).
-# Global flags per the 1Password CLI reference, plus --vault which `item`
-# subcommands take; an option outside the table is refused, so no option
-# value is ever taken for the subcommand.
-OP_OPTIONS = ({"--cache", "--debug", "--help", "-h", "--iso-timestamps", "--no-color",
-               "--version", "-v"},
-              {"--account", "--config", "--encoding", "--format", "--session", "--vault"}, set())
+# op option tables, taken from the help of 1Password CLI op 2.42.0 (the
+# capture is tests/fixtures/op-2.42.0-flags.txt; a test keeps these tables
+# equal to it): `op --help` Global Flags and `op run --help` Flags. A flag that
+# takes a value takes the next word as that value, whatever it looks like
+# (--env-file --no-masking uses "--no-masking" as a file name), and also
+# accepts --flag=value; a boolean flag takes no value word and accepts
+# --flag=value. An option outside the tables has an arity the guard does not
+# know, so it is refused rather than guessed (README, SECRET-GUARD-05).
+OP_GLOBAL_VALUE = frozenset({"--account", "--config", "--encoding", "--format", "--session"})
+OP_GLOBAL_BOOL = frozenset({"--cache", "--debug", "--iso-timestamps", "--no-color",
+                            "--help", "-h", "--version", "-v"})
+OP_RUN_VALUE = frozenset({"--env-file", "--environment"})
+OP_RUN_BOOL = frozenset({"--help", "-h", NO_MASKING_FLAG})
+OP_ITEM_VALUE = frozenset({"--vault"})  # `op item get --vault`, read before the subcommand
 ENV_OPTIONS = ({"-i", "-0", "-v", "--ignore-environment", "--null", "--debug"},
                {"-u", "-C", "-P", "--unset", "--chdir"}, set())
 
@@ -1220,18 +1229,57 @@ def ambiguous(word):
     return isinstance(word, Arg) and (word.glob or word.brace)
 
 
-def names_no_masking_flag(word):
-    """Whether `word` can be op's --no-masking flag, with or without a value
-    (any boolean spelling): literally, through a brace expansion, or through a
-    glob that matches it."""
-    values = brace_alternatives(word) if isinstance(word, Arg) and word.brace else [word]
-    for value in values:
-        if value == NO_MASKING_FLAG or value.startswith(NO_MASKING_FLAG + "="):
-            return True
-        if isinstance(word, Arg) and word.glob and any(
-                fnmatch.fnmatchcase(spelling, value) for spelling in (NO_MASKING_FLAG, NO_MASKING_FLAG + "=true")):
-            return True
-    return False
+def refuse_expansion(word, where):
+    if unknown(word) or ambiguous(word):
+        raise SecretRead(f"a word with a glob, brace or substitution in {where} cannot be inspected")
+
+
+def op_option_end(name, words, values, flags):
+    """Index of the first operand of `name` (one after a `--` that sits in an
+    option position), reading each option by its arity from the tables."""
+    i = 0
+    while i < len(words):
+        a = words[i]
+        if a == "--":
+            return i + 1
+        if not a.startswith("-") or a == "-":
+            return i
+        if unknown(a):
+            raise SecretRead(f"an option of `{name}` built from an expansion cannot be inspected")
+        key, eq, _ = a.partition("=")
+        if key in values:
+            i += 1 if eq else 2
+        elif key in flags:
+            i += 1
+        else:
+            raise SecretRead(f"an `{name}` option outside the op 2.42.0 tables has an unknown arity")
+    return i
+
+
+def check_op_run(words):
+    """`op run` options up to the `--` that starts the child's argv, read by
+    arity (README "Secret-read rule"). Every word read as an option or an
+    option value that carries an expansion is ambiguous and refused first;
+    --no-masking in any spelling turns masking off."""
+    values, flags = OP_RUN_VALUE | OP_GLOBAL_VALUE, OP_RUN_BOOL | OP_GLOBAL_BOOL
+    i = 0
+    while i < len(words):
+        a = words[i]
+        refuse_expansion(a, "the `op run` options")
+        if a == "--":
+            return  # the child's argv follows: data, not op options
+        if a.startswith("-") and a != "-":
+            key, eq, _ = a.partition("=")
+            if key == NO_MASKING_FLAG:
+                raise SecretRead("`op run --no-masking` prints stored values unmasked")
+            if key in values:
+                if not eq and i + 1 < len(words):
+                    refuse_expansion(words[i + 1], "the `op run` options")
+                i += 1 if eq else 2  # the value, even one that looks like an option or `--`
+                continue
+            if key not in flags:
+                raise SecretRead("an `op run` option outside the op 2.42.0 tables has an unknown arity")
+        i += 1  # a flag, or an operand (the command, when `--` is absent)
 
 
 def refuse_no_masking_assignment(word):
@@ -1254,7 +1302,7 @@ def check_op(args):
     every `op item get` is refused whatever its flags. `items` and `documents`
     are the plural spellings; `op get` is the version 1 command. Commands that
     print no value (whoami, vault list, item list, signin, run) pass."""
-    i = operands("op", args, OP_OPTIONS)
+    i = op_option_end("op", args, OP_GLOBAL_VALUE, OP_GLOBAL_BOOL)
     if i >= len(args):
         return  # op, op --version, op --help
     if any(ambiguous(a) for a in args[:i + 1]):
@@ -1267,15 +1315,10 @@ def check_op(args):
     if command == "get":
         raise SecretRead("`op get` (version 1) prints a stored value")
     if command == "run":
-        # Options end at `--`: what follows is the child's argv, not op's.
-        for a in rest[:rest.index("--") if "--" in rest else len(rest)]:
-            if unknown(a):
-                raise SecretRead("an `op run` option built from an expansion cannot be inspected")
-            if names_no_masking_flag(a):
-                raise SecretRead("`op run --no-masking` prints stored values unmasked")
+        check_op_run(rest)
         return
     if command in {"item", "items", "document", "documents"}:
-        j = operands(f"op {command}", rest, OP_OPTIONS)
+        j = op_option_end(f"op {command}", rest, OP_GLOBAL_VALUE | OP_ITEM_VALUE, OP_GLOBAL_BOOL)
         if any(ambiguous(a) for a in rest[:j + 1]):
             raise SecretRead(f"an `op {command}` option or subcommand with a glob or brace expansion "
                              "cannot be inspected")
