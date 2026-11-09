@@ -187,6 +187,8 @@ interactive shell does not inherit any of them.
    |----------|-----------------------|---------------------|
    | `grok` (Grok CLI) | `xai` → `XAI_API_KEY` | shell function in `config/zsh/.zsh_agent_keys` |
    | `jira` (jira-cli) | `jira` → `JIRA_API_TOKEN` | shell function in `config/zsh/.zsh_agent_keys` |
+   | `qwen` (Qwen Code, OBSS LLM provider) | `obss-llm` → `OBSS_LLM_API_KEY` | shell function in `config/zsh/.zsh_agent_keys` |
+   | `qwen-or` (Qwen Code, OpenRouter provider) | `openrouter` → `OPENROUTER_API_KEY` | shell function in `config/zsh/.zsh_agent_keys`; it selects the key, not the model |
    | anything needing OpenRouter / OBSS LLM | `openrouter` → `OPENROUTER_API_KEY`, `obss-llm` → `OBSS_LLM_API_KEY` | prefix the one command: `with-openrouter <cmd>`, `with-obss-llm <cmd>` |
    | Codex Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/codex/config.toml` runs `bin/context7-mcp`, which starts the pinned server by absolute path through `with-secret`; the key is in that server's environment only, never on argv and never in Codex's own environment |
    | OpenCode Context7 MCP | `context7` → `CONTEXT7_API_KEY` | `config/opencode/opencode.json`, same `bin/context7-mcp` launch as Codex |
@@ -220,11 +222,20 @@ claude mcp add-json -s user context7 \
   '{"type":"http","url":"https://mcp.context7.com/mcp","headersHelper":"\"$HOME/bin/context7-headers\""}'
 ```
 
+Qwen Code reads its key from the variable that its provider config names in
+`envKey`, so each wrapper hands it only the key of one provider. `qwen-or`
+selects the OpenRouter key, not an OpenRouter model: choose the model
+explicitly when the session starts. To switch between OBSS LLM and
+OpenRouter, restart Qwen Code through the other wrapper; one session never
+holds both keys.
+
 `tests/agent-keys.sh` (CI job "Agent key wrappers") checks all of this with a
 fake `op`, `security`, `npm` and `npx` and synthetic values: each wrapper
 passes exactly its own variable to its child and nothing to the parent shell
 (under bash and zsh), even when the starting environment still carries the
-other keys and the service account token; every failure path, and every path
+other keys and the service account token; the `qwen` and `qwen-or` wrappers also pass their arguments
+(including empty ones and ones with spaces) and the child's exit status
+through unchanged; every failure path, and every path
 under an inherited `xtrace`, prints neither value nor token and starts
 nothing; the Codex and OpenCode launches, run inside a project that ships its
 own `context7-mcp` package, start only the pinned install; and the leak scans
@@ -257,6 +268,10 @@ report file names, never the matched text.
 - `node` itself is resolved from `PATH` when the pinned server starts, and
   `NODE_OPTIONS` or similar variables in the launching environment still
   apply; only the package location is pinned.
+- Qwen Code's own child processes (shell tools, MCP servers) have not been
+  measured for key inheritance yet. They may receive the provider key from
+  Qwen Code's environment, so protection for Qwen Code is partial until a
+  measurement with a sentinel value verifies what they get.
 - Long-running consumers, MCP servers in particular, hold their key in their
   environment for as long as they run. Restart them after rotating a key.
 - The Claude Code helper's output is held by Claude Code for that connection,
@@ -338,7 +353,7 @@ The shell environment is managed through [Zinit](https://github.com/zdharma-cont
 | `.zshrc`           | Loads plugins, completions, key bindings, and tool integrations |
 | `.zsh_aliases`     | Shell, git, tmux, and tool aliases |
 | `.zsh_functions`   | Helper functions (`g`, `md`, `docker open/close/flush`, etc.) |
-| `.zsh_agent_keys`  | Per-command API key wrappers (`grok`, `jira`, `with-openrouter`, `with-obss-llm`), see [Agent Keys](#agent-keys) |
+| `.zsh_agent_keys`  | Per-command API key wrappers (`grok`, `jira`, `qwen`, `qwen-or`, `with-openrouter`, `with-obss-llm`), see [Agent Keys](#agent-keys) |
 | `.zprofile`        | Homebrew and tool-specific PATH setup |
 
 ### Plugins (via Zinit)
