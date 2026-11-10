@@ -1,18 +1,17 @@
-"""Frozen regression corpus of the secret-read gate (synthetic strings only).
+"""Frozen regression corpus of the secret-read rule (synthetic strings only).
 
 Every row is a string handed to the guard on stdin; none is ever executed by a
 test in this file, and no real `secret-get`, `op`, vault or key is used. The
 tables are consumed by tests/test_agent_env_guard.py (class SecretReadGate).
 
-The rule is scoped (see the guard docstring): only an input whose text spells
-a guarded name is examined, and then it must be in grammar v1 and consist of
-the listed read-only commands. A decision of `deny` below covers the three
-named reasons (denied-pattern, unsupported-syntax/form, invalid-input), which
-all end as a deny.
+The rule is flat (see the guard docstring): an input whose text spells a
+guarded name is refused, whatever it would do, as text and as a list payload.
+An input that spells no guarded name is not examined by the rule and decides
+as on main. The tables below differ only in why a row is kept.
 """
 
-# Direct secret reads and the forms that hide them: every row is denied.
-# A deny comes from the gate or, for eight rows, from main's own rules.
+# Direct secret reads and the forms that hide them. Every row spells a guarded
+# name, so every row is denied.
 SECRET_DENY = [
     # the 2026-11-09 command: zsh MULTIOS sends the value to the pipe as well
     "/usr/bin/time -p ~/bin/secret-get obss-llm 2>&1 >/dev/null | rg real",
@@ -328,8 +327,20 @@ ROUND_6 = [
 ]
 
 
-# The seven mention forms of the original brief and one pipeline form:
-# they spell a guarded name, are in grammar v1 and use listed commands.
+# SR-01, the finding of the single independent review at 0294c46: the strict
+# grammar of that head allowed an input that wrote git configuration naming
+# the guarded command and then had a listed git subcommand run it. Both
+# inputs spell the name, so the flat rule denies them.
+SR_01 = [
+    "printf '[diff]\\n\\texternal = secret-get synthitem\\n' >> .git/config && git show --ext-diff",
+    "echo 'f.txt diff=s' > .gitattributes && "
+    "printf '[diff \"s\"]\\n\\ttextconv = secret-get synthitem\\n' >> .git/config && git diff HEAD~1",
+]
+
+
+# The seven mention forms of the original brief and one pipeline form. They
+# print no key, and they spell a guarded name: preserving them was retired for
+# shell inputs (2026-11-11), so each is denied.
 MENTIONS = [
     "rg secret-get README.md",
     "cat bin/secret-get",
@@ -342,8 +353,11 @@ MENTIONS = [
 ]
 
 
-# Rows that spell a guarded name and are allowed (documented neighbours).
-GATED_ALLOW = [
+# Rows that spell a guarded name and are not one of the direct reads above
+# (mentions, non-printing `op` forms, prose): the cost of the flat rule. Each
+# is denied. The first 24 were allowed by the strict grammar of 0294c46, the
+# rest were refused there for their syntax or their command.
+SPELLED_HARMLESS = [
     "rg secret-get README.md",
     "rg 'op read' README.md",
     "grep -n 'op item get' README.md",
@@ -368,76 +382,71 @@ GATED_ALLOW = [
     "echo OP_RUN_NO_MASKING",
     "echo OP_RUN_NO_MASKING=true",
     "rg OP_RUN_NO_MASKING README.md",
-]
-
-
-# Rows the earlier design allowed that now are refused or denied: the cost of the
-# scoped rule. (command, reason name in GATE_REASONS)
-GATED_REFUSED = [
-    ("ls -l ~/bin/secret-get", "tilde"),
-    ("git commit -m 'document secret-get and op read'", "git"),
-    ("command -v secret-get", "head"),
-    ("shellcheck bin/secret-get", "head"),
-    ("chmod +x bin/secret-get", "head"),
-    ("xargs -n1 echo secret-get", "head"),
-    ("cat <<'EOF'\nsecret-get obss-llm\nop read x\nEOF", "heredoc"),
-    ("cat <<EOF\nrun secret-get obss-llm and op read x\nEOF", "heredoc"),
-    ("echo \"$(date) secret-get\"", "expansion"),
-    ("FOO=secret-get true", "assignment"),
-    ("op", "op-form"),
-    ("secret-get2 obss-llm", "head"),
-    ("secret-gets", "head"),
-    ("not-secret-get obss-llm", "head"),
-    ("op -v", "op-form"),
-    ("op help", "op-form"),
-    ("op vault list --format json", "op-form"),
-    ("op item list --vault agent-keys", "op-form"),
-    ("op items list", "op-form"),
-    ("op item --vault agent-keys list", "op-form"),
-    ("op --account obss vault list", "op-form"),
-    ("op --format json --no-color item list", "op-form"),
-    ("op --cache --debug whoami", "op-form"),
-    ("op signin", "op-form"),
-    ("op run -- true", "op-form"),
-    ("op run --env-file .env -- true", "op-form"),
-    ("env op whoami", "head"),
-    ("time op vault list", "keyword"),
-    ("sh -c 'op whoami'", "head"),
-    ("op run -- printf %s --no-masking", "op-form"),
-    ("op run -- printf %s --no-masking=true", "op-form"),
-    ("op run --env-file .env -- sh -c 'echo --no-masking'", "op-form"),
-    ("op run -- env OP_FORMAT=json true", "op-form"),
-    ("op run -- printf \"%s\" \"$X\"", "expansion"),
-    ("op -- whoami", "op-form"),
-    ("OP_RUN_NO_MASKING_NOTE=1 true", "assignment"),
-    ("op 'r??d' x", "op-form"),
-    ("op item list '*'", "op-form"),
-    ("op item list *", "glob"),
-    ("op vault list --format json *.json", "glob"),
-    ("op run --env-file=.env -- true", "op-form"),
-    ("op run --env-file --no-masking -- /usr/bin/printf X", "op-form"),
-    ("op run --env-file --no-masking=1 -- /usr/bin/printf X", "op-form"),
-    ("op run --environment --no-masking -- /usr/bin/printf X", "op-form"),
-    ("op run --env-file=--no-masking -- /usr/bin/printf X", "op-form"),
-    ("op run --environment=--no-masking -- /usr/bin/printf X", "op-form"),
-    ("op run --env-file a.env --env-file b.env --environment e1 -- true", "op-form"),
-    ("op run --env-file '*.env' -- true", "op-form"),
-    ("op run --env-file '--no-masking' -- true", "op-form"),
-    ("op run --help", "op-form"),
-    ("op run -h", "op-form"),
-    ("op --account --no-masking run -- true", "op-form"),
-    ("op --config --no-masking run -- true", "op-form"),
-    ("op --encoding --no-masking run -- true", "op-form"),
-    ("op --format --no-masking run -- true", "op-form"),
-    ("op --session --no-masking run -- true", "op-form"),
-    ("op --account=--no-masking run -- true", "op-form"),
-    ("op --format json run --env-file .env -- true", "op-form"),
-    ("op --cache=false run -- true", "op-form"),
-    ("op --debug --no-color --iso-timestamps run -- true", "op-form"),
-    ("op run --env-file -- -- true", "op-form"),
-    ("op run -- --no-masking", "op-form"),
-    ("op run --env-file x -- sh -c 'echo --no-masking'", "op-form"),
-    ("sudo -l secret-get", "head"),
+    "ls -l ~/bin/secret-get",
+    "git commit -m 'document secret-get and op read'",
+    "command -v secret-get",
+    "shellcheck bin/secret-get",
+    "chmod +x bin/secret-get",
+    "xargs -n1 echo secret-get",
+    "cat <<'EOF'\nsecret-get obss-llm\nop read x\nEOF",
+    "cat <<EOF\nrun secret-get obss-llm and op read x\nEOF",
+    "echo \"$(date) secret-get\"",
+    "FOO=secret-get true",
+    "op",
+    "secret-get2 obss-llm",
+    "secret-gets",
+    "not-secret-get obss-llm",
+    "op -v",
+    "op help",
+    "op vault list --format json",
+    "op item list --vault agent-keys",
+    "op items list",
+    "op item --vault agent-keys list",
+    "op --account obss vault list",
+    "op --format json --no-color item list",
+    "op --cache --debug whoami",
+    "op signin",
+    "op run -- true",
+    "op run --env-file .env -- true",
+    "env op whoami",
+    "time op vault list",
+    "sh -c 'op whoami'",
+    "op run -- printf %s --no-masking",
+    "op run -- printf %s --no-masking=true",
+    "op run --env-file .env -- sh -c 'echo --no-masking'",
+    "op run -- env OP_FORMAT=json true",
+    "op run -- printf \"%s\" \"$X\"",
+    "op -- whoami",
+    "OP_RUN_NO_MASKING_NOTE=1 true",
+    "op 'r??d' x",
+    "op item list '*'",
+    "op item list *",
+    "op vault list --format json *.json",
+    "op run --env-file=.env -- true",
+    "op run --env-file --no-masking -- /usr/bin/printf X",
+    "op run --env-file --no-masking=1 -- /usr/bin/printf X",
+    "op run --environment --no-masking -- /usr/bin/printf X",
+    "op run --env-file=--no-masking -- /usr/bin/printf X",
+    "op run --environment=--no-masking -- /usr/bin/printf X",
+    "op run --env-file a.env --env-file b.env --environment e1 -- true",
+    "op run --env-file '*.env' -- true",
+    "op run --env-file '--no-masking' -- true",
+    "op run --help",
+    "op run -h",
+    "op --account --no-masking run -- true",
+    "op --config --no-masking run -- true",
+    "op --encoding --no-masking run -- true",
+    "op --format --no-masking run -- true",
+    "op --session --no-masking run -- true",
+    "op --account=--no-masking run -- true",
+    "op --format json run --env-file .env -- true",
+    "op --cache=false run -- true",
+    "op --debug --no-color --iso-timestamps run -- true",
+    "op run --env-file -- -- true",
+    "op run -- --no-masking",
+    "op run --env-file x -- sh -c 'echo --no-masking'",
+    "sudo -l secret-get",
+    "printf 'secret-get fake-item\\n' > s.sh",
 ]
 
 
@@ -481,7 +490,7 @@ NOT_GATED_ALLOW = [
 
 # Programs that run another program from their arguments, with a guarded name
 # in the text. rg --pre, rg --hostname-bin and git grep -O ran a synthetic
-# stand-in when measured, so a gated input may not carry them.
+# stand-in when measured. Each spells the name and is denied.
 RUNS_PROGRAM = [
     "rg --pre synthmark secret-get README.md",
     "rg --pre=synthmark secret-get README.md",
@@ -498,17 +507,28 @@ RUNS_PROGRAM = [
 STATED_LIMITS = {
     # a guarded command reached by another name
     "SECRET-LIMIT-01": ["mykey fake-item", "/tmp/mykey fake-item"],
-    # a script file: one command writes it, another runs it
-    "SECRET-LIMIT-02": ["printf 'secret-get fake-item\\n' > s.sh", "sh s.sh"],
-    # the name is not spelled in the text, so what a program or an env operand
-    # builds is not examined
+    # a script file: one command writes it without spelling the name, another
+    # runs it (a write that spells the name is in SPELLED_HARMLESS: denied)
+    "SECRET-LIMIT-02": ["printf '%s-get fake-item\\n' secret > s.sh", "sh s.sh"],
+    # the name is not spelled in the text, so what a program, an env operand or
+    # a configuration file builds is not examined (the last row is the
+    # unspelled twin of SR-01)
     "SECRET-LIMIT-03": [
         "find . -maxdepth 0 -exec sec*et-get fake-item ';'",
         "python3 -c 'import os; os.system(\"sec\"+\"ret-get fake-item\")'",
         "env \"$(printf sec)ret-get\" fake-item",
+        "printf '[diff]\\n\\texternal = %s-get synthitem\\n' secret >> .git/config && git show --ext-diff",
     ],
     # a launcher or with-secret child can print its own key
     "SECRET-LIMIT-04": ["with-secret obss-llm KEY printenv KEY"],
+    # the boundary of the spelling test: it removes the quotes of $'' and $""
+    # and leaves the `$`, and it folds case with lower(), which keeps U+017F
+    # (a case-insensitive macOS volume resolves that letter to `s`)
+    "SECRET-LIMIT-05": [
+        "env secret-$''get synthitem",
+        "env secret-$\"\"get synthitem",
+        "\u017fecret-get synthitem",
+    ],
     # not fixed here: the env-dump lexer class of issue 24, and `sudo -k env`
     # of issue 25. They pass on main and pass here.
     "ENV-LEXER-01": [
@@ -546,15 +566,16 @@ LIST_PAYLOADS = [
     (["op", "item", "get", "fake-item"], "deny"),
     (["bash", "-lc", "secret-get fake-item"], "deny"),
     (["zsh", "-lc", "secret-get fake-item"], "deny"),
-    (["bash", "-lc", "rg secret-get README.md"], "deny"),   # a shell head is refused inside the gate
-    (["rg", "secret-get", "README.md"], "allow"),
-    (["cat", "bin/secret-get"], "allow"),
-    (["git", "log", "--", "bin/secret-get"], "allow"),
-    (["op", "--version"], "allow"),
-    (["op", "whoami"], "allow"),
-    (["op", "vault", "list"], "allow"),
-    (["op", "item", "list"], "allow"),
-    (["echo", "secret-get"], "allow"),
+    (["bash", "-lc", "rg secret-get README.md"], "deny"),
+    (["rg", "secret-get", "README.md"], "deny"),            # the seven mention forms as argv
+    (["cat", "bin/secret-get"], "deny"),
+    (["git", "log", "--", "bin/secret-get"], "deny"),
+    (["op", "--version"], "deny"),
+    (["op", "whoami"], "deny"),
+    (["op", "vault", "list"], "deny"),
+    (["op", "item", "list"], "deny"),
+    (["echo", "secret-get"], "deny"),
+    (["printf", "%s\\n", "it's op"], "deny"),               # a quoted element still spells the word
     (["git", "status"], "allow"),                 # spells no name: decided as main
     (["bash", "-lc", "git status && git diff"], "allow"),
 ]

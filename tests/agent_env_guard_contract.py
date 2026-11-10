@@ -41,7 +41,10 @@ SECRET_DENY_HINT = (
     "<command>` or a launcher (`grok`, `jira`, `qwen`, `qwen-or`, "
     "`copilot-obss`, `with-openrouter`, `with-obss-llm`), which hand the value "
     "to that one command and never print it, and check that a key reads with "
-    "`with-secret <item> VAR sh -c 'test -n \"$VAR\"'`."
+    "`with-secret <item> VAR sh -c 'test -n \"$VAR\"'`. To read or search a "
+    "file that mentions a guarded name, use the file tools instead of a shell "
+    "command, and hand over text that holds one from a file (`git commit -F "
+    "<file>`)."
 )
 
 GUARD_DOCSTRING = (
