@@ -71,7 +71,7 @@ jobs:
         run: >-
           python3 -m py_compile bin/agent-env-guard tests/test_agent_env_guard.py
           tests/agent_env_guard_harness.py tests/agent_env_guard_shell_corpus.py
-          tests/agent_env_guard_contract.py
+          tests/agent_env_guard_contract.py tests/agent_env_guard_gate_corpus.py
       - name: Test PreToolUse guard decisions and shell corpus
         run: python3 -B -m unittest discover -s tests -p 'test_agent_env_guard.py' -v
 

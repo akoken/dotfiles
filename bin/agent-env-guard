@@ -1158,12 +1158,382 @@ def check_ps(args):
                 break  # the rest of the cluster is this option's argument
 
 
-def decision(reason):
+# ---------------------------------------------------------------------------
+# Secret-read gate
+#
+# This gate is a tripwire too (see the docstring). The rule examines only an
+# input whose text spells a guarded name, so the question "is this input
+# examined?" is answered without any shell semantics and without the lexer
+# above.
+#
+# G1 Spelling. The raw text is case-folded and every ', ", backslash and
+#    backslash-newline is removed; the input is gated when the result holds
+#    `secret-get`, `op_run_no_masking` or `op` as a word (not preceded or
+#    followed by a letter, digit, `_`, `.` or `-`). Quote splicing such as
+#    s''ecret-get therefore spells the name. A name reached without spelling
+#    it (glob, expansion, ANSI-C escape, copy, alias, script file) is a stated
+#    protection limit, not a case this rule decides.
+# G2 Strict grammar v1. A gated input must be read in full by the scanner
+#    below, which has no recovery: the first form outside the grammar is
+#    refused by name. Grammar: `input = list of statements separated by ; or
+#    newline`, a statement is a chain of commands joined by && || |, a command
+#    is literal words followed by output redirections. A literal is a bare
+#    word (ASCII letters, digits and _ . / : @ % + , = - ^ !), a '...' string
+#    or a "..." string (no $ or backtick; a backslash only before " or \). A
+#    word is one literal: no adjacent quoted and bare text. No assignment
+#    prefix, expansion, glob, brace, tilde at the start of a word, comment,
+#    group, background, control flow, input redirection or here-document. The
+#    only redirections are > >> 1> 1>> 2> 2>> 2>&1, after the last word, with
+#    a literal target.
+# G3 Heads. Each command is `secret-get` (denied), `op` with an argument list
+#    from OP_FORMS (anything else is denied), or a bare name from GATE_HEADS
+#    (with the argument rules in check_gate_command). No wrapper, shell, path
+#    or other head is resolved: it is refused. A guarded input that passes G2
+#    and G3 is then allowed; env-dump decisions above still apply first.
+# ---------------------------------------------------------------------------
+
+SECRET_HINT = (
+    "Do not print a stored key: use it through `with-secret <item> <VAR> "
+    "<command>` or a launcher (`grok`, `jira`, `qwen`, `qwen-or`, "
+    "`copilot-obss`, `with-openrouter`, `with-obss-llm`), which hand the value "
+    "to that one command and never print it, and check that a key reads with "
+    "`with-secret <item> VAR sh -c 'test -n \"$VAR\"'`."
+)
+
+SECRET_GET = "secret-get"
+GATE_LEXEME = re.compile(r"secret-get|op_run_no_masking|(?<![a-z0-9_.-])op(?![a-z0-9_.-])")
+GATE_FOLD = re.compile(r"\\\n|['\"\\]")
+GATE_BARE = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./:@%+,=-^!")
+GATE_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=")
+GATE_KEYWORDS = frozenset({"if", "then", "elif", "else", "fi", "for", "while", "until", "do", "done",
+                           "case", "esac", "select", "function", "coproc", "time", "!", "[[", "]]"})
+# Closed list of heads a gated input may use (read and search commands that
+# run nothing). `test` and `[` are not here: they evaluate operands.
+GATE_HEADS = frozenset({"rg", "grep", "cat", "head", "tail", "wc", "ls", "stat", "file", "diff", "echo",
+                        "printf", "basename", "dirname", "which", "type", "cd", "pwd", "true", "false", ":"})
+GATE_GIT = frozenset({"log", "show", "diff", "status", "blame", "grep", "ls-files"})
+# `op` forms that print no stored value. Exact argument lists, nothing else.
+OP_FORMS = (("--version",), ("--help",), ("whoami",), ("vault", "list"), ("item", "list"),
+            ("account", "list"))
+
+# kind: reason. The kind is the first word of the message and is one of
+# denied-pattern, unsupported-syntax, unsupported-form, invalid-input.
+GATE_REASONS = {
+    "secret-get": ("denied-pattern", "`secret-get` prints a stored key"),
+    "op-form": ("denied-pattern", "an `op` form outside the positive table (`--version`, `--help`, "
+                "`whoami`, `vault list`, `item list`, `account list`) can print a stored value"),
+    "expansion": ("unsupported-syntax", "`$` (an expansion or substitution) is outside grammar v1"),
+    "backtick": ("unsupported-syntax", "a backtick substitution is outside grammar v1"),
+    "backslash": ("unsupported-syntax", "a backslash escape is outside grammar v1"),
+    "glob": ("unsupported-syntax", "a glob character is outside grammar v1"),
+    "brace": ("unsupported-syntax", "a brace is outside grammar v1"),
+    "tilde": ("unsupported-syntax", "a tilde at the start of a word is outside grammar v1"),
+    "comment": ("unsupported-syntax", "a comment is outside grammar v1"),
+    "equals-word": ("unsupported-syntax", "a word starting with `=` (zsh expansion) is outside grammar v1"),
+    "adjacent": ("unsupported-syntax", "quoted and bare text joined in one word is outside grammar v1"),
+    "group": ("unsupported-syntax", "a group, subshell or function body is outside grammar v1"),
+    "background": ("unsupported-syntax", "`&` (background) is outside grammar v1"),
+    "pipe-stderr": ("unsupported-syntax", "`|&` is outside grammar v1"),
+    "case-terminator": ("unsupported-syntax", "`;;` and `;&` are outside grammar v1"),
+    "heredoc": ("unsupported-syntax", "a here-document is outside grammar v1"),
+    "herestring": ("unsupported-syntax", "a here-string is outside grammar v1"),
+    "input-redirect": ("unsupported-syntax", "an input redirection is outside grammar v1"),
+    "process-substitution": ("unsupported-syntax", "a process substitution is outside grammar v1"),
+    "redirect-form": ("unsupported-syntax", "only `>`, `>>`, `1>`, `1>>`, `2>`, `2>>` and `2>&1` are "
+                      "inside grammar v1"),
+    "redirect-position": ("unsupported-syntax", "a redirection must follow the last word of its command"),
+    "keyword": ("unsupported-syntax", "control flow, `!` and `[[` are outside grammar v1"),
+    "assignment": ("unsupported-syntax", "an assignment prefix is not accepted in an input that spells a guarded name"),
+    "non-ascii": ("unsupported-syntax", "a non-ASCII bare word is outside grammar v1"),
+    "syntax": ("unsupported-syntax", "an empty command or a dangling operator is outside grammar v1"),
+    "head": ("unsupported-form", "a command outside the closed read-only list; no wrapper, shell or path is resolved"),
+    "git": ("unsupported-form", "`git` is accepted only as log, show, diff, status, blame, grep or ls-files, without -c"),
+    "printf-v": ("unsupported-form", "`printf -v` assigns a variable"),
+    "runs-program": ("unsupported-form", "an option that makes the command run another program (`rg --pre`, "
+                     "`rg --hostname-bin`, `git grep -O`)"),
+    "unterminated": ("invalid-input", "an unterminated quote"),
+    "control": ("invalid-input", "a control character"),
+}
+
+
+class SecretRead(Deny):
+    """A refusal or denial of the secret-read gate; shown with SECRET_HINT.
+    `name` is its key in GATE_REASONS."""
+
+    name = ""
+
+
+def refuse(name):
+    kind, text = GATE_REASONS[name]
+    error = SecretRead(f"secret-read rule, {kind}: {text}")
+    error.name = name
+    return error
+
+
+def spells_guarded_name(text):
+    """Gate G1: whether the text, folded and without quotes and backslashes,
+    spells a guarded name."""
+    return GATE_LEXEME.search(GATE_FOLD.sub("", text).lower()) is not None
+
+
+class StrictScanner:
+    """Gate G2: reads a whole input against grammar v1 and returns its
+    simple commands as lists of words. The first form outside the grammar
+    raises SecretRead; nothing is skipped and nothing is read twice."""
+
+    SPACE = " \t"
+
+    def __init__(self, text):
+        self.text = text
+        self.n = len(text)
+        self.i = 0
+        self.last_was_dup = False
+
+    def commands(self):
+        out = []
+        words = []
+        redirected = False   # a redirection has been read in this command
+        target = False       # the next word is a redirection target
+        after_operator = False
+        while True:
+            char = self.text[self.i] if self.i < self.n else ""
+            if char != "" and char in self.SPACE:
+                self.i += 1
+                continue
+            if char in ("", "\n", ";", "&", "|"):
+                if target:
+                    raise refuse("syntax")
+                if words:
+                    out.append(words)
+                    after_operator = False
+                elif redirected:
+                    raise refuse("redirect-position")
+                elif after_operator:
+                    raise refuse("syntax")
+                words, redirected, target = [], False, False
+                if char == "":
+                    return out
+                self.i += 1
+                if char in ("&", "|"):
+                    after_operator = self.operator(char)
+                elif char == ";" and self.i < self.n and self.text[self.i] in ";&":
+                    raise refuse("case-terminator")
+                continue
+            if char in "()":
+                raise refuse("group")
+            if char == "<":
+                raise refuse(self.input_kind())
+            if char == ">":
+                self.redirection(None)
+                if self.last_was_dup:
+                    redirected = True
+                else:
+                    redirected, target = True, True
+                continue
+            value, quoted, bare = self.word()
+            if bare.isdigit() and self.i < self.n and self.text[self.i] in "<>":
+                if self.text[self.i] == "<":
+                    raise refuse("input-redirect")
+                self.redirection(value)
+                if self.last_was_dup:
+                    redirected = True
+                else:
+                    redirected, target = True, True
+                continue
+            if target:
+                target = False
+            elif redirected:
+                raise refuse("redirect-position")
+            else:
+                if not words:
+                    self.head_word(value, quoted)
+                words.append(value)
+
+    def operator(self, char):
+        """After `&` or `|` was consumed at statement level."""
+        nxt = self.text[self.i] if self.i < self.n else ""
+        if char == "&":
+            if nxt == "&":
+                self.i += 1
+                return True
+            raise refuse("redirect-form" if nxt == ">" else "background")
+        if nxt == "|":
+            self.i += 1
+            return True
+        if nxt == "&":
+            raise refuse("pipe-stderr")
+        return True
+
+    def input_kind(self):
+        rest = self.text[self.i:self.i + 3]
+        if rest.startswith("<<<"):
+            return "herestring"
+        if rest.startswith("<<"):
+            return "heredoc"
+        if rest.startswith("<("):
+            return "process-substitution"
+        return "input-redirect"
+
+    def redirection(self, fd):
+        """At `>`. Accepts > >> 1> 1>> 2> 2>> and 2>&1 only."""
+        self.last_was_dup = False
+        if fd not in (None, "1", "2"):
+            raise refuse("redirect-form")
+        self.i += 1
+        if self.text.startswith(">", self.i):
+            self.i += 1
+        elif self.text.startswith("&", self.i):
+            end = self.i + 2
+            tail = self.text[end:end + 1]
+            if fd == "2" and self.text.startswith("&1", self.i) and (tail == "" or tail in " \t\n;&|"):
+                self.i = end
+                self.last_was_dup = True
+                return
+            raise refuse("redirect-form")
+        elif self.text.startswith("(", self.i) or self.text.startswith("|", self.i):
+            raise refuse("process-substitution" if self.text[self.i] == "(" else "redirect-form")
+
+    def head_word(self, value, quoted):
+        if quoted:
+            return
+        if GATE_ASSIGNMENT.match(value):
+            raise refuse("assignment")
+        if value in GATE_KEYWORDS:
+            raise refuse("keyword")
+
+    def word(self):
+        """One literal word: (value, quoted, bare_text). Raises on anything
+        outside grammar v1, including a word built from several parts."""
+        parts = []
+        start = self.i
+        while self.i < self.n:
+            char = self.text[self.i]
+            if char in " \t\n;&|<>()":
+                break
+            if char == "'":
+                end = self.text.find("'", self.i + 1)
+                if end < 0:
+                    raise refuse("unterminated")
+                self.check_quoted(self.text[self.i + 1:end], single=True)
+                parts.append(("s", self.text[self.i + 1:end]))
+                self.i = end + 1
+            elif char == '"':
+                parts.append(("d", self.double_quoted()))
+            else:
+                parts.append(("b", self.bare(self.i == start)))
+        if len(parts) > 1:
+            raise refuse("adjacent")
+        kind, value = parts[0]
+        return value, kind != "b", value if kind == "b" else ""
+
+    def check_quoted(self, text, single):
+        for char in text:
+            if ord(char) < 32 and char not in "\t\n" or ord(char) == 127:
+                raise refuse("control")
+
+    def double_quoted(self):
+        buf = []
+        j = self.i + 1
+        while True:
+            if j >= self.n:
+                raise refuse("unterminated")
+            char = self.text[j]
+            if char == '"':
+                break
+            if char == "\\":
+                if j + 1 < self.n and self.text[j + 1] in '"\\':
+                    buf.append(self.text[j + 1])
+                    j += 2
+                    continue
+                raise refuse("backslash")
+            if char == "$":
+                raise refuse("expansion")
+            if char == "`":
+                raise refuse("backtick")
+            buf.append(char)
+            j += 1
+        text = "".join(buf)
+        self.check_quoted(text, single=False)
+        self.i = j + 1
+        return text
+
+    def bare(self, word_start):
+        """A run of bare characters, ending at a quote or a delimiter."""
+        begin = self.i
+        while self.i < self.n:
+            char = self.text[self.i]
+            if char in " \t\n;&|<>()'\"":
+                break
+            if char in GATE_BARE:
+                if char == "=" and word_start and self.i == begin and self.i + 1 < self.n and (
+                        self.text[self.i + 1].isalnum() or self.text[self.i + 1] in "_("):
+                    raise refuse("equals-word")
+                self.i += 1
+                continue
+            if char == "$":
+                raise refuse("expansion")
+            if char == "`":
+                raise refuse("backtick")
+            if char == "\\":
+                raise refuse("backslash")
+            if char in "*?[]":
+                raise refuse("glob")
+            if char in "{}":
+                raise refuse("brace")
+            if char == "~" and word_start and self.i == begin:
+                raise refuse("tilde")
+            if char == "#" and word_start and self.i == begin:
+                raise refuse("comment")
+            if char in "~#":
+                self.i += 1
+                continue
+            if ord(char) > 127:
+                raise refuse("non-ascii")
+            raise refuse("control")
+        return self.text[begin:self.i]
+
+
+def check_gate_command(words):
+    """Gate G3 for one simple command (its literal words)."""
+    head = words[0]
+    name = os.path.basename(head).lower()
+    args = words[1:]
+    if name == SECRET_GET:
+        raise refuse("secret-get")
+    if name == "op":
+        if tuple(args) not in OP_FORMS:
+            raise refuse("op-form")
+        return
+    if "/" in head or name not in GATE_HEADS and name != "git":
+        raise refuse("head")
+    if name == "git":
+        if not args or args[0] not in GATE_GIT or any(a.startswith("-c") or "alias." in a for a in args):
+            raise refuse("git")
+        if args[0] == "grep" and any(re.match(r"-[^-]*O", a) or a.startswith("--op") for a in args):
+            raise refuse("runs-program")
+    elif name == "rg":
+        if any(a.startswith("--pre") or a.startswith("--hostname-bin") for a in args):
+            raise refuse("runs-program")
+    elif name == "printf" and args and args[0].startswith("-v"):
+        raise refuse("printf-v")
+
+
+def check_gate(command):
+    """The secret-read rule for the whole typed input (not for nested text):
+    an input that spells no guarded name is not examined."""
+    if not spells_guarded_name(command):
+        return
+    for words in StrictScanner(command).commands():
+        check_gate_command(words)
+
+
+
+def decision(reason, hint=SAFE_HINT):
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": f"agent-env-guard: {reason}. {SAFE_HINT} {PROMISE}",
+            "permissionDecisionReason": f"agent-env-guard: {reason}. {hint} {PROMISE}",
         }
     }
 
@@ -1183,6 +1553,9 @@ def main():
         return 0
     try:
         check_command(command)
+        check_gate(command)
+    except SecretRead as denied:
+        json.dump(decision(str(denied), SECRET_HINT), sys.stdout)
     except Deny as denied:
         json.dump(decision(str(denied)), sys.stdout)
     except Exception as error:  # a guard bug must not silently allow

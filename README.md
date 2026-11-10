@@ -303,9 +303,10 @@ report file names, never the matched text.
   so the Context7 key is in Claude Code's memory (not its environment) while
   the server is connected.
 - Anyone who can run commands as you can run `secret-get` and read every key
-  in the `agent-keys` vault (but nothing outside it). The command guard denies
-  `secret-get` to an agent, but only as a tripwire (see "Agent Secret
-  Hygiene"). Keep only agent-usable keys in that vault.
+  in the `agent-keys` vault (but nothing outside it). The command guard refuses
+  `secret-get` to an agent when the command spells the name, and only as a
+  tripwire (see "Agent Secret Hygiene"). Keep only agent-usable keys in that
+  vault.
 
 ## Agent Secret Hygiene (partial)
 
@@ -342,105 +343,51 @@ protection**, not a fix:
   `/hooks`. Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
   (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
   synthetic environment, never the real one).
-- **Scope of the secret-read rule**: the rule examines only inputs whose text
-  spells a guarded name (`secret-get`, `op` as a word, `OP_RUN_NO_MASKING`)
-  after quotes and backslashes are removed and case is folded. Such an input
-  must be entirely in grammar v1 (literal words, `&&`, `||`, `|`, `;` and
-  newlines, and output redirections after the command) and consist only of the
-  listed read-only commands or an `op` form from the positive table; anything
-  else is refused by name. An input that spells no guarded name is not examined
-  by this rule. Access without spelling the name (a glob such as
-  `secret-g?t`, a parameter expansion, an ANSI-C escape, a copy, an alias or a
-  script file) is an explicit protection limit of this rule, not a finding.
-  The rule lowers the chance of a mistake; it does not promise that a key never
-  reaches tool output or a transcript.
-- **Secret-read rule (earlier description, being replaced)**: the same hook
-  denies a command that prints a stored key. It denies `secret-get`, `op read`, `op inject`, `op document get`,
-  `op run --no-masking` and `op item get`, run by bare name or by any path
-  (`~/bin/secret-get`, `./bin/secret-get`, an absolute path), inside
-  pipelines, lists, `$(...)`, backticks, `<(...)`, subshells and
-  `sh -c`/`bash -c`/`zsh -c` strings, through the wrappers the guard already
-  reads (`env`, `command`, `time`, `/usr/bin/time`, `nohup`, `sudo`, `xargs`
-  and the others), and when a shell or `source` is run on a file named
-  `secret-get`. The deny message names the matched form and the alternative:
-  `with-secret <item> <VAR> <command>` or a launcher (`grok`, `jira`, `qwen`,
-  `qwen-or`, `copilot-obss`, `with-openrouter`, `with-obss-llm`), which hand
-  the value to one command and never print it. `with-secret`,
-  `with-openrouter` and `with-obss-llm` still run, and the command they run is
-  checked like any other; the `secret-get` call inside them is not an agent
-  command, so it is unaffected. Mentions that are not invocations
-  (`rg secret-get README.md`, `cat bin/secret-get`,
-  `git log -- bin/secret-get`) and `op` commands that print no value
-  (`op --version`, `op whoami`, `op vault list`, `op item list`, `op signin`,
-  `op run` without `--no-masking`) still run. Why it exists: a value read this
-  way is in the output the agent sees; under zsh, `MULTIOS` makes
-  `secret-get obss-llm 2>&1 >/dev/null | cat` send the value to the pipe as
-  well as to `/dev/null` (bash prints nothing), which is how a key reached a
-  session transcript. Decision for `op item get` (1Password CLI reference):
-  `--fields`, `--format json`, `--reveal` and `--otp` print field values, a
-  bare `op item get` conceals sensitive fields only by default (`OP_FORMAT`
-  and later flags change that), and an agent needs only names
-  (`op item list`), so every `op item get` and its plural `op items get` is
-  denied whatever the flag (any flag, any order, any option before the
-  subcommand); `op document get`, `op inject` and the version 1 `op get`
-  print stored values the same way. `op` options are read by arity from the flag tables of
-  op 2.42.0 (`op --help` Global Flags and `op run --help` Flags, kept in
-  `tests/fixtures/op-2.42.0-flags.txt` and checked against the guard's tables):
-  a value-taking option (`--env-file`, `--environment`, `--account`,
-  `--config`, `--encoding`, `--format`, `--session`) consumes the next word,
-  or the text after `=`, whatever it looks like, so
-  `op run --env-file --no-masking -- true` runs and
-  `op run --env-file -- --no-masking` is denied (`--` was the value). An `op`
-  option outside those tables has an unknown arity and is refused, never
-  guessed (SECRET-GUARD-05: a newer `op` flag needs a table update). An `op`
-  command built from a variable, and a glob or brace in the `op` command or
-  subcommand word (`op r??d ...`), are refused too. `op run` reads its
-  options up to the `--` that starts the child's argv, which is data
-  (`op run -- printf %s --no-masking` runs); any word there with a glob,
-  brace or substitution is ambiguous and refused first, and
-  `--no-masking` in any spelling (`--no-masking=1`, `=T`, `=yes`) is denied,
-  as is `OP_RUN_NO_MASKING` set in the command text (assignment prefix, `env`,
-  or any declaration builtin: `export`, `declare`, `typeset`, `readonly`,
-  `local`, `integer`, `float`). Humans running commands in their own terminal,
-  outside an agent, are unaffected: the hook only sees what an agent types.
-  Same limit as the rest of the guard: a tripwire, not a boundary.
-- **Role rule**: the guard does not assume that a source token is one argv
-  word with a fixed role. An unquoted expansion can split into several words
-  (`X="json read"; op --format $X ...` runs `op read`, `env -u{X,} true
-  secret-get x` and `f=c; bash -$f 'secret-get x'` build an option from an
-  expansion), and a glob or brace can multiply a word. The invariant: no word
-  is interpreted (as command, subcommand, option, option value, operand or
-  wrapper argument) before it has passed the gate, and a word that carries a
-  glob, a brace, a parameter or a substitution fails it, so the command is
-  refused. There is one gate, `Reader.look()`/`Reader.read()` in
-  `bin/agent-env-guard`: every reader (the wrapper option tables, `env`,
-  `sh -c`/`-o` handling, `source`, `eval`, `trap`, `alias`, `hash`, `set`,
-  `with-secret` and the launchers, and all `op` readers) receives a `Reader`,
-  never the raw words, and `Reader` is the only code that holds them; a
-  structural test fails when a reader takes raw words. What a reader has not
-  read leaves only through `Reader.data()`, as plain data for the command it
-  found. Consequences: a command name keeps an expansion in its directory
-  part only when it is quoted and scalar (`"$HOME/bin/tool"` runs,
-  `$HOME/bin/tool` does not); a quoted expansion that yields several words
-  counts as unquoted (`"$@"`, `"${a[@]}"`, `"${@:1}"`, `"$a[@]"`, zsh
-  `"${(@)a}"`, `"${=a}"`, `"${~a}"`, so `set -- secret-get x; "$@/true"` is
-  denied: the suffix lands on the last word and the command word becomes
-  `secret-get`; the state flows outward from nested expansions, so
-  `"${a[@]:-"${x}"}/true"` and `"${x:-"$@"}/true"` are denied too); a command word a wrapper runs (`time`, `sudo`, `nohup`, `with-secret`)
-  may not carry an expansion at all; a plain assignment prefix of a simple
-  command (`A=$X cmd`) is not split by the shell and stays allowed; words after
-  the selected `op` subcommand do not decide it and stay free. `sudo -k`,
-  `-K` and `-v` (and their long forms) run no command only when none follows:
-  `sudo -k secret-get x` runs `secret-get`, so the command after them is
-  checked; `-e`, `-l` and `-V` run none and pass. A generative
-  test replaces every token of every single-line command of the deny corpus
-  with each expansion form (`$X`, `${X}`, `$(x)`, backticks, glob, brace and
-  partial forms such as `-$f` and `-u{X,}`) and requires a deny. Not behind the
-  gate: `ps` (ENV-GUARD-15 below), `cd`/`pushd` (a variable target never
-  matches `/proc`, see "not modelled" in the lexing contract) and the
-  declaration builtins and `printenv`, which read an argument only for a
-  literal name, so an expansion never counts as one (`NAME=$X` still counts as
-  a name: the ENV-GUARD-12 family).
+- **Secret-read rule**: the same hook refuses an agent command that can print
+  a stored key. **Scope**: the rule examines only inputs whose text spells a
+  guarded name (`secret-get`, `op` as a word, `OP_RUN_NO_MASKING`) after
+  quotes and backslashes are removed and case is folded. Such an input must be
+  entirely in grammar v1 (literal words, `&&`, `||`, `|`, `;` and newlines, and
+  output redirections after the command) and consist only of the listed
+  read-only commands (`rg grep cat head tail wc ls stat file diff echo printf
+  basename dirname which type cd pwd true false :`, and `git` as `log`, `show`,
+  `diff`, `status`, `blame`, `grep` or `ls-files` without `-c`) or an `op` form
+  from the positive table (`--version`, `--help`, `whoami`, `vault list`,
+  `item list`, `account list`); anything else is refused by name. An input that
+  spells no guarded name is not examined by this rule: it gets the env-dump
+  decision above, exactly as on `main`. **Access without spelling the name is
+  an explicit protection limit** of this rule (see the limits below), not a
+  finding. The rule lowers the chance of a mistake; it does not promise that a
+  key never reaches tool output or a transcript.
+  What it refuses inside the gate, each with a named reason that never quotes
+  the command: `denied-pattern` (`secret-get` as a command, an `op` form outside
+  the table, so `op read`, `op item get`, `op run` and every other form are
+  denied), `unsupported-syntax` (an expansion or substitution, a glob, a brace,
+  a leading tilde, a comment, adjacent quoted and bare text in one word, a
+  group, `&`, a here-document, an input redirection, a redirection other than
+  `>`, `>>`, `1>`, `1>>`, `2>`, `2>>`, `2>&1` after the last word, an
+  assignment prefix, control flow, a non-ASCII bare word), `unsupported-form`
+  (a command outside the list above, so no wrapper, shell or path is resolved;
+  `git` outside the listed subcommands or with `-c`; `printf -v`; `rg --pre`,
+  `rg --hostname-bin` and `git grep -O`, which run another program) and
+  `invalid-input` (an unterminated quote, a control character). What still
+  passes: `rg secret-get README.md`, `cat bin/secret-get`,
+  `git log -- bin/secret-get`, `op --version`, `op whoami`, `op vault list`,
+  `op item list` and `echo secret-get | wc -c`. The price of reading no shell:
+  a command whose name merely contains `secret-get`, the word `op` in prose
+  (a commit message, a here-document) and `test` or `[` in such an input are
+  refused too. Keys stay usable through `with-secret <item> <VAR> <command>`
+  and the launchers (`grok`, `jira`, `qwen`, `qwen-or`, `copilot-obss`,
+  `with-openrouter`, `with-obss-llm`), which hand the value to one command and
+  never print it; a call that spells no guarded name is not examined by this
+  rule. Check that a key reads without displaying it with
+  `with-secret <item> CHECK sh -c 'test -n "$CHECK"' && echo ok`. Why it
+  exists: under zsh, `MULTIOS` makes `secret-get obss-llm 2>&1 >/dev/null | cat`
+  send the value to the pipe as well as to `/dev/null` (bash prints nothing),
+  which is how a key reached a session transcript. Humans running commands in
+  their own terminal, outside an agent, are unaffected: the hook only sees what
+  an agent types. Same limit as the rest of the guard: a tripwire, not a
+  boundary.
 - **Known limitations of the guard** (commands that still dump and pass; kept
   as `KNOWN_LIMITS` rows in `tests/agent_env_guard_shell_corpus.py`):
   - ENV-GUARD-11: a function body without braces is not checked, so
@@ -449,29 +396,26 @@ protection**, not a fix:
     `typeset -m PATH '*'` and `typeset -pm PATH '*'` (zsh) and
     `export -p PATH`, `export -p UNUSED` and
     `readonly FAKE_TEST_API_KEY; readonly -p PATH` (dash) list everything.
-  - ENV-GUARD-15: a `ps` option or operand built from an expansion is not
-    read, so an unquoted variable that holds `-E` passes
-    (`x='-p 1 -E'; ps $x`). (ENV-GUARD-13, `env` skipping an operand with an
-    expansion, is closed: see the role rule below.)
-  - SECRET-GUARD-01: a script file that calls `secret-get` is not read, so
-    `printf 'secret-get obss-llm\n' > s.sh; sh s.sh` passes (only a script
-    named `secret-get` is refused).
-  - SECRET-GUARD-02: `find -exec` runs a command the guard does not read, so
-    `find . -maxdepth 0 -exec secret-get obss-llm \;` passes.
-  - SECRET-GUARD-03: an interpreter command string is not read, so
-    `awk 'BEGIN { system("secret-get obss-llm") }'` (and the same in python,
-    node, perl or ruby) passes.
-  - SECRET-GUARD-04: a command run through `with-secret` or a launcher can
+  - ENV-GUARD-13: `env` skips an operand whose value is unknown as if it were
+    an assignment, so `env "$(printf env)" -u X` passes.
+  - SECRET-LIMIT-01: a guarded command reached by another name is not
+    examined, because the name is not spelled: a copy, symlink, alias or
+    function (`mykey fake-item`).
+  - SECRET-LIMIT-02: a script file is not read. One command can write it and
+    another run it, so `printf 'secret-get x\n' > s.sh` passes and then
+    `sh s.sh` passes (the second spells no name).
+  - SECRET-LIMIT-03: a name that is not spelled in the text is not examined,
+    whatever builds it: `find . -exec sec*et-get x ';'`, an interpreter string
+    such as `python3 -c 'os.system("sec"+"ret-get x")'`, or an `env` operand
+    (`env "$(printf sec)ret-get" x`, the ENV-GUARD-13 family).
+  - SECRET-LIMIT-04: a command run through `with-secret` or a launcher can
     print its own key, so `with-secret obss-llm KEY printenv KEY` passes.
-  - SECRET-GUARD-05: an `op` option outside the op 2.42.0 flag tables is
-    refused, not allowed, because its arity is unknown, so `op run
-    --future-flag -- true` is denied although it prints nothing; update the
-    tables when a newer `op` adds a flag.
-  - Not covered either, and not in the corpus: an alias or function defined
-    outside the command that calls `secret-get`, a copy or symlink of it under
-    another name, and any other way to reach the vault, for example reading
-    the service account token from the Keychain with `security
-    find-generic-password` and using `op` with it.
+  - ENV-LEXER-01: the lexer reads some forms differently from the shells, so
+    inputs that dump the environment pass when they spell no guarded name (for
+    example `echo ${x:-'}'$(env)'}'} #'`, `printf 'env\n' | bash /dev/stdin`,
+    `{fd}>/dev/null env`, `if [[ -n x ]] env`). This is the defect class of
+    issue #24 and is **not fixed** by the secret-read rule.
+  - ENV-SUDO-K-01: `sudo -k env` passes (issue #25), **not fixed** here.
   - Anything the guard cannot see: what a started program, script file or
     interpreter does, and variables set outside the command.
 

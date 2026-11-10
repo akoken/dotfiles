@@ -9,10 +9,13 @@ startup files. Nothing reads the real environment or /proc.
 """
 
 import ast
+import importlib.machinery
+import importlib.util
 import json
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -21,6 +24,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agent_env_guard_contract as contract  # noqa: E402
 import agent_env_guard_harness as harness  # noqa: E402
+import agent_env_guard_gate_corpus as gate_corpus  # noqa: E402
 from agent_env_guard_shell_corpus import CASES, KNOWN_LIMITS, PROFILES, WHY  # noqa: E402
 
 # AGENT_ENV_GUARD_UNDER_TEST runs the same table against another copy of the
@@ -433,9 +437,11 @@ class ContinuationSweep(ShellCase):
 
 # Structural rule (lexing contract): only LogicalSource reads the raw text.
 # Outside it, the typed command may only be handed to LogicalSource (or
-# type-checked, compared with "" and passed on to check_command).
+# type-checked, compared with "" and passed on to check_command). The
+# secret-read gate is the one other reader (G1/G2): main() hands the command to
+# check_gate() and to nothing else.
 RAW_NAMES = {"main": {"payload", "tool_input", "command"}, "check_command": {"command", "text"}}
-RAW_SINKS = {"LogicalSource", "isinstance", "check_command"}
+RAW_SINKS = {"LogicalSource", "isinstance", "check_command", "check_gate"}
 # Reflection could reach LogicalSource's private text without naming it.
 REFLECTION = {"getattr", "setattr", "delattr", "vars", "eval", "exec", "compile",
               "globals", "locals", "__import__", "attrgetter", "methodcaller"}
@@ -792,9 +798,9 @@ class PinnedContractText(unittest.TestCase):
         seeds = {
             "seed in PROMISE": ('"evidence of security."', f'"evidence of security. {SEED_W1}"'),
             "seed after PROMISE in the message": (
-                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} {PROMISE} " + SEED_W1 + "\""),
+                "{hint} {PROMISE}\"", "{hint} {PROMISE} " + SEED_W1 + "\""),
             "seed before PROMISE in the message": (
-                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} " + SEED_W1 + " {PROMISE}\""),
+                "{hint} {PROMISE}\"", "{hint} " + SEED_W1 + " {PROMISE}\""),
             "one word of PROMISE": ('"The hook blocks the patterns it recognises;',
                                     '"The hook blocks the patterns it knows;'),
             "one word of the safe hint": ("Read a single variable", "Read a single value"),
@@ -809,6 +815,269 @@ class PinnedContractText(unittest.TestCase):
                     decision, reason = decide("env", guard=copy)
                     self.assertEqual(decision, "deny")
                     self.assertTrue(contract.deny_frame_violations(reason), reason)
+            # the secret-read hint is part of the frame too
+            for label, (old, new) in {
+                "one word of the secret hint": ("Do not print a stored key", "Do not show a stored key"),
+                "secret hint dropped": ("hand the value \"\n    \"to that one command", "hand the value \"\n    \"to one command"),
+            }.items():
+                with self.subTest(seed=label):
+                    self.assertEqual(guard.count(old), 1, old)
+                    copy = pathlib.Path(tmp) / "agent-env-guard"
+                    copy.write_text(guard.replace(old, new, 1))
+                    decision, reason = decide("secret-get fake-item", guard=copy)
+                    self.assertEqual(decision, "deny")
+                    self.assertTrue(contract.deny_frame_violations(reason), reason)
+
+
+def guard_module():
+    """The guard loaded as a module (honours AGENT_ENV_GUARD_UNDER_TEST)."""
+    loader = importlib.machinery.SourceFileLoader("agent_env_guard_under_test", str(GUARD))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def decide_list(argv, guard=None):
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": argv}}
+    proc = run_guard(json.dumps(payload), guard)
+    if proc.returncode != 0:
+        raise AssertionError(f"guard exited {proc.returncode}: {proc.stderr}")
+    if not proc.stdout.strip():
+        return "allow", ""
+    spec = json.loads(proc.stdout)["hookSpecificOutput"]
+    return spec["permissionDecision"], spec["permissionDecisionReason"]
+
+
+# One input per named reason of the gate; the first reason raised is the key.
+REASON_ROWS = {
+    "secret-get": "secret-get fake-item",
+    "op-form": "op read x",
+    "expansion": "echo $x secret-get",
+    "backtick": "echo `x` secret-get",
+    "backslash": "echo a\\b secret-get",
+    "glob": "echo * secret-get",
+    "brace": "echo {a,b} secret-get",
+    "tilde": "ls ~/x secret-get",
+    "comment": "echo secret-get # c",
+    "equals-word": "echo =ls secret-get",
+    "adjacent": "echo 's''ecret-get'",
+    "group": "(echo secret-get)",
+    "background": "echo secret-get &",
+    "pipe-stderr": "echo secret-get |& wc",
+    "case-terminator": "echo secret-get ;; echo",
+    "heredoc": "cat <<EOF\nsecret-get\nEOF",
+    "herestring": "cat <<< secret-get",
+    "input-redirect": "cat < secret-get",
+    "process-substitution": "cat <(echo secret-get)",
+    "redirect-form": "echo secret-get >&2",
+    "redirect-position": "echo secret-get > out x",
+    "keyword": "if true; then echo secret-get; fi",
+    "assignment": "FOO=1 echo secret-get",
+    "non-ascii": "echo é secret-get",
+    "syntax": "echo secret-get &&",
+    "head": "env echo secret-get",
+    "git": "git commit -m secret-get",
+    "printf-v": "printf -v x secret-get",
+    "runs-program": "rg --pre x secret-get",
+    "unterminated": "echo 'secret-get",
+    "control": "echo secret-get\r",
+}
+# Commands that stay allowed inside the gate; a character from FORBIDDEN
+# inserted anywhere must refuse them whenever the text still spells a name.
+SWEEP_BASES = ["rg secret-get README.md", "cat bin/secret-get | wc -l", "git log -- bin/secret-get",
+               "op whoami", "echo op && op vault list", "ls bin 2>&1 >/dev/null | rg secret-get"]
+FORBIDDEN = ["$", "`", "\\", "*", "?", "[", "]", "{", "}", "(", ")", "<", "'", '"', "\u00a0", "\r", "\x00"]
+
+
+class SecretReadGate(unittest.TestCase):
+    """The secret-read rule: scope (G1), strict grammar v1 (G2), heads (G3).
+    Every decision is made on a string; nothing is executed."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = guard_module()
+
+    def assertDenied(self, command, shape="claude"):
+        decision, reason = decide(command, shape)
+        self.assertEqual(decision, "deny", command[:60])
+        self.assertEqual(contract.deny_frame_violations(reason), [], reason)
+        return reason
+
+    def test_secret_deny_rows_are_denied_as_text_and_list(self):
+        self.assertEqual(len(gate_corpus.SECRET_DENY), 227)
+        for command in gate_corpus.SECRET_DENY:
+            with self.subTest(command=command):
+                self.assertDenied(command)
+                self.assertEqual(decide_list(["bash", "-lc", command])[0], "deny")
+
+    def test_review_inputs_and_controls(self):
+        rows = gate_corpus.REVIEW_INPUTS
+        self.assertEqual(len(rows), 43)
+        self.assertEqual(sum(1 for _, _, expected in rows if expected == "allow"), 1)
+        for ident, command, expected in rows:
+            with self.subTest(id=ident):
+                self.assertEqual(decide(command)[0], expected)
+                self.assertEqual(decide_list(["bash", "-lc", command])[0], expected)
+                if expected == "deny":
+                    self.assertDenied(command)
+
+    def test_round_6_findings_are_denied(self):
+        for command in gate_corpus.ROUND_6:
+            with self.subTest(command=command):
+                self.assertDenied(command)
+                self.assertEqual(decide_list(["bash", "-lc", command])[0], "deny")
+
+    def test_mention_forms_are_allowed(self):
+        self.assertEqual(len(gate_corpus.MENTIONS), 8)
+        for command in gate_corpus.MENTIONS:
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], "allow")
+                if "|" not in command:
+                    self.assertEqual(decide_list(shlex.split(command))[0], "allow")
+
+    def test_gated_allow_rows_spell_a_name_and_are_allowed(self):
+        for command in gate_corpus.GATED_ALLOW:
+            with self.subTest(command=command):
+                self.assertTrue(self.module.spells_guarded_name(command))
+                self.assertEqual(decide(command)[0], "allow")
+
+    def test_refused_rows_carry_their_named_reason(self):
+        for command, name in gate_corpus.GATED_REFUSED:
+            with self.subTest(command=command):
+                kind, text = self.module.GATE_REASONS[name]
+                reason = self.assertDenied(command)
+                self.assertIn(f"secret-read rule, {kind}: {text}", reason)
+
+    def test_unspelled_rows_decide_as_main(self):
+        for command in gate_corpus.NOT_GATED_ALLOW:
+            with self.subTest(command=command):
+                self.assertFalse(self.module.spells_guarded_name(command))
+                self.assertEqual(decide(command)[0], "allow")
+
+    def test_every_existing_table_row_that_spells_no_name_is_unchanged(self):
+        """Rows of the main-era tables keep the decision those tables pin."""
+        for expected, rows in (("deny", DENY + UNSEEN_DENY + HEREDOC_DENY + LEXING_DENY),
+                               ("allow", ALLOW + UNSEEN_ALLOW + HEREDOC_ALLOW + LEXING_ALLOW)):
+            for command in rows:
+                if self.module.spells_guarded_name(command):
+                    continue
+                with self.subTest(command=command):
+                    self.assertEqual(decide(command)[0], expected)
+
+    def test_every_named_reason_has_a_row(self):
+        self.assertEqual(set(REASON_ROWS), set(self.module.GATE_REASONS))
+        for name, command in REASON_ROWS.items():
+            with self.subTest(reason=name):
+                with self.assertRaises(self.module.SecretRead) as caught:
+                    self.module.check_gate(command)
+                self.assertEqual(caught.exception.name, name)
+
+    def test_reason_kinds_are_the_three_named_causes(self):
+        kinds = {kind for kind, _ in self.module.GATE_REASONS.values()}
+        self.assertEqual(kinds, {"denied-pattern", "unsupported-syntax", "unsupported-form", "invalid-input"})
+
+    def test_programs_that_run_programs_are_refused(self):
+        for command in gate_corpus.RUNS_PROGRAM:
+            with self.subTest(command=command):
+                self.assertIn("run another program", self.assertDenied(command))
+
+    def test_stated_limits_decide_as_main(self):
+        for ident, rows in gate_corpus.STATED_LIMITS.items():
+            for command in rows:
+                with self.subTest(limit=ident, command=command):
+                    self.assertEqual(decide(command)[0], "allow")
+
+    def test_list_payloads(self):
+        for argv, expected in gate_corpus.LIST_PAYLOADS:
+            with self.subTest(argv=argv):
+                decision, reason = decide_list(argv)
+                self.assertEqual(decision, expected)
+                if expected == "deny":
+                    self.assertEqual(contract.deny_frame_violations(reason), [], reason)
+
+    def test_a_denied_secret_read_does_not_echo_the_command(self):
+        reason = self.assertDenied(f"secret-get {MARKER}")
+        self.assertNotIn(MARKER, reason)
+        self.assertIn("with-secret", reason)
+
+    def test_env_dump_decisions_apply_inside_the_gate(self):
+        for command in ("cat /proc/self/environ secret-get", "env; echo secret-get"):
+            with self.subTest(command=command):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertNotIn("secret-read rule", reason)
+
+    def test_not_spelled_means_not_examined(self):
+        for command in ("echo hi", "git status && git diff", "bash script.sh", "echo $(date)", "sh -c 'echo ok'"):
+            with self.subTest(command=command):
+                self.assertFalse(self.module.spells_guarded_name(command))
+                self.module.check_gate(command)  # no refusal, whatever the syntax
+
+    def test_spelling_ignores_quotes_backslashes_and_case(self):
+        for command in ("echo s''ecret-get", 'echo "SECRET"-get', "echo secr\\et-get", "echo OP_run_NO_masking",
+                        "echo 'o'p", "echo o\\\np", "/usr/bin/OP read x", "echo x | op"):
+            with self.subTest(command=command):
+                self.assertTrue(self.module.spells_guarded_name(command))
+
+    def test_op_is_a_word_only(self):
+        for command in ("echo top", "echo stop", "echo copy", "echo op2", "echo my-op", "echo op.exe", "echo op_x"):
+            with self.subTest(command=command):
+                self.assertFalse(self.module.spells_guarded_name(command))
+
+    def test_forbidden_character_sweep_refuses_every_spelled_mutation(self):
+        """A forbidden character inserted anywhere in an allowed gated command
+        never gives an allow while the text still spells a guarded name."""
+        checked = 0
+        for base in SWEEP_BASES:
+            self.module.check_gate(base)  # the base is allowed
+            for index in range(len(base) + 1):
+                for char in FORBIDDEN:
+                    mutated = base[:index] + char + base[index:]
+                    if not self.module.spells_guarded_name(mutated):
+                        continue
+                    checked += 1
+                    with self.subTest(mutated=mutated):
+                        with self.assertRaises(self.module.SecretRead):
+                            self.module.check_gate(mutated)
+        self.assertGreater(checked, 500)
+
+    def test_scanner_returns_exactly_the_commands_it_read(self):
+        scan = self.module.StrictScanner
+        self.assertEqual(scan("rg secret-get README.md; cat a\nls | wc -l && echo 'x y' \"z\" 2>&1").commands(),
+                         [["rg", "secret-get", "README.md"], ["cat", "a"], ["ls"], ["wc", "-l"],
+                          ["echo", "x y", "z"]])
+        self.assertEqual(scan("echo a > out 2>> log").commands(), [["echo", "a"]])
+        # blank lines and empty statements are accepted
+        self.assertEqual(scan("\n;\necho a;\n").commands(), [["echo", "a"]])
+
+    def test_scanner_has_no_recovery(self):
+        """After the first form outside the grammar nothing is read: the
+        refusal names that form, not a later one."""
+        with self.assertRaises(self.module.SecretRead) as caught:
+            self.module.StrictScanner("echo $x `y` {z}").commands()
+        self.assertEqual(caught.exception.name, "expansion")
+
+    def test_scope_is_stated_in_the_docstring_and_the_readme(self):
+        guard = " ".join(GUARD.read_text().split())
+        readme = " ".join((GUARD.parent.parent / "README.md").read_text().split())
+        for surface, text in (("docstring", guard), ("README", readme)):
+            with self.subTest(surface=surface):
+                self.assertIn("examines only inputs whose text spells a guarded name", text)
+                self.assertIn("is not examined by this rule", text)
+                self.assertIn("explicit protection limit", text)
+        self.assertNotIn("value never lands", readme)
+
+    def test_every_stated_limit_has_a_corpus_row_and_a_readme_entry(self):
+        readme = (GUARD.parent.parent / "README.md").read_text()
+        named = set(re.findall(r"\b(?:SECRET-LIMIT|ENV-LEXER|ENV-SUDO-K)-\d\d\b", readme))
+        self.assertEqual(named, set(gate_corpus.STATED_LIMITS))
+
+    def test_hook_text_and_payload_shapes_agree(self):
+        for command in ("secret-get fake-item", "rg secret-get README.md", "op whoami"):
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], decide(command, shape="codex")[0])
+
 
 
 class Limits(unittest.TestCase):
