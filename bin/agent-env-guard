@@ -26,15 +26,19 @@ it recognises; a command that passes is not evidence of security. Known commands
 ("Agent Secret Hygiene") and in tests/agent_env_guard_shell_corpus.py
 (KNOWN_LIMITS).
 
-It also denies a command that prints a stored key: `secret-get`, `op read`,
-`op inject`, `op document get`, `op run --no-masking` and `op item get` (any
-flag), run by bare name or by any path, including through pipelines, lists,
-substitutions, `sh -c` strings, a shell run on a script named secret-get, and
-the wrappers below. Keys stay usable through `with-secret <item> <VAR>
-<command>` and the launchers, which never print the value, and
-`op whoami`, `op vault list`, `op item list` and mentions of these names
-(`rg secret-get README.md`) still run. Humans running commands outside an
-agent are unaffected: the hook only sees what an agent types.
+Scope of the secret-read rule. It examines only inputs whose text spells a
+guarded name (`secret-get`, `op` as a word, `OP_RUN_NO_MASKING`) after quotes
+and backslashes are removed and case is folded. Such an input must be
+entirely in grammar v1 (literal words, `&&`, `||`, `|`, `;` and newlines, and
+output redirections after the command) and consist only of the listed
+read-only commands or an `op` form from the positive table; anything else is
+refused by name. An input that spells no guarded name is not examined by this
+rule and gets the env-dump decision above, as before. Reaching a guarded
+command without spelling its name (a glob, a parameter expansion, an ANSI-C
+escape, a copy, an alias or a script file) is an explicit protection limit,
+not a finding. Keys stay usable through `with-secret <item> <VAR> <command>`
+and the launchers, which never print the value. Humans running commands
+outside an agent are unaffected: the hook only sees what an agent types.
 
 LIMITATION: it inspects only the command text that passes through this
 hook. It cannot see what a test, script, build tool or interpreter (node,

@@ -342,9 +342,20 @@ protection**, not a fix:
   `/hooks`. Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
   (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
   synthetic environment, never the real one).
-- **Secret-read rule**: the same hook denies a command that prints a stored
-  key, so a value never lands in tool output or the session transcript. It
-  denies `secret-get`, `op read`, `op inject`, `op document get`,
+- **Scope of the secret-read rule**: the rule examines only inputs whose text
+  spells a guarded name (`secret-get`, `op` as a word, `OP_RUN_NO_MASKING`)
+  after quotes and backslashes are removed and case is folded. Such an input
+  must be entirely in grammar v1 (literal words, `&&`, `||`, `|`, `;` and
+  newlines, and output redirections after the command) and consist only of the
+  listed read-only commands or an `op` form from the positive table; anything
+  else is refused by name. An input that spells no guarded name is not examined
+  by this rule. Access without spelling the name (a glob such as
+  `secret-g?t`, a parameter expansion, an ANSI-C escape, a copy, an alias or a
+  script file) is an explicit protection limit of this rule, not a finding.
+  The rule lowers the chance of a mistake; it does not promise that a key never
+  reaches tool output or a transcript.
+- **Secret-read rule (earlier description, being replaced)**: the same hook
+  denies a command that prints a stored key. It denies `secret-get`, `op read`, `op inject`, `op document get`,
   `op run --no-masking` and `op item get`, run by bare name or by any path
   (`~/bin/secret-get`, `./bin/secret-get`, an absolute path), inside
   pipelines, lists, `$(...)`, backticks, `<(...)`, subshells and
