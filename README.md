@@ -389,7 +389,8 @@ protection**, not a fix:
   brace or substitution is ambiguous and refused first, and
   `--no-masking` in any spelling (`--no-masking=1`, `=T`, `=yes`) is denied,
   as is `OP_RUN_NO_MASKING` set in the command text (assignment prefix, `env`,
-  `export`, `declare`). Humans running commands in their own terminal,
+  or any declaration builtin: `export`, `declare`, `typeset`, `readonly`,
+  `local`, `integer`, `float`). Humans running commands in their own terminal,
   outside an agent, are unaffected: the hook only sees what an agent types.
   Same limit as the rest of the guard: a tripwire, not a boundary.
 - **Role rule**: the guard does not assume that a source token is one argv
@@ -413,7 +414,8 @@ protection**, not a fix:
   counts as unquoted (`"$@"`, `"${a[@]}"`, `"${@:1}"`, `"$a[@]"`, zsh
   `"${(@)a}"`, `"${=a}"`, `"${~a}"`, so `set -- secret-get x; "$@/true"` is
   denied: the suffix lands on the last word and the command word becomes
-  `secret-get`); a command word a wrapper runs (`time`, `sudo`, `nohup`, `with-secret`)
+  `secret-get`; the state flows outward from nested expansions, so
+  `"${a[@]:-"${x}"}/true"` and `"${x:-"$@"}/true"` are denied too); a command word a wrapper runs (`time`, `sudo`, `nohup`, `with-secret`)
   may not carry an expansion at all; a plain assignment prefix of a simple
   command (`A=$X cmd`) is not split by the shell and stays allowed; words after
   the selected `op` subcommand do not decide it and stay free. `sudo -k`,

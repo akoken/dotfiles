@@ -531,9 +531,14 @@ class Lexer:
             self.expansion(word)
         elif src.at("${"):
             src.take(2)
+            # The multi-word state belongs to this expansion; it flows outward
+            # from every nested one (an inner ${x} never resets an outer @).
+            outer = self.several_words
             self.several_words = False
             self.read_param()
-            self.expansion(word, several=self.several_words)
+            mine = self.several_words
+            self.several_words = outer or mine
+            self.expansion(word, several=mine)
         elif src.peek(1) is not None and (src.peek(1) in NAME_START or src.peek(1) in SPECIAL_PARAMS):
             src.take()
             several = False
@@ -544,6 +549,7 @@ class Lexer:
                 while src.peek() is not None and (src.peek().isalnum() or src.peek() == "_"):
                     src.take()
                 several = src.peek() == "["  # zsh $a[@]
+            self.several_words = self.several_words or several
             self.expansion(word, several=several)
         else:
             word.add("lit", src.take())
@@ -1278,14 +1284,14 @@ def check_words(words, depth, wrapped=False):
         if not any(VARIABLE_NAME.fullmatch(a) for a in args):
             raise Deny("`printenv` without a variable name dumps the whole environment")
         return
-    if name in {"export", "declare", "typeset", "readonly", "local"}:
+    if name in DECLARATION_BUILTINS:
         for a in args:
             refuse_no_masking_assignment(a)
     if name == "export":
         if not any(names_a_variable(a) for a in args):
             raise Deny("`export -p` / bare `export` dumps every exported variable")
         return
-    if name in {"declare", "typeset", "readonly", "local"}:
+    if name in DECLARATION_BUILTINS - {"export"}:
         if any(a[:1] in "-+" and "n" in a[1:] for a in args):
             raise Deny("namerefs (`declare -n`) read variables named at run time")
         if not any(names_a_variable(a) for a in args):

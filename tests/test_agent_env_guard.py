@@ -109,6 +109,9 @@ ALLOW = [
     "declare -p PATH",
     "declare -x FOO=bar",
     "typeset -i n=3",
+    "integer n=3",
+    "float f=1.5",
+    "integer -x COUNT=1",
     "command -v env",
     "git status && git diff",
     "gh auth status",
@@ -402,6 +405,14 @@ SECRET_DENY = [
     'set -- secret-get fake; sudo "$@/true"',
     'set -- secret-get fake; command "$@/true"',
     'set -- secret-get fake; xargs "$@/true"',
+    # SG23-NESTED-MULTIWORD: an inner expansion must not reset the outer
+    # multi-word state (the reported probe, verbatim)
+    'a=(secret-get fake); x=x; "${a[@]:-"${x}"}/true"',
+    # SG23-INTEGER-NO-MASKING: every declaration builtin exports an assignment
+    "integer -x OP_RUN_NO_MASKING=1; op run -- true",
+    "integer OP_RUN_NO_MASKING=1",
+    "float -x OP_RUN_NO_MASKING=1",
+    "typeset -ix OP_RUN_NO_MASKING=1",
     # SUDO-K: -k, -K and -v skip nothing when a command follows
     "sudo -k secret-get fake",
     "sudo -u root -k secret-get fake",
@@ -1556,6 +1567,70 @@ class GateInvariant(unittest.TestCase):
             with self.subTest(word=word):
                 reader = guard.Reader([guard.Arg(word, False, False, splits=False)], "a test")
                 self.assertEqual(reader.read(), word)
+
+
+# SG23-NESTED-MULTIWORD, class: the multi-word state of a ${...} belongs to
+# that expansion and flows outward from every nested one, never reset by it.
+MULTIWORD_FAMILIES = {
+    "$@ family": '"${@:-%s}/true"',
+    "${a[@]} family": '"${a[@]:-%s}/true"',
+    "${a[@]/x/y} family": '"${a[@]/x/%s}/true"',
+    "zsh flags": '"${(@)a:-%s}/true"',
+    "zsh =": '"${=a:-%s}/true"',
+    "zsh ~": '"${~a:-%s}/true"',
+    "zsh ^": '"${^a:-%s}/true"',
+}
+NESTED_SCALARS = ['"${x}"', "${x}", '"$x"', "$x", "'x'", "x", "$(echo x)", '"$(echo x)"', "`echo x`",
+                  '"${y:-"${x}"}"', "${y:-${x}}", '"${y:-"$x"}"', '"${y:-$(echo x)}"']
+INNER_MULTIWORD = ['"$@"', '"${a[@]}"', '"${a[@]:-x}"', '"${(@)a}"', '"${=a}"', '"${~a}"', '"${^a}"',
+                   '"${@:1}"', '"$a[@]"']
+SCALAR_OUTERS = ['"${x:-%s}/true"', '"${x:+%s}/true"', '"${x/a/%s}/true"', '"${x#%s}/true"']
+
+
+class NestedMultiword(unittest.TestCase):
+    def check(self, commands, expected):
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], expected)
+
+    def test_a_multiword_outer_stays_multiword_whatever_it_nests(self):
+        commands = [template % inner for template in MULTIWORD_FAMILIES.values()
+                    for inner in NESTED_SCALARS]
+        self.check(commands, "deny")
+
+    def test_a_multiword_inner_makes_a_scalar_outer_multiword(self):
+        commands = [outer % inner for outer in SCALAR_OUTERS for inner in INNER_MULTIWORD]
+        self.check(commands, "deny")
+
+    def test_scalar_in_scalar_stays_one_word(self):
+        commands = [outer % inner for outer in SCALAR_OUTERS for inner in NESTED_SCALARS]
+        self.check(commands, "allow")
+
+    def test_nesting_in_a_scalar_directory_of_a_longer_command(self):
+        self.check(['"${a[@]:-"${x}"}/true" arg', 'time "${a[@]:-"${x}"}/true"',
+                    'a=(secret-get fake); x=x; with-secret obss-llm KEY "${a[@]:-"${x}"}/true"'], "deny")
+
+
+class DeclarationBuiltins(unittest.TestCase):
+    """One source (DECLARATION_BUILTINS) drives the lexer's assignment
+    position and the OP_RUN_NO_MASKING and dump checks."""
+
+    def test_every_declaration_builtin_refuses_the_masking_assignment(self):
+        guard = OpOptionTables.guard_module()
+        self.assertTrue({"integer", "float", "typeset", "declare", "export", "readonly", "local"}
+                        <= set(guard.DECLARATION_BUILTINS))
+        for name in sorted(guard.DECLARATION_BUILTINS):
+            for command in (f"{name} OP_RUN_NO_MASKING=1", f"{name} -x OP_RUN_NO_MASKING=1",
+                            f"{name} -x FOO=1 OP_RUN_NO_MASKING=true"):
+                with self.subTest(command=command):
+                    self.assertEqual(decide(command)[0], "deny")
+
+    def test_every_declaration_builtin_keeps_its_ordinary_assignment(self):
+        guard = OpOptionTables.guard_module()
+        for name in sorted(guard.DECLARATION_BUILTINS):
+            command = f"{name} COUNT=1"
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], "allow")
 
 
 SEED_W1 = "Allowed commands are safe and do not dump."
