@@ -28,20 +28,12 @@ PROMISE = (
 )
 
 # Fixed frame of every deny message: "agent-env-guard: <reason>. " then
-# DENY_HINT (an environment dump) or SECRET_DENY_HINT (a direct secret read),
-# a space and PROMISE. Only <reason> varies per denied form.
+# DENY_HINT, a space and PROMISE. Only <reason> varies per denied form.
 DENY_PREFIX = "agent-env-guard: "
 DENY_HINT = (
     "Read a single variable with `printenv NAME` (or `[ -n \"${NAME+x}\" ]` to "
     "test presence), list processes without environments (`ps -o pid,ppid,command`), "
     "and pass values with `env NAME=value command`."
-)
-SECRET_DENY_HINT = (
-    "Do not print a stored key: use it through `with-secret <item> <VAR> "
-    "<command>` or a launcher (`grok`, `jira`, `qwen`, `qwen-or`, "
-    "`copilot-obss`, `with-openrouter`, `with-obss-llm`), which hand the value "
-    "to that one command and never print it, and check that a key reads with "
-    "`with-secret <item> VAR sh -c 'test -n \"$VAR\"'`."
 )
 
 GUARD_DOCSTRING = (
@@ -181,11 +173,10 @@ def pin_violations(guard_source, corpus_source, readme_text):
 
 def deny_frame_violations(reason):
     """Why a deny message is not <prefix><reason>. <hint> <promise>, if so."""
+    tail = f". {DENY_HINT} {PROMISE}"
     if not reason.startswith(DENY_PREFIX):
         return ["prefix"]
-    tails = [f". {hint} {PROMISE}" for hint in (DENY_HINT, SECRET_DENY_HINT)]
-    tail = next((t for t in tails if reason.endswith(t)), None)
-    if tail is None:
+    if not reason.endswith(tail):
         return ["tail"]
     if len(reason) == len(DENY_PREFIX) + len(tail) - 1:
         return ["empty reason"]

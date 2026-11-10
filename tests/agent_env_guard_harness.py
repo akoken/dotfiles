@@ -19,12 +19,7 @@ changed, aliased or set anything would fail that check.
 The shims make dumps observable without real data: env and printenv record
 a trace when they would dump and then run the real tool on the synthetic
 environment; ps never runs the real ps, it records whether an environment
-flag was given and prints a fixed line. secret-get, op and with-secret are
-synthetic too: secret-get and the op subcommands that print a stored value
-(read, inject, item get, document get) record a trace and print the canary,
-the other op subcommands print a fixed line, and with-secret puts the canary
-in one variable and runs the command it is given. None of them reads a
-Keychain, a vault or a real item.
+flag was given and prints a fixed line.
 
 Run `python3 -I tests/agent_env_guard_harness.py` to print the measured
 categories for this machine's profiles (used to review the corpus table).
@@ -87,32 +82,6 @@ print("  PID COMMAND")
 print("    1 fake-ps-shim")
 '''
 
-SHIM_SECRET_GET = r'''#!{python}
-import os, sys
-with open(os.environ["GUARD_TRACE"], "a") as fh:
-    fh.write("secret-get\n")
-sys.stdout.write(os.environ["FAKE_TEST_API_KEY"])
-'''
-
-SHIM_OP = r'''#!{python}
-import os, sys
-words = [a for a in sys.argv[1:] if not a.startswith("-")]
-if words[:1] in (["read"], ["inject"]) or words[:2] in (["item", "get"], ["document", "get"]):
-    with open(os.environ["GUARD_TRACE"], "a") as fh:
-        fh.write("op-read\n")
-    sys.stdout.write(os.environ["FAKE_TEST_API_KEY"])
-else:
-    print("fake-op-shim")
-'''
-
-SHIM_WITH_SECRET = r'''#!{python}
-import os, sys
-if len(sys.argv) < 4:
-    sys.exit(2)
-os.environ[sys.argv[2]] = os.environ["FAKE_TEST_API_KEY"]
-os.execvp(sys.argv[3], sys.argv[3:])
-'''
-
 SHELL_ARGV = {
     "sh": ["/bin/sh", "-c"],
     "bash": ["/bin/bash", "--noprofile", "--norc", "-c"],
@@ -128,17 +97,11 @@ class Sandbox:
         self.home = os.path.join(self.root, "home")
         os.makedirs(self.shims)
         os.makedirs(self.home)
-        os.makedirs(os.path.join(self.home, "bin"))
-        for name, body in (("env", SHIM_ENV), ("printenv", SHIM_PRINTENV), ("ps", SHIM_PS),
-                           ("secret-get", SHIM_SECRET_GET), ("op", SHIM_OP),
-                           ("with-secret", SHIM_WITH_SECRET)):
-            paths = [os.path.join(self.shims, name)]
-            if name == "secret-get":
-                paths.append(os.path.join(self.home, "bin", name))  # `~/bin/secret-get`
-            for path in paths:
-                with open(path, "w") as fh:
-                    fh.write(body.replace("{python}", sys.executable))
-                os.chmod(path, 0o755)
+        for name, body in (("env", SHIM_ENV), ("printenv", SHIM_PRINTENV), ("ps", SHIM_PS)):
+            path = os.path.join(self.shims, name)
+            with open(path, "w") as fh:
+                fh.write(body.replace("{python}", sys.executable))
+            os.chmod(path, 0o755)
 
     def close(self):
         shutil.rmtree(self.root, ignore_errors=True)

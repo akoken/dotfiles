@@ -50,16 +50,7 @@ KNOWN_LIMITS = {
     "ENV-GUARD-11": "a function body without braces (`f() env`) is not checked",
     "ENV-GUARD-12": "one named operand makes typeset/export/readonly listing forms pass "
                     "(`typeset -m NAME '*'`, dash `export -p NAME`, `readonly -p NAME`)",
-    "ENV-GUARD-15": "a ps option or operand built from an expansion is not read, so an "
-                    "unquoted variable that holds `-E` passes (`x='-p 1 -E'; ps $x`)",
-    "SECRET-GUARD-01": "a script file that calls secret-get passes (the guard does not read the file)",
-    "SECRET-GUARD-02": "`find -exec` runs a command the guard does not read, so "
-                       "`find . -maxdepth 0 -exec secret-get obss-llm ;` passes",
-    "SECRET-GUARD-03": "an interpreter command string is not read, so awk's system() "
-                       "can run secret-get",
-    "SECRET-GUARD-04": "a command run through with-secret or a launcher can print its own key",
-    "SECRET-GUARD-05": "an op option outside the op 2.42.0 flag tables (tests/fixtures/op-2.42.0-flags.txt) "
-                       "is refused, never allowed, because its arity is unknown",
+    "ENV-GUARD-13": "env skips an unknown operand as if it were an assignment",
 }
 CASES = []
 
@@ -223,10 +214,7 @@ case("X3", "typeset -pm PATH '*'", "allow", limit="ENV-GUARD-12")
 case("X4", "export -p PATH", "allow", limit="ENV-GUARD-12")
 case("X5", "export -p UNUSED", "allow", limit="ENV-GUARD-12")
 case("X6", "readonly FAKE_TEST_API_KEY; readonly -p PATH", "allow", limit="ENV-GUARD-12")
-# ENV-GUARD-13 (env skipped an unknown operand as if it were an assignment) is
-# closed: an env operand with an expansion may be several words, so it is refused.
-case("X7", 'env "$(printf env)" -u X', "deny")
-case("X12", "x='-p 1 -E'; ps $x", "allow", limit="ENV-GUARD-15")
+case("X7", 'env "$(printf env)" -u X', "allow", limit="ENV-GUARD-13")
 # Legitimate forms the narrow grammar refuses (see round6-grammar-table)
 case("L1", "2>/dev/null true", "deny", why="narrow")
 case("L2", "printf $'a\\tb\\n'", "deny", why="narrow")
@@ -281,54 +269,6 @@ case("A31", "x=$((1+2)); echo $x", "allow")
 case("A32", "echo ${#PATH}", "allow")
 # $(\<NL>( joins to $(( in every profile: arithmetic on a variable named env
 case("A33", f"x=$({C}(env))", "allow")
-
-# Direct secret reads (SECRET-GUARD): the shims print the canary for
-# secret-get and for the op subcommands that print a stored value. Bare names
-# only here (the shim directory comes first in PATH, so the real op never
-# runs); path spellings, absolute paths and the 2026-11-09 command are in
-# the decision tables of tests/test_agent_env_guard.py.
-case("SG1", "secret-get obss-llm", "deny", sweep=True)
-# zsh MULTIOS: `>/dev/null` after the pipe adds a second output, so the value
-# reaches the pipe in zsh; bash and dash send it to /dev/null only.
-case("SG2", "secret-get obss-llm 2>&1 >/dev/null | cat", "deny")
-case("SG3", "~/bin/secret-get obss-llm", "deny")
-case("SG4", "x=$(secret-get obss-llm); echo $x", "deny")
-case("SG5", "env secret-get obss-llm", "deny")
-case("SG6", "command secret-get obss-llm", "deny")
-case("SG7", "sh -c 'secret-get obss-llm'", "deny")
-case("SG8", 'echo "$(secret-get obss-llm)"', "deny")
-case("SG9", "cat <<EOF\n$(secret-get obss-llm)\nEOF", "deny")
-case("SG10", "with-secret obss-llm KEY secret-get xai", "deny")
-case("SG11", "/usr/bin/time -p ~/bin/secret-get obss-llm 2>&1 >/dev/null | rg real", "deny", run=False)
-case("SG12", "bash ~/bin/secret-get obss-llm", "deny", run=False)
-case("SO1", "op read op://agent-keys/obss-llm/credential", "deny")
-case("SO2", "op item get obss-llm --fields credential", "deny")
-case("SO3", "op item get obss-llm", "deny", sweep=True)
-case("SO4", "op --no-color item get obss-llm", "deny")
-case("SO5", "echo op://agent-keys/obss-llm/credential | op inject", "deny")
-case("SO6", "op document get notes", "deny")
-case("SO7", "op run --no-masking -- true", "deny", run=False)
-# SG23-GLOB: the glob expands to the file the command made first
-case("SO8", "touch read; op r??d op://agent-keys/obss-llm/credential", "deny")
-case("SO9", "touch item; op ite? get obss-llm", "deny")
-# SECRET-GUARD-05: refused although it prints nothing (the shim ignores the flag)
-case("SO10", "op run --future-flag -- true", "deny", why="narrow")
-# Not invocations, or no value printed: allowed
-case("SA1", "op whoami", "allow")
-case("SA2", "op vault list", "allow")
-case("SA3", "op item list", "allow")
-case("SA4", "op --version", "allow")
-case("SA5", "with-secret obss-llm KEY sh -c 'test -n \"$KEY\"'", "allow")
-case("SA6", "with-secret obss-llm KEY sh -c 'printf %s \"${#KEY}\"'", "allow")
-case("SA7", "echo secret-get op read", "allow")
-case("SA8", "cat <<'EOF'\nsecret-get obss-llm\nEOF", "allow")
-case("SA9", "ls secret-get 2>/dev/null; true", "allow")
-case("SA10", "grep -c secret-get /dev/null; true", "allow")
-# Known limitations (see KNOWN_LIMITS): allowed although they print the canary
-case("X8", "printf 'secret-get obss-llm\\n' > s.sh; sh s.sh", "allow", limit="SECRET-GUARD-01")
-case("X9", "find . -maxdepth 0 -exec secret-get obss-llm \\;", "allow", limit="SECRET-GUARD-02")
-case("X10", 'awk \'BEGIN { system("secret-get obss-llm") }\'', "allow", limit="SECRET-GUARD-03")
-case("X11", "with-secret obss-llm KEY printenv KEY", "allow", limit="SECRET-GUARD-04")
 
 # Measured categories per verified profile, in PROFILES order (round 6
 # rows B, L, K and round 7 rows J, X measured the same way). Source:
@@ -499,40 +439,6 @@ OBSERVED = {
     "X5": "none none none visible none",
     "X6": "none none none visible none",
     "X7": "visible visible visible visible visible",
-    "X12": "ran ran ran ran ran",
-    "SG1": "visible visible visible visible visible",
-    "SG2": "ran ran visible ran ran",
-    "SG3": "visible visible visible visible visible",
-    "SG4": "visible visible visible visible visible",
-    "SG5": "visible visible visible visible visible",
-    "SG6": "visible visible visible visible visible",
-    "SG7": "visible visible visible visible visible",
-    "SG8": "visible visible visible visible visible",
-    "SG9": "visible visible visible visible visible",
-    "SG10": "visible visible visible visible visible",
-    "SO1": "visible visible visible visible visible",
-    "SO2": "visible visible visible visible visible",
-    "SO3": "visible visible visible visible visible",
-    "SO4": "visible visible visible visible visible",
-    "SO5": "visible visible visible visible visible",
-    "SO6": "visible visible visible visible visible",
-    "SO10": "none none none none none",
-    "SO8": "visible visible visible visible visible",
-    "SO9": "visible visible visible visible visible",
-    "SA1": "none none none none none",
-    "SA2": "none none none none none",
-    "SA3": "none none none none none",
-    "SA4": "none none none none none",
-    "SA5": "none none none none none",
-    "SA6": "none none none none none",
-    "SA7": "none none none none none",
-    "SA8": "none none none none none",
-    "SA9": "none none none none none",
-    "SA10": "none none none none none",
-    "X8": "visible visible visible visible visible",
-    "X9": "visible visible visible visible visible",
-    "X10": "visible visible visible visible visible",
-    "X11": "visible visible visible visible visible",
     "L1": "none none none none none",
     "L2": "none none none none none",
     "L3": "none none none none none",

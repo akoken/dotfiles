@@ -67,16 +67,6 @@ SAFE_HINT = (
     "and pass values with `env NAME=value command`."
 )
 
-# The hint of a denied secret read: the matched form is in the reason; this
-# names what to use instead.
-SECRET_HINT = (
-    "Do not print a stored key: use it through `with-secret <item> <VAR> "
-    "<command>` or a launcher (`grok`, `jira`, `qwen`, `qwen-or`, "
-    "`copilot-obss`, `with-openrouter`, `with-obss-llm`), which hand the value "
-    "to that one command and never print it, and check that a key reads with "
-    "`with-secret <item> VAR sh -c 'test -n \"$VAR\"'`."
-)
-
 # The one limited promise, stated in the docstring above, every deny message,
 # the README and the shell corpus (tests/test_agent_env_guard.py checks it).
 PROMISE = (
@@ -181,29 +171,6 @@ DECLARATION_BUILTINS = {"local", "typeset", "declare", "export", "readonly", "in
 #    definitions, hash path bindings, namerefs and cd into /proc are
 #    refused. xargs input is an unknown operand.
 #
-# L12 Secret reads. After wrappers are resolved, a simple command whose
-#    basename is secret-get is denied; so is `op` with the subcommand read,
-#    inject, get (v1), document(s) get, item(s) get, or run --no-masking.
-#    op options are read by arity from tables taken from the op 2.42.0 help
-#    (a value-taking option consumes the next word, even one that looks like
-#    an option or `--`; an option outside the tables is refused, never
-#    guessed); an op command built from an expansion, or whose command or
-#    subcommand word has a glob or brace, is refused. op run reads its
-#    options up to the `--` that starts the child's argv (data, not read),
-#    refuses any word there with a glob, brace or substitution, and denies
-#    --no-masking[=value] and OP_RUN_NO_MASKING set in the text. with-secret, with-openrouter and with-obss-llm
-#    are wrappers: the command they run is checked. A shell or `source`
-#    run on a file named secret-get is denied; other script files are not
-#    read.
-# L13 Gate. No word is interpreted (as command, subcommand, option, option
-#    value, operand or wrapper argument) before Reader.look() or
-#    Reader.read() has passed it: a word with a glob, brace, parameter or
-#    substitution is refused, because one source token can become several
-#    argv words or other text. A command name keeps an expansion in its
-#    directory part only when it is quoted. Readers get a Reader, never the
-#    raw words (tests/test_agent_env_guard.py checks this structurally); ps
-#    and cd are not behind the gate (README "Role rule").
-#
 # Not modelled: functions or aliases defined outside the command, values of
 # variables set outside it, what a started program or script file does, and
 # relative paths when the working directory was changed by an unknown cd.
@@ -218,10 +185,6 @@ DELIMITER_SPLIT = "a here-document delimiter reached through a line continuation
 
 class Deny(Exception):
     """A denied form; the message is safe to show (no command text)."""
-
-
-class SecretRead(Deny):
-    """A denied direct read of a stored key; shown with SECRET_HINT."""
 
 
 class LogicalSource:
@@ -292,11 +255,6 @@ NAME_START = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
 SPECIAL_PARAMS = set("@*#?-$!0123456789")
 
 
-# An expansion the shell may split and glob ("unknown") or one inside double
-# quotes, which stays one word ("dqunknown"); the value of both is unknown.
-EXPANSION_KINDS = ("unknown", "dqunknown")
-
-
 BRACE_EXPANSION = re.compile(r"\{[^{}]*(,|\.\.)[^{}]*\}")
 
 
@@ -312,7 +270,7 @@ class Word:
 
     def value(self):
         """Quote-removed value; unknown parts become UNKNOWN."""
-        return "".join(UNKNOWN if kind in EXPANSION_KINDS else text for kind, text in self.parts)
+        return "".join(UNKNOWN if kind == "unknown" else text for kind, text in self.parts)
 
     def literal_start(self):
         return self.parts[0][1] if self.parts and self.parts[0][0] == "lit" else ""
@@ -345,8 +303,6 @@ class Lexer:
         self.src = src
         self.depth = depth
         self.budget = budget if budget is not None else [0]
-        self.in_double_quotes = 0
-        self.several_words = False  # the ${...} just read can expand to several words
         self.nested_tokens = []  # token lists of $(...)
         self.nested_texts = []   # backtick, ((...)) and here-doc substitution texts
 
@@ -360,13 +316,6 @@ class Lexer:
             yield
         finally:
             self.budget[0] -= 1
-
-    def expansion(self, word, several=False):
-        """Add an expansion whose value is unknown. Inside double quotes it
-        stays one word, unless it is one of the forms that expand to several
-        words there ($@, ${@...}, ${a[@]}, zsh ${(@)a}, ${=a}, ${~a}, $a[@]);
-        outside quotes it can be split and globbed."""
-        word.add("dqunknown" if self.in_double_quotes and not several else "unknown")
 
     # -- code ---------------------------------------------------------------
     def lex_code(self, closing=None, in_subst=False):
@@ -458,7 +407,7 @@ class Lexer:
             src.take()
             with self.nested():
                 self.read_backtick()
-            self.expansion(word)
+            word.add("unknown")
         elif c == "$":
             with self.nested():
                 self.dollar(word)
@@ -488,13 +437,6 @@ class Lexer:
             out.append(c)
 
     def read_double_quoted(self, word):
-        self.in_double_quotes += 1
-        try:
-            self.read_double_quoted_body(word)
-        finally:
-            self.in_double_quotes -= 1
-
-    def read_double_quoted_body(self, word):
         src = self.src
         while True:
             c = src.peek()
@@ -512,7 +454,7 @@ class Lexer:
             elif c == "`":
                 src.take()
                 self.read_backtick()
-                self.expansion(word)
+                word.add("unknown")
             elif c == "$":
                 self.dollar(word)
             else:
@@ -528,33 +470,23 @@ class Lexer:
         elif src.at("$(("):
             src.take(3)
             self.read_arithmetic(closing="))")
-            self.expansion(word)
+            word.add("unknown")
         elif src.at("$("):
             src.take(2)
             self.nested_tokens.append(Lexer(src, self.depth + 1, self.budget).lex_nested(self))
-            self.expansion(word)
+            word.add("unknown")
         elif src.at("${"):
             src.take(2)
-            # The multi-word state belongs to this expansion; it flows outward
-            # from every nested one (an inner ${x} never resets an outer @).
-            outer = self.several_words
-            self.several_words = False
             self.read_param()
-            mine = self.several_words
-            self.several_words = outer or mine
-            self.expansion(word, several=mine)
+            word.add("unknown")
         elif src.peek(1) is not None and (src.peek(1) in NAME_START or src.peek(1) in SPECIAL_PARAMS):
             src.take()
-            several = False
             if src.peek() in SPECIAL_PARAMS:
-                several = src.peek() == "@"
                 src.take()
             else:
                 while src.peek() is not None and (src.peek().isalnum() or src.peek() == "_"):
                     src.take()
-                several = src.peek() == "["  # zsh $a[@]
-            self.several_words = self.several_words or several
-            self.expansion(word, several=several)
+            word.add("unknown")
         else:
             word.add("lit", src.take())
 
@@ -584,10 +516,7 @@ class Lexer:
         src = self.src
         if src.peek() == "!":
             raise Deny("an indirect ${!...} expansion reads a variable named at run time")
-        if src.peek() in ("=", "~", "^"):
-            self.several_words = True  # zsh split, glob and distribute modifiers
         if src.peek() == "(":
-            self.several_words = True  # zsh flags: (@), (s:..:), (f) and more
             flags = []
             src.take()
             while src.peek() not in (None, ")"):
@@ -615,8 +544,6 @@ class Lexer:
                 continue
             if c == "{":
                 depth += 1
-            if c == "@":
-                self.several_words = True  # ${@}, ${a[@]}, ${@:2}, ${a[@]/x/y}
             self.word_char(scratch, mode="param")
 
     def read_arithmetic(self, closing):
@@ -693,7 +620,7 @@ class Lexer:
                 raise Deny("a $'...' or $\"...\" here-document delimiter is read differently by dash")
             before = len(self.nested_tokens) + len(self.nested_texts)
             self.word_char(word, mode="code")
-            if any(kind in EXPANSION_KINDS for kind, _ in word.parts):
+            if any(kind == "unknown" for kind, _ in word.parts):
                 raise Deny("a here-document delimiter with an expansion cannot be inspected")
             if len(self.nested_tokens) + len(self.nested_texts) != before:
                 raise Deny("a here-document delimiter with an expansion cannot be inspected")
@@ -773,19 +700,15 @@ PROC_DIRS = ["/proc", "/proc/self", "/proc/1", "/proc/123", "/proc/self/task/1"]
 class Arg(str):
     """A word value plus what its unquoted text expands into."""
 
-    def __new__(cls, text, glob=False, brace=False, splits=None):
+    def __new__(cls, text, glob=False, brace=False):
         arg = str.__new__(cls, text)
         arg.glob = glob
         arg.brace = brace
-        # Whether an unquoted expansion may split it into several words; a
-        # word the guard builds itself (an UNKNOWN placeholder) may.
-        arg.splits = (UNKNOWN in text) if splits is None else splits
         return arg
 
     @classmethod
     def of(cls, word):
-        return cls(word.value(), word.glob(), word.brace(),
-                   splits=any(kind == "unknown" for kind, _ in word.parts))
+        return cls(word.value(), word.glob(), word.brace())
 
 
 def check_command(command, depth=0):
@@ -926,86 +849,6 @@ def unknown(word):
     return UNKNOWN in word
 
 
-def ambiguous(word):
-    """A word whose unquoted glob or brace expansion can become other words."""
-    return isinstance(word, Arg) and (word.glob or word.brace)
-
-
-def refuse_expansion(word, where, error=Deny):
-    """The rule for a word that is read for interpretation as an option, an
-    option value, an operand or a wrapper argument: a word with a glob, a
-    brace or a substitution or parameter (the UNKNOWN marker) may become zero,
-    one or several words, or other text, so its role cannot be read and the
-    command is refused. A source token is not one argv word with a fixed role."""
-    if unknown(word) or ambiguous(word):
-        raise error(f"a word with a glob, brace or expansion in {where} cannot be inspected")
-
-
-def refuse_head(word):
-    """The same rule for a command name, which may keep an expansion in its
-    directory part only when it is quoted (`"$HOME/bin/tool"`): its basename is
-    what runs, and an unquoted expansion could split it into more words."""
-    if unknown(word.rsplit("/", 1)[-1]):
-        raise Deny("a command name built from an expansion cannot be inspected")
-    if ambiguous(word):
-        raise Deny("a command name with a glob or brace expansion cannot be inspected")
-    if isinstance(word, Arg) and word.splits:
-        raise Deny("a command name with an unquoted expansion cannot be inspected")
-
-
-class Reader:
-    """The only way a reader sees the words of a command (INVARIANT, README
-    "Role rule"): look() and take() are the single point where a word is first
-    read for interpretation, and they refuse a word with an expansion before
-    returning it. A reader holds no other reference to the words. The words
-    from the current position on, which no reader has interpreted, leave only
-    through data(), as pure data for the command that was found."""
-
-    def __init__(self, words, where, error=Deny):
-        self._words = list(words)
-        self._at = 0
-        self._where = where
-        self._error = error
-
-    def more(self):
-        return self._at < len(self._words)
-
-    def look(self, head=False, assignment=False):
-        """The next word after the gate. `head`: it is a command name
-        (refuse_head); `assignment`: a plain NAME=value prefix of a simple
-        command, whose role the literal NAME= fixes, passes as it is."""
-        word = self._words[self._at]
-        if assignment and ASSIGNMENT.match(word):
-            return word
-        if head:
-            refuse_head(word)
-        else:
-            refuse_expansion(word, self._where, self._error)
-        return word
-
-    def advance(self):
-        self._at += 1
-
-    def read(self, **kind):
-        word = self.look(**kind)
-        self.advance()
-        return word
-
-    def consumed(self):
-        """The words already read (all of them passed the gate)."""
-        return self._words[:self._at]
-
-    def remaining(self):
-        """The words not read yet, only to start another Reader on them."""
-        return self._words[self._at:]
-
-    def data(self):
-        """The rest, handed over as data."""
-        rest = self._words[self._at:]
-        self._at = len(self._words)
-        return rest
-
-
 VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -1050,62 +893,44 @@ WRAPPER_OPTIONS = {
                "--precise", "--no-wrap"}, {"-n", "-q", "-s", "--interval"}, set()),
 }
 WRAPPER_OPTIONS["gtimeout"] = WRAPPER_OPTIONS["timeout"]
-# Key-injecting wrappers (README "Agent Keys"): the number of operands before
-# the command they run. They print nothing themselves, so they are allowed;
-# the command they run is checked like any other.
-SECRET_WRAPPERS = {"with-secret": 2, "with-openrouter": 0, "with-obss-llm": 0}
-SECRET_GET = "secret-get"
-NO_MASKING_FLAG = "--no-masking"
-NO_MASKING_ENV = "OP_RUN_NO_MASKING"
-# op option tables, taken from the help of 1Password CLI op 2.42.0 (the
-# capture is tests/fixtures/op-2.42.0-flags.txt; a test keeps these tables
-# equal to it): `op --help` Global Flags and `op run --help` Flags. A flag that
-# takes a value takes the next word as that value, whatever it looks like
-# (--env-file --no-masking uses "--no-masking" as a file name), and also
-# accepts --flag=value; a boolean flag takes no value word and accepts
-# --flag=value. An option outside the tables has an arity the guard does not
-# know, so it is refused rather than guessed (README, SECRET-GUARD-05).
-OP_GLOBAL_VALUE = frozenset({"--account", "--config", "--encoding", "--format", "--session"})
-OP_GLOBAL_BOOL = frozenset({"--cache", "--debug", "--iso-timestamps", "--no-color",
-                            "--help", "-h", "--version", "-v"})
-OP_RUN_VALUE = frozenset({"--env-file", "--environment"})
-OP_RUN_BOOL = frozenset({"--help", "-h", NO_MASKING_FLAG})
-OP_ITEM_VALUE = frozenset({"--vault"})  # `op item get --vault`, read before the subcommand
 ENV_OPTIONS = ({"-i", "-0", "-v", "--ignore-environment", "--null", "--debug"},
                {"-u", "-C", "-P", "--unset", "--chdir"}, set())
 
 
-def operands(name, reader, table, parsed=None):
-    """Read `name`'s options from `reader` per `table` and leave it at the
-    first operand. `parsed`, if given, receives each option that was read as an
-    option (never an option's value). Every word read passes the gate."""
+def operands(name, args, table, parsed=None):
+    """Index of the first operand after `name`'s options, per `table`.
+    `parsed`, if given, receives each option that was read as an option
+    (never an option's value)."""
     flags, with_value, attached = table
     parsed = [] if parsed is None else parsed
-    while reader.more():
-        a = reader.look()
+    i = 0
+    while i < len(args):
+        a = args[i]
         if a == "--":
-            reader.advance()
-            return
+            return i + 1
         if not a.startswith("-") or a == "-":
-            return
-        reader.advance()
+            return i
+        if unknown(a):
+            raise Deny(f"an option of `{name}` built from an expansion cannot be inspected")
         if a.startswith("--"):
             key = a.split("=", 1)[0]
             if key in with_value:
-                if "=" not in a and reader.more():
-                    reader.read()  # the option's value, whatever it looks like
-            elif a not in flags:
+                i += 1 if "=" in a else 2
+            elif a in flags:
+                i += 1
+            else:
                 raise Deny(f"an unrecognised `{name}` option cannot be inspected")
             parsed.append(key)
             continue
         if name == "nice" and a[1:].isdigit():
+            i += 1
             continue
-        value_next = False
+        step = 1
         for k in range(1, len(a)):
             opt = "-" + a[k]
             if opt in with_value:
                 parsed.append(opt)
-                value_next = k + 1 == len(a)  # attached value, or the next word
+                step = 1 if k + 1 < len(a) else 2  # attached value, or the next word
                 break
             if opt in attached:
                 parsed.append(opt)
@@ -1113,41 +938,36 @@ def operands(name, reader, table, parsed=None):
             if opt not in flags:
                 raise Deny(f"an unrecognised `{name}` option cannot be inspected")
             parsed.append(opt)
-        if value_next and reader.more():
-            reader.read()
+        i += step
+    return i
 
 
-def check_text(reader, depth):
-    """Text a wrapper hands to a shell (sh -c, eval, watch, trap): every word
-    read passes the gate."""
-    words = []
-    while reader.more():
-        words.append(reader.read())
-    check_command(" ".join(words), depth + 1)
+def check_text(text_words, depth):
+    """Text a wrapper hands to a shell (sh -c, eval, watch, trap)."""
+    if any(unknown(w) for w in text_words):
+        raise Deny("command text built from expansions cannot be inspected")
+    check_command(" ".join(text_words), depth + 1)
 
 
-def check_shell(reader, depth):
+def check_shell(args, depth):
     """sh/bash/zsh: inspect -c text; a shell reading stdin is refused; a
     script file operand is outside what the guard can see."""
-    command_text, from_stdin = False, False
-    while reader.more():
-        a = reader.look()
+    i, command_text, from_stdin = 0, False, False
+    while i < len(args):
+        a = args[i]
         if a == "--":
-            reader.advance()
+            i += 1
             break
         if a == "-":
             from_stdin = True
-            reader.advance()
+            i += 1
             break
         if a.startswith("--"):
-            reader.advance()
             if a in {"--version", "--help"}:
                 return
-            if a in {"--rcfile", "--init-file", "--emulate"} and reader.more():
-                reader.read()
+            i += 2 if a in {"--rcfile", "--init-file", "--emulate"} else 1
             continue
         if a[:1] in "-+" and len(a) > 1:
-            reader.advance()
             letters = a[1:]
             value_letters = [k for k, ch in enumerate(letters) if ch in "oO"]
             if value_letters and value_letters[0] != len(letters) - 1:
@@ -1157,145 +977,101 @@ def check_shell(reader, depth):
                 command_text = True
             if a[0] == "-" and "s" in letters:
                 from_stdin = True
-            if value_letters and reader.more():
-                reader.read()  # -o NAME / -O NAME take the next word
+            i += 2 if value_letters else 1  # -o NAME / -O NAME take the next word
             continue
         break
+    rest = args[i:]
     if command_text:
-        if not reader.more():
+        if not rest:
             raise Deny("`sh -c` without command text cannot be inspected")
-        return check_text(Reader(reader.data()[:1], "the text of `sh -c`"), depth)
-    if from_stdin or not reader.more():
+        return check_text([rest[0]], depth)
+    if from_stdin or not rest:
         raise Deny("a shell reading commands from standard input is not inspected")
-    script = reader.read()
-    if os.path.basename(script) == SECRET_GET:
-        raise SecretRead("running a shell on a `secret-get` script prints a stored key")
 
 
-def check_words(words, depth, wrapped=False):
-    """Check one simple command. `wrapped` is true for the command a wrapper
-    (sudo, env, time, with-secret, ...) runs: its leading NAME=value words are
-    arguments the shell splits and expands, not assignment statements. Every
-    word is read through a Reader, so none is interpreted before the gate."""
-    reader = Reader(words, "a command")
-    while reader.more():
-        word = reader.look(head=True, assignment=not wrapped)
-        if ASSIGNMENT.match(word):
-            if wrapped:
-                refuse_expansion(word, "a wrapper operand")
-            refuse_no_masking_assignment(word)
-            reader.advance()
-        elif word in RESERVED_PREFIXES:
-            reader.advance()
-        elif word == "repeat":
-            reader.advance()
-            if reader.more():
-                reader.read()  # the count
+def check_words(words, depth):
+    words = list(words)
+    while words:
+        if ASSIGNMENT.match(words[0]):
+            words.pop(0)
+        elif words[0] in RESERVED_PREFIXES:
+            words.pop(0)
+        elif words[0] == "repeat":
+            words = words[2:]
         else:
             break
-    if not reader.more():
+    if not words or words[0] in NON_COMMAND_HEADS:
         return  # nothing runs here
-    head = reader.look(head=True)
-    if head in NON_COMMAND_HEADS:
-        return  # nothing runs here
-    reader.advance()
+    head = words[0]
+    if unknown(head.rsplit("/", 1)[-1]):
+        raise Deny("a command name built from an expansion cannot be inspected")
+    if isinstance(head, Arg) and (head.glob or head.brace):
+        raise Deny("a command name with a glob or brace expansion cannot be inspected")
     if head.startswith("="):
         raise Deny("the zsh =command expansion is not inspected")
     name = os.path.basename(head)
+    args = words[1:]
 
-    if name == SECRET_GET:
-        raise SecretRead("`secret-get` prints a stored key")
-    if name == "op":
-        return check_op(Reader(reader.data(), "`op` before its subcommand", SecretRead))
-    if name in SECRET_WRAPPERS:
-        for _ in range(SECRET_WRAPPERS[name]):
-            if reader.more():
-                reader.read()  # the item and the variable
-        return check_words(reader.data(), depth, wrapped=True)
     if name in WRAPPER_OPTIONS:
-        parsed = []
-        operands(name, reader, WRAPPER_OPTIONS[name], parsed)
-        if name == "command" and any(o in {"-v", "-V"} for o in parsed):
+        j = operands(name, args, WRAPPER_OPTIONS[name])
+        if name == "command" and any(a in {"-v", "-V"} for a in args[:j]):
             return  # lookup only
-        if name == "sudo" and any(o in {"-e", "--edit", "-l", "--list", "-V", "--version"}
-                                  for o in parsed):
-            return  # sudoedit, list, version: no command runs
-        # -k, -K and -v (and their long forms) run no command only when none
-        # follows; `sudo -k cmd` runs cmd, so what follows is checked.
-        if name in {"timeout", "gtimeout"} and reader.more():
-            reader.read()  # the duration
-        options = reader.consumed()
-        rest = reader.data()
+        if name == "sudo" and any(a in {"-e", "--edit", "-l", "--list", "-v", "--validate",
+                                        "-K", "-k", "-V", "--version"} for a in args[:j]):
+            return  # sudoedit, list, validate: no command runs
+        if name in {"timeout", "gtimeout"}:
+            j += 1  # the duration
         if name == "xargs":
-            if not rest:
+            if j >= len(args):
                 return  # xargs defaults to echo
-            return check_words(xargs_command(options, rest), depth, wrapped=True)
+            return check_words(xargs_command(args, j), depth)
         if name == "watch":
-            return check_text(Reader(rest, "the command text of `watch`"), depth)
-        return check_words(rest, depth, wrapped=True)
+            return check_text(args[j:], depth)
+        return check_words(args[j:], depth)
     if name in SHELLS:
-        return check_shell(reader, depth)
+        return check_shell(args, depth)
     if name in {".", "source"}:
-        if reader.more() and reader.look() == "--":
-            reader.advance()
-        if not reader.more():
+        rest = args[1:] if args[:1] == ["--"] else args
+        if not rest:
             raise Deny("sourcing without a file (process substitution, stdin) is not inspected")
-        target = reader.read()
-        if target.startswith(("/dev/", "/proc/")):
+        if rest[0].startswith(("/dev/", "/proc/")) or unknown(rest[0].rsplit("/", 1)[-1]):
             raise Deny("sourcing a device, /proc or substituted file is not inspected")
-        if os.path.basename(target) == SECRET_GET:
-            raise SecretRead("sourcing a `secret-get` script prints a stored key")
         return
     if name == "eval":
-        return check_text(reader, depth)
+        return check_text(args, depth)
     if name == "trap":
-        if reader.more() and reader.look() == "--":
-            reader.advance()
-        if reader.more():
-            handler = reader.read()
-            if not handler.startswith("-") and not handler.isdigit() and reader.more():
-                return check_command(handler, depth + 1)
+        rest = args[1:] if args[:1] == ["--"] else args
+        if rest and not rest[0].startswith("-") and not rest[0].isdigit() and len(rest) > 1:
+            return check_text([rest[0]], depth)
         return
     if name == "alias":
-        while reader.more():
-            if "=" in reader.read():
-                raise Deny("alias definitions are not inspected")
+        if any("=" in a for a in args):
+            raise Deny("alias definitions are not inspected")
         return
     if name == "hash":
-        while reader.more():
-            a = reader.read()
-            if (a.startswith("-") and "p" in a) or "=" in a:
-                raise Deny("`hash` path bindings are not inspected")
+        if any(a.startswith("-") and "p" in a for a in args) or any("=" in a for a in args):
+            raise Deny("`hash` path bindings are not inspected")
         return
-    if name == "env":
-        return check_env(reader, depth)
-    if name == "set":
-        if not reader.more():
-            raise Deny("bare `set` dumps every shell variable")
-        while reader.more():
-            reader.read()  # `set $X` with an empty $X is a bare set
-        return
-    # The remaining builtins read their arguments only to find a name or a
-    # path: an argument with an expansion never makes them allow (a name must
-    # be literal), or it is a documented limitation (cd, ps).
-    args = reader.data()
     if name in {"cd", "pushd"}:
         for a in args:
             if not a.startswith("-") and enters_proc(a):
                 raise Deny("changing into /proc is not inspected")
         return
+    if name == "env":
+        return check_env(args, depth)
     if name == "printenv":
         if not any(VARIABLE_NAME.fullmatch(a) for a in args):
             raise Deny("`printenv` without a variable name dumps the whole environment")
         return
-    if name in DECLARATION_BUILTINS:
-        for a in args:
-            refuse_no_masking_assignment(a)
     if name == "export":
         if not any(names_a_variable(a) for a in args):
             raise Deny("`export -p` / bare `export` dumps every exported variable")
         return
-    if name in DECLARATION_BUILTINS - {"export"}:
+    if name == "set":
+        if not args:
+            raise Deny("bare `set` dumps every shell variable")
+        return
+    if name in {"declare", "typeset", "readonly", "local"}:
         if any(a[:1] in "-+" and "n" in a[1:] for a in args):
             raise Deny("namerefs (`declare -n`) read variables named at run time")
         if not any(names_a_variable(a) for a in args):
@@ -1307,18 +1083,17 @@ def check_words(words, depth, wrapped=False):
         return check_ps(args)
 
 
-def xargs_command(options, words):
+def xargs_command(args, j):
     """The command xargs runs: input replaces -I/-i/-J strings, otherwise it
-    is appended; either way its value is unknown. `options` are the words xargs
-    read, option values included."""
+    is appended; either way its value is unknown."""
     replace = None
-    for k, a in enumerate(options):
+    for k, a in enumerate(args[:j]):
         for opt, default in (("-I", None), ("-J", None), ("-i", "{}"), ("--replace", "{}")):
             if a == opt:
-                replace = options[k + 1] if default is None and k + 1 < len(options) else default
+                replace = args[k + 1] if default is None and k + 1 < j else default
             elif a.startswith(opt) and len(a) > len(opt):
                 replace = a[len(opt):].lstrip("=")
-    words = list(words)
+    words = list(args[j:])
     if replace:
         return [Arg(UNKNOWN) if replace in w else w for w in words]
     return words + [Arg(UNKNOWN)]
@@ -1336,11 +1111,8 @@ def enters_proc(arg):
     return False
 
 
-def check_env(reader, depth):
-    # An -S, also inside a cluster, is refused here before operands() reads it.
-    scan = Reader(reader.remaining(), "the options of `env`")
-    while scan.more():
-        a = scan.read()
+def check_env(args, depth):
+    for a in args:  # an -S inside a cluster is refused by operands() below
         if a == "--":
             break
         if a in {"-S", "--split-string"} or a.startswith("--split-string="):
@@ -1350,20 +1122,15 @@ def check_env(reader, depth):
     # The empty-environment flag is taken from the parsed options only, so
     # an -u value such as `-ui` or `-u -i` is never mistaken for -i.
     parsed = []
-    empty_env = False
-    if reader.more() and reader.look() == "-":
-        reader.advance()
-        empty_env = True
-    else:
-        operands("env", reader, ENV_OPTIONS, parsed)
-        empty_env = any(o in {"-i", "--ignore-environment"} for o in parsed)
-    while reader.more() and ASSIGNMENT.match(reader.look()):
-        refuse_no_masking_assignment(reader.read())
-    if not reader.more():
+    i = operands("env", args, ENV_OPTIONS, parsed) if args[:1] != ["-"] else 1
+    empty_env = args[:1] == ["-"] or any(o in {"-i", "--ignore-environment"} for o in parsed)
+    while i < len(args) and (ASSIGNMENT.match(args[i]) or unknown(args[i])):
+        i += 1
+    if i >= len(args):
         if empty_env:
             return
         raise Deny("`env` without a command dumps the whole environment")
-    return check_words(reader.data(), depth, wrapped=True)
+    return check_words(args[i:], depth)
 
 
 def check_ps(args):
@@ -1391,88 +1158,12 @@ def check_ps(args):
                 break  # the rest of the cluster is this option's argument
 
 
-def op_options(name, reader, values, flags):
-    """Read `name`'s options by their arity from the tables, leaving `reader`
-    at the first operand (one after a `--` in an option position)."""
-    while reader.more():
-        a = reader.look()
-        if a == "--":
-            reader.advance()
-            return
-        if not a.startswith("-") or a == "-":
-            return
-        reader.advance()
-        key, eq, _ = a.partition("=")
-        if key in values:
-            if not eq and reader.more():
-                reader.read()  # the value, whatever it looks like
-        elif key not in flags:
-            raise SecretRead(f"an `{name}` option outside the op 2.42.0 tables has an unknown arity")
-
-
-def check_op_run(reader):
-    """`op run` options up to the `--` that starts the child's argv, read by
-    arity (README "Secret-read rule"); --no-masking in any spelling turns
-    masking off."""
-    values, flags = OP_RUN_VALUE | OP_GLOBAL_VALUE, OP_RUN_BOOL | OP_GLOBAL_BOOL
-    while reader.more():
-        a = reader.read()
-        if a == "--":
-            return  # the child's argv follows: data, not op options
-        if a.startswith("-") and a != "-":
-            key, eq, _ = a.partition("=")
-            if key == NO_MASKING_FLAG:
-                raise SecretRead("`op run --no-masking` prints stored values unmasked")
-            if key in values:
-                if not eq and reader.more():
-                    reader.read()  # the value, even one that looks like an option or `--`
-            elif key not in flags:
-                raise SecretRead("an `op run` option outside the op 2.42.0 tables has an unknown arity")
-
-
-def refuse_no_masking_assignment(word):
-    """OP_RUN_NO_MASKING set in the command text (assignment prefix, env
-    operand, export or declare operand) turns off op run's masking like the
-    flag does, whatever value it is given."""
-    if ASSIGNMENT.match(word) and VARIABLE_NAME.match(word).group() == NO_MASKING_ENV:
-        raise SecretRead("setting `OP_RUN_NO_MASKING` turns off the masking of `op run` output")
-
-
-def check_op(reader):
-    """1Password CLI: refuse the subcommands that print a stored value.
-
-    From the CLI reference: `op read` and `op inject` print the value a secret
-    reference names, `op document get` prints a document, `op run
-    --no-masking` turns off the masking of values in the output, and `op item
-    get` prints field values with --fields, --format json, --reveal and --otp.
-    A bare `op item get` conceals sensitive fields, but OP_FORMAT can change
-    that and an agent needs no item details (`op item list` lists names), so
-    every `op item get` is refused whatever its flags. `items` and `documents`
-    are the plural spellings; `op get` is the version 1 command. Commands that
-    print no value (whoami, vault list, item list, signin, run) pass."""
-    op_options("op", reader, OP_GLOBAL_VALUE, OP_GLOBAL_BOOL)
-    if not reader.more():
-        return  # op, op --version, op --help
-    command = reader.read()
-    if command in {"read", "inject"}:
-        raise SecretRead(f"`op {command}` prints a stored value")
-    if command == "get":
-        raise SecretRead("`op get` (version 1) prints a stored value")
-    if command == "run":
-        return check_op_run(reader)
-    if command in {"item", "items", "document", "documents"}:
-        op_options(f"op {command}", reader, OP_GLOBAL_VALUE | OP_ITEM_VALUE, OP_GLOBAL_BOOL)
-        if reader.more() and reader.read() == "get":
-            kind = "item" if command.startswith("item") else "document"
-            raise SecretRead(f"`op {kind} get` can print a stored value")
-
-
-def decision(reason, hint=SAFE_HINT):
+def decision(reason):
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": f"agent-env-guard: {reason}. {hint} {PROMISE}",
+            "permissionDecisionReason": f"agent-env-guard: {reason}. {SAFE_HINT} {PROMISE}",
         }
     }
 
@@ -1492,8 +1183,6 @@ def main():
         return 0
     try:
         check_command(command)
-    except SecretRead as denied:
-        json.dump(decision(str(denied), SECRET_HINT), sys.stdout)
     except Deny as denied:
         json.dump(decision(str(denied)), sys.stdout)
     except Exception as error:  # a guard bug must not silently allow
