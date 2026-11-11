@@ -347,7 +347,9 @@ protection**, not a fix:
   the name of a command or setting that prints a stored key. **Scope**: the
   rule examines only inputs whose text spells a guarded name (`secret-get`,
   `op` as a word, `OP_RUN_NO_MASKING`) after quotes and backslashes are
-  removed and case is folded. Such an input is refused whole, whatever it
+  removed and case is folded; each backslash-newline counts both as a line
+  continuation and as a real newline, the two ways a shell can read it.
+  Such an input is refused whole, whatever it
   would do, as a command string and as an argument list alike: the rule reads
   no shell syntax and keeps no list of harmless commands, so `secret-get
   <item>`, `op read`, `op item get` and `OP_RUN_NO_MASKING=1 op run` are
@@ -415,7 +417,11 @@ protection**, not a fix:
     `str.casefold()`, so the name written with the long s (`ſ`), which a
     case-insensitive macOS volume resolved to `s` when measured, is refused;
     that covers this one letter and is not a statement about every
-    equivalence a filesystem applies.
+    equivalence a filesystem applies. A backslash-newline is read both as a
+    continuation and as a real newline (after an escaped backslash or inside
+    a comment a shell reads the second), so `true x\\` newline `op item get x`
+    is refused; the cost is that a real continuation directly next to `op`
+    (`true x\` newline `op ...`, the single word `xop`) is refused as well.
   - ENV-LEXER-01: the lexer reads some forms differently from the shells, so
     inputs that dump the environment pass when they spell no guarded name (for
     example `echo ${x:-'}'$(env)'}'} #'`, `printf 'env\n' | bash /dev/stdin`,

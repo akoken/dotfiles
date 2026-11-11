@@ -28,7 +28,8 @@ it recognises; a command that passes is not evidence of security. Known commands
 
 Scope of the secret-read rule. It examines only inputs whose text spells a
 guarded name (`secret-get`, `op` as a word, `OP_RUN_NO_MASKING`) after quotes
-and backslashes are removed and case is folded. Such an input is refused
+and backslashes are removed and case is folded, with each backslash-newline
+read both as a continuation and as a real newline. Such an input is refused
 whole, whatever it would do: the rule reads no shell syntax, so a command that
 only mentions a name (a search pattern, a file path, a commit message) is
 refused as well. An input that spells no guarded name is not examined by this
@@ -1165,16 +1166,24 @@ def check_ps(args):
 # no shell syntax and holds no grammar, command list or `op` table, so an
 # input that spells a name cannot be allowed by a form the rule misread.
 #
-# G1 Spelling. Every ', ", backslash and backslash-newline is removed from the
-#    raw text and the rest is case-folded with str.casefold(); the input
-#    spells a guarded name when the result holds `secret-get`,
-#    `op_run_no_masking` or `op` as a word (not preceded or followed by a
-#    letter, digit, `_`, `.` or `-`). Quote splicing such as s''ecret-get
-#    therefore spells the name, and so does a mention (a search pattern, a
-#    path, a commit message): it is refused too. casefold(), not lower(),
-#    because U+017F (long s) is a lower-case letter that a case-insensitive
-#    macOS volume resolved to `s` when measured. This covers that letter; it
-#    is not a statement about every equivalence a filesystem applies.
+# G1 Spelling. Every ', " and backslash is removed from the raw text and the
+#    rest is case-folded with str.casefold(); the input spells a guarded name
+#    when the result holds `secret-get`, `op_run_no_masking` or `op` as a
+#    word (not preceded or followed by a letter, digit, `_`, `.` or `-`).
+#    Quote splicing such as s''ecret-get therefore spells the name, and so
+#    does a mention (a search pattern, a path, a commit message): it is
+#    refused too. casefold(), not lower(), because U+017F (long s) is a
+#    lower-case letter that a case-insensitive macOS volume resolved to `s`
+#    when measured. This covers that letter; it is not a statement about
+#    every equivalence a filesystem applies.
+#    A backslash-newline is a line continuation (both characters vanish and
+#    the text around them joins) or, after an escaped backslash or inside a
+#    comment, a backslash and a real newline (a command separator). The test
+#    reads no shell syntax, so it keeps both readings of each occurrence on
+#    its own: it leaves a mark in its place that may join the letters of a
+#    name and also counts as a word boundary next to one. The input spells a
+#    name when any choice of readings does. A real continuation directly
+#    before or after `op` (`x\<newline>op`, the word `xop`) is refused too.
 #
 # A name reached without spelling it (glob, expansion, ANSI-C escape, copy,
 # alias, script file) is a stated protection limit, not a case this rule
@@ -1195,8 +1204,23 @@ SECRET_HINT = (
 
 # folded spelling -> the name as the deny message shows it
 GUARDED_NAMES = {"secret-get": "secret-get", "op_run_no_masking": "OP_RUN_NO_MASKING", "op": "op"}
-GATE_LEXEME = re.compile(r"secret-get|op_run_no_masking|(?<![a-z0-9_.-])op(?![a-z0-9_.-])")
+# A backslash-newline folds to BREAK, which may stand between the letters of a
+# name (a continuation) and is no letter, digit, `_`, `.` or `-` (a
+# separator). The fold removes every other backslash, so BREAK is the only
+# backslash left in the folded text.
+BREAK = "\\"
 GATE_FOLD = re.compile(r"\\\n|['\"\\]")
+
+
+def gate_pattern(spelling):
+    """A folded spelling as a pattern that allows BREAK between its letters."""
+    return (re.escape(BREAK) + "*").join(re.escape(letter) for letter in spelling)
+
+
+GATE_LEXEME = re.compile("|".join([
+    gate_pattern("secret-get"),
+    gate_pattern("op_run_no_masking"),
+    r"(?<![a-z0-9_.-])" + gate_pattern("op") + r"(?![a-z0-9_.-])"]))
 
 
 class SecretRead(Deny):
@@ -1205,9 +1229,11 @@ class SecretRead(Deny):
 
 def spelled_name(text):
     """Gate G1: the first guarded name the text spells once its quotes and
-    backslashes are removed and its case is folded, or None."""
-    found = GATE_LEXEME.search(GATE_FOLD.sub("", text).casefold())
-    return GUARDED_NAMES[found.group(0)] if found else None
+    backslashes are removed, each backslash-newline is kept as BREAK and its
+    case is folded, or None."""
+    folded = GATE_FOLD.sub(lambda m: BREAK if m.group(0) == "\\\n" else "", text).casefold()
+    found = GATE_LEXEME.search(folded)
+    return GUARDED_NAMES[found.group(0).replace(BREAK, "")] if found else None
 
 
 def spells_guarded_name(text):
