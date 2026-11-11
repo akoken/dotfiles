@@ -299,6 +299,17 @@ report file names, never the matched text.
   verifies what they get.
 - Long-running consumers, MCP servers in particular, hold their key in their
   environment for as long as they run. Restart them after rotating a key.
+- Long-lived multiplexers (herdr, tmux) keep the environment they started
+  with, and so do their existing panes and every agent they launch. Removing a
+  global export from `~/.zshenv.local` does not reach them: a herdr server
+  started before the cleanup kept all five former key names. Restart them from
+  a clean shell, then check the names only (never the values) from a new pane:
+  `python3 -c 'import os; print(sorted(n for n in os.environ if n in {"OPENROUTER_API_KEY", "XAI_API_KEY", "OBSS_LLM_API_KEY", "CONTEXT7_API_KEY", "JIRA_API_TOKEN"}))'`
+  must print `[]`. If a restart has to wait, add a temporary
+  `unset OPENROUTER_API_KEY XAI_API_KEY OBSS_LLM_API_KEY CONTEXT7_API_KEY JIRA_API_TOKEN`
+  line to `~/.zshenv.local` and remove it after the restart. While it is
+  there it also strips the key from any zsh script started through
+  `with-openrouter` or `with-obss-llm`, so those scripts see no key.
 - The Claude Code helper's output is held by Claude Code for that connection,
   so the Context7 key is in Claude Code's memory (not its environment) while
   the server is connected.
