@@ -15,7 +15,8 @@ set -Eeuo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+# chmod first: a failing case may leave a fixture directory unreadable.
+trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT
 
 fail() {
   echo "FAIL: $1" >&2
@@ -579,6 +580,65 @@ run_check "invalid UTF-8" 2 "$tl/.claude.json"
 write_claude "{\"context7\":$static_hdr}"
 write_copilot '"x"'
 run_check "a finding and an unknown together report both" 2 "mcpServers.context7" "$tl/.copilot/mcp-config.json"
+
+# An explicit null is not a missing field: every container that must be an
+# object is unknown when it is null. Missing fields stay clean.
+reset_chk
+printf '{"numStartups":1}\n' >"$chk/.claude.json"
+printf '{}\n' >"$chk/.copilot/mcp-config.json"
+run_check "no mcpServers or projects field at all" 0
+write_claude 'null'
+run_check "user-scope mcpServers null" 2 "$tl/.claude.json: mcpServers: not an object"
+printf '{"mcpServers":{"context7":%s},"projects":null}\n' "$helper" >"$chk/.claude.json"
+run_check "projects null" 2 "$tl/.claude.json: projects: not an object"
+write_claude "{\"context7\":$helper}" '{"/work/p":{"mcpServers":null}}'
+run_check "project-scope mcpServers null" 2 "projects[/work/p].mcpServers: not an object"
+write_claude '{"context7":{"type":"http","url":"https://mcp.context7.com/mcp","headers":null}}'
+run_check "Context7 headers null" 2 "mcpServers.context7.headers: not an object"
+write_claude '{"context7":{"type":"stdio","command":"x","env":null}}'
+run_check "Context7 env null" 2 "mcpServers.context7.env: not an object"
+write_claude '{"c7":{"type":"stdio","command":"x","args":null}}'
+run_check "args null" 2 "mcpServers.c7.args: not a list"
+write_claude "{\"context7\":$helper}"
+write_copilot 'null'
+run_check "Copilot mcpServers null" 2 "$tl/.copilot/mcp-config.json: mcpServers: not an object"
+
+# A lookup that fails is never absence: an unreadable parent directory hides
+# a file that may hold a key. Root reads through permissions, so these cases
+# need an unprivileged user (CI runners are).
+if [ "$(id -u)" -ne 0 ]; then
+  reset_chk
+  write_claude "{\"context7\":$helper}"
+  write_copilot "{\"context7\":$static_hdr}"
+  chmod 000 "$chk/.copilot"
+  run_check "Copilot config under an unreadable directory" 2 "cannot verify: $tl/.copilot/mcp-config.json"
+  if env HOME="$chk" bash "$repo/install.sh" doctor >"$work/doctor.log" 2>&1; then
+    chmod 755 "$chk/.copilot"
+    fail "install.sh doctor passed with an unreadable Copilot config directory"
+  fi
+  chmod 755 "$chk/.copilot"
+  no_marker_in "$work/doctor.log" "install.sh doctor output (unreadable directory)"
+
+  write_copilot "{\"context7\":$launcher}"
+  mkdir -p "$chk/.claude/backups"
+  write_claude "{\"context7\":$static_hdr}" '{}' "$chk/.claude/backups/.claude.json.backup.1700000000001"
+  chmod 000 "$chk/.claude/backups"
+  run_check "Claude backups in an unreadable directory" 2 "cannot verify: $tl/.claude/backups"
+  chmod 755 "$chk/.claude/backups"
+  rm -rf "$chk/.claude"
+
+  # HOME searchable but not listable: tmp copies cannot be discovered.
+  write_claude "{\"context7\":$static_hdr}" '{}' "$chk/.claude.json.tmp.1.2"
+  chmod 300 "$chk"
+  run_check "tmp copies in an unlistable HOME" 2 "cannot verify: $tl:"
+  chmod 755 "$chk"
+  rm -f "$chk"/.claude.json.tmp.*
+
+  # Healthy neighbour: a missing ~/.claude/backups is plain absence.
+  run_check "missing backups directory" 0
+else
+  echo "note: running as root, unreadable-directory cases skipped" >&2
+fi
 
 # install.sh doctor runs the same check.
 write_claude "{\"context7\":$helper}"

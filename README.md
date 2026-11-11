@@ -249,8 +249,11 @@ It fails when a Context7 entry (name, url, command or args mention
 `${VAR}` value alike, or an `--api-key` argument, and when any string in
 those files contains a Context7-shaped key (`ctx7sk-`). It parses the JSON
 and prints file and entry names only, never a value. Exit 0 is clean (a
-missing file is fine), 1 is a static credential, 2 is a file it could not
-read or parse, which is never a pass. After removing a static key, rotate
+file that does not exist is fine), 1 is a static credential, 2 is a file it
+could not verify, which is never a pass: a file or directory it cannot look
+up or read (only a plain "does not exist" counts as absent), invalid JSON,
+or a value that is not an object where one belongs (an explicit `null`
+included). After removing a static key, rotate
 it: it has sat in a plain file.
 
 Qwen Code reads its key from the variable that its provider config names in
@@ -276,7 +279,8 @@ own `context7-mcp` package, start only the pinned install; the leak scans
 report file names, never the matched text; and `context7-config-check`,
 run on synthetic configs in a temp HOME, passes the `headersHelper` and the
 launcher, flags static headers, `env` values and key flags in every scope
-and leftover copy, refuses unreadable files, and prints no value.
+and leftover copy, refuses unreadable files and directories and `null`
+containers, and prints no value.
 
 ### Adding a key
 

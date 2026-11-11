@@ -21,17 +21,19 @@ launcher) or an `--api-key` argument, and when any string anywhere in a
 file contains the Context7 key prefix `ctx7sk-`.
 
 Output names files and entry paths only, never a value. Exit status:
-0 clean (a missing file is fine), 1 a static credential was found,
-2 a file could not be read or has an unexpected shape (never a pass).
+0 clean (a file that does not exist is fine), 1 a static credential was
+found, 2 a file or its directory could not be looked up or read, or a
+file has an unexpected shape, an explicit null where an object belongs
+included (never a pass).
 """
 
-import glob
 import json
 import os
 import sys
 
 KEY_PREFIX = "ctx7sk-"
 FINDING, UNKNOWN = 1, 2
+MISSING = object()
 
 
 def display(path, home):
@@ -41,10 +43,7 @@ def display(path, home):
 
 
 def is_context7(name, entry):
-    probes = [name, entry.get("url"), entry.get("command")]
-    args = entry.get("args")
-    if isinstance(args, list):
-        probes.extend(args)
+    probes = [name, entry.get("url"), entry.get("command"), *entry.get("args", [])]
     return any(isinstance(p, str) and "context7" in p.lower() for p in probes)
 
 
@@ -65,63 +64,67 @@ def key_prefix_paths(node, path):
         yield path or "<root>"
 
 
+def container(parent, field, where, report):
+    """Return parent[field] when it is an object, {} when the field is absent.
+
+    An explicit null or any other non-object value is not the same as a
+    missing field: it is reported as unknown and None is returned.
+    """
+    value = parent.get(field, MISSING)
+    if value is MISSING:
+        return {}
+    if isinstance(value, dict):
+        return value
+    report(UNKNOWN, f"{where}: not an object")
+    return None
+
+
 def check_servers(servers, where, report):
-    """Check one `mcpServers` object; return False on an unexpected shape."""
-    if servers is None:
-        return True
-    if not isinstance(servers, dict):
-        report(UNKNOWN, f"{where}: not an object")
-        return False
-    ok = True
+    """Check the entries of one `mcpServers` object."""
     for name, entry in servers.items():
         label = f"{where}.{safe_name(name)}"
         if not isinstance(entry, dict):
             report(UNKNOWN, f"{label}: not an object")
-            ok = False
+            continue
+        args = entry.get("args", [])
+        if not isinstance(args, list):
+            report(UNKNOWN, f"{label}.args: not a list")
             continue
         if not is_context7(name, entry):
             continue
         for field in ("headers", "env"):
-            value = entry.get(field)
-            if value in (None, {}):
-                continue
-            if isinstance(value, dict):
+            value = container(entry, field, f"{label}.{field}", report)
+            if value:
                 report(FINDING, f"{label}: static {field} instead of the helper or launcher")
-            else:
-                report(UNKNOWN, f"{label}: {field} is not an object")
-                ok = False
-        args = entry.get("args")
-        if isinstance(args, list) and any(
-            isinstance(a, str) and a.split("=", 1)[0] == "--api-key" for a in args
-        ):
+        if any(isinstance(a, str) and a.split("=", 1)[0] == "--api-key" for a in args):
             report(FINDING, f"{label}: key flag on the command line")
-    return ok
 
 
 def check_claude(doc, report):
     if not isinstance(doc, dict):
         report(UNKNOWN, "top level is not an object")
         return
-    check_servers(doc.get("mcpServers"), "mcpServers", report)
-    projects = doc.get("projects")
-    if projects is None:
-        return
-    if not isinstance(projects, dict):
-        report(UNKNOWN, "projects: not an object")
-        return
-    for proj, conf in projects.items():
+    servers = container(doc, "mcpServers", "mcpServers", report)
+    if servers is not None:
+        check_servers(servers, "mcpServers", report)
+    projects = container(doc, "projects", "projects", report)
+    for proj, conf in (projects or {}).items():
         where = f"projects[{safe_name(proj)}]"
         if not isinstance(conf, dict):
             report(UNKNOWN, f"{where}: not an object")
             continue
-        check_servers(conf.get("mcpServers"), f"{where}.mcpServers", report)
+        servers = container(conf, "mcpServers", f"{where}.mcpServers", report)
+        if servers is not None:
+            check_servers(servers, f"{where}.mcpServers", report)
 
 
 def check_copilot(doc, report):
     if not isinstance(doc, dict):
         report(UNKNOWN, "top level is not an object")
         return
-    check_servers(doc.get("mcpServers"), "mcpServers", report)
+    servers = container(doc, "mcpServers", "mcpServers", report)
+    if servers is not None:
+        check_servers(servers, "mcpServers", report)
 
 
 def check_file(path, kind, home):
@@ -152,16 +155,41 @@ def check_file(path, kind, home):
     return levels, lines
 
 
-def targets(home):
-    claude = [os.path.join(home, ".claude.json")]
-    claude += sorted(glob.glob(os.path.join(glob.escape(home), ".claude.json.tmp.*")))
-    claude += sorted(glob.glob(os.path.join(glob.escape(home), ".claude.json.backup*")))
-    claude += sorted(
-        glob.glob(os.path.join(glob.escape(home), ".claude", "backups", ".claude.json.backup*"))
-    )
-    out = [(p, "claude") for p in claude]
-    out.append((os.path.join(home, ".copilot", "mcp-config.json"), "copilot"))
-    return out
+def discover(home):
+    """Yield (state, path, kind) for every file to check.
+
+    state is "file" (present), "absent" (ENOENT: truly not there) or
+    "error" (any other lookup failure, such as an unreadable or
+    non-directory parent). A lookup that fails is never taken as absence.
+    """
+
+    def fixed(path, kind):
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            return ("absent", path, kind)
+        except OSError:
+            return ("error", path, kind)
+        return ("file", path, kind)
+
+    def matches(directory, prefix, kind):
+        try:
+            names = os.listdir(directory)
+        except FileNotFoundError:
+            return []
+        except OSError:
+            return [("error", directory, kind)]
+        return [
+            ("file", os.path.join(directory, n), kind)
+            for n in sorted(names)
+            if n.startswith(prefix)
+        ]
+
+    yield fixed(os.path.join(home, ".claude.json"), "claude")
+    yield from matches(home, ".claude.json.tmp.", "claude")
+    yield from matches(home, ".claude.json.backup", "claude")
+    yield from matches(os.path.join(home, ".claude", "backups"), ".claude.json.backup", "claude")
+    yield fixed(os.path.join(home, ".copilot", "mcp-config.json"), "copilot")
 
 
 def main():
@@ -171,16 +199,21 @@ def main():
         return UNKNOWN
     home = home.rstrip(os.sep) or os.sep
     seen = set()
-    for path, kind in targets(home):
-        if not os.path.lexists(path):
-            print(f"absent: {display(path, home)}")
+    for state, path, kind in discover(home):
+        shown = display(path, home)
+        if state == "absent":
+            print(f"absent: {shown}")
+            continue
+        if state == "error":
+            seen.add(UNKNOWN)
+            print(f"cannot verify: {shown}: cannot be looked up", file=sys.stderr)
             continue
         levels, lines = check_file(path, kind, home)
         seen |= levels
         for line in lines:
             print(line, file=sys.stderr)
         if not levels:
-            print(f"ok: {display(path, home)}")
+            print(f"ok: {shown}")
     if FINDING in seen:
         print(
             "context7-config-check: static Context7 credential found; use the headersHelper "
