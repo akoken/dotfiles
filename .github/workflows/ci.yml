@@ -87,7 +87,7 @@ jobs:
       - name: Install zsh
         # The wrappers are sourced by zsh in real use; test them there too.
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
-      - name: secret-get / with-secret / context7-headers / shell wrappers / MCP configs
+      - name: secret-get / with-secret / context7-headers / shell wrappers / MCP configs / config check
         run: bash tests/agent-keys.sh
 
   docker-smoke:

@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""Check that no agent config holds a static Context7 credential.
+
+The Context7 key reaches Claude Code only through the `headersHelper`
+(bin/context7-headers) and Copilot CLI only through the bin/context7-mcp
+launcher (README "Agent keys"). Neither file is managed by this repo, so a
+static key can creep back in by hand or by an old `claude mcp add`. This
+check reads, under $HOME:
+
+  * ~/.claude.json: user-scope `mcpServers` and every
+    `projects.<path>.mcpServers`
+  * leftover copies Claude Code may leave next to it:
+    ~/.claude.json.tmp.*, ~/.claude.json.backup*,
+    ~/.claude/backups/.claude.json.backup*
+  * ~/.copilot/mcp-config.json: `mcpServers`
+
+A Context7 entry is any server whose name, url, command or args mention
+"context7". It fails when such an entry carries a `headers` or `env` field
+with entries (a literal or `${VAR}` value instead of the helper or the
+launcher) or an `--api-key` argument, and when any string anywhere in a
+file contains the Context7 key prefix `ctx7sk-`.
+
+Output names files and entry paths only, never a value. Exit status:
+0 clean (a file that does not exist is fine), 1 a static credential was
+found, 2 a file or its directory could not be looked up or read, or a
+file has an unexpected shape, an explicit null where an object belongs
+included (never a pass).
+"""
+
+import json
+import os
+import sys
+
+KEY_PREFIX = "ctx7sk-"
+FINDING, UNKNOWN = 1, 2
+MISSING = object()
+
+
+def display(path, home):
+    if path == home or path.startswith(home + os.sep):
+        return "~" + path[len(home):]
+    return path
+
+
+def is_context7(name, entry):
+    probes = [name, entry.get("url"), entry.get("command"), *entry.get("args", [])]
+    return any(isinstance(p, str) and "context7" in p.lower() for p in probes)
+
+
+def safe_name(name):
+    # A key name holding the key prefix would put the key into our output.
+    return "<redacted>" if KEY_PREFIX in name else name
+
+
+def key_prefix_paths(node, path):
+    """Yield the path of every string value that contains the key prefix."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            yield from key_prefix_paths(v, f"{path}.{safe_name(str(k))}" if path else safe_name(str(k)))
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            yield from key_prefix_paths(v, f"{path}[{i}]")
+    elif isinstance(node, str) and KEY_PREFIX in node:
+        yield path or "<root>"
+
+
+def container(parent, field, where, report):
+    """Return parent[field] when it is an object, {} when the field is absent.
+
+    An explicit null or any other non-object value is not the same as a
+    missing field: it is reported as unknown and None is returned.
+    """
+    value = parent.get(field, MISSING)
+    if value is MISSING:
+        return {}
+    if isinstance(value, dict):
+        return value
+    report(UNKNOWN, f"{where}: not an object")
+    return None
+
+
+def check_servers(servers, where, report):
+    """Check the entries of one `mcpServers` object."""
+    for name, entry in servers.items():
+        label = f"{where}.{safe_name(name)}"
+        if not isinstance(entry, dict):
+            report(UNKNOWN, f"{label}: not an object")
+            continue
+        args = entry.get("args", [])
+        if not isinstance(args, list):
+            report(UNKNOWN, f"{label}.args: not a list")
+            continue
+        if not is_context7(name, entry):
+            continue
+        for field in ("headers", "env"):
+            value = container(entry, field, f"{label}.{field}", report)
+            if value:
+                report(FINDING, f"{label}: static {field} instead of the helper or launcher")
+        if any(isinstance(a, str) and a.split("=", 1)[0] == "--api-key" for a in args):
+            report(FINDING, f"{label}: key flag on the command line")
+
+
+def check_claude(doc, report):
+    if not isinstance(doc, dict):
+        report(UNKNOWN, "top level is not an object")
+        return
+    servers = container(doc, "mcpServers", "mcpServers", report)
+    if servers is not None:
+        check_servers(servers, "mcpServers", report)
+    projects = container(doc, "projects", "projects", report)
+    for proj, conf in (projects or {}).items():
+        where = f"projects[{safe_name(proj)}]"
+        if not isinstance(conf, dict):
+            report(UNKNOWN, f"{where}: not an object")
+            continue
+        servers = container(conf, "mcpServers", f"{where}.mcpServers", report)
+        if servers is not None:
+            check_servers(servers, f"{where}.mcpServers", report)
+
+
+def check_copilot(doc, report):
+    if not isinstance(doc, dict):
+        report(UNKNOWN, "top level is not an object")
+        return
+    servers = container(doc, "mcpServers", "mcpServers", report)
+    if servers is not None:
+        check_servers(servers, "mcpServers", report)
+
+
+def check_file(path, kind, home):
+    """Return (levels, lines) for one file; lines never hold a value."""
+    shown = display(path, home)
+    lines, levels = [], set()
+
+    def report(level, msg):
+        levels.add(level)
+        tag = "static credential" if level == FINDING else "cannot verify"
+        lines.append(f"{tag}: {shown}: {msg}")
+
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        report(UNKNOWN, "cannot be read")
+        return levels, lines
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        # Fixed message: the decoder's own error can quote the input.
+        report(UNKNOWN, "not valid JSON")
+        return levels, lines
+    (check_claude if kind == "claude" else check_copilot)(doc, report)
+    for p in key_prefix_paths(doc, ""):
+        report(FINDING, f"{p}: holds a Context7 key")
+    return levels, lines
+
+
+def discover(home):
+    """Yield (state, path, kind) for every file to check.
+
+    state is "file" (present), "absent" (ENOENT: truly not there) or
+    "error" (any other lookup failure, such as an unreadable or
+    non-directory parent). A lookup that fails is never taken as absence.
+    """
+
+    def fixed(path, kind):
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            return ("absent", path, kind)
+        except OSError:
+            return ("error", path, kind)
+        return ("file", path, kind)
+
+    def matches(directory, prefix, kind):
+        try:
+            names = os.listdir(directory)
+        except FileNotFoundError:
+            return []
+        except OSError:
+            return [("error", directory, kind)]
+        return [
+            ("file", os.path.join(directory, n), kind)
+            for n in sorted(names)
+            if n.startswith(prefix)
+        ]
+
+    yield fixed(os.path.join(home, ".claude.json"), "claude")
+    yield from matches(home, ".claude.json.tmp.", "claude")
+    yield from matches(home, ".claude.json.backup", "claude")
+    yield from matches(os.path.join(home, ".claude", "backups"), ".claude.json.backup", "claude")
+    yield fixed(os.path.join(home, ".copilot", "mcp-config.json"), "copilot")
+
+
+def main():
+    home = os.environ.get("HOME", "")
+    if not home or not os.path.isabs(home):
+        print("context7-config-check: HOME is not an absolute path", file=sys.stderr)
+        return UNKNOWN
+    home = home.rstrip(os.sep) or os.sep
+    seen = set()
+    for state, path, kind in discover(home):
+        shown = display(path, home)
+        if state == "absent":
+            print(f"absent: {shown}")
+            continue
+        if state == "error":
+            seen.add(UNKNOWN)
+            print(f"cannot verify: {shown}: cannot be looked up", file=sys.stderr)
+            continue
+        levels, lines = check_file(path, kind, home)
+        seen |= levels
+        for line in lines:
+            print(line, file=sys.stderr)
+        if not levels:
+            print(f"ok: {shown}")
+    if FINDING in seen:
+        print(
+            "context7-config-check: static Context7 credential found; use the headersHelper "
+            "(Claude Code) or bin/context7-mcp (Copilot CLI), see README \"Agent Keys\", "
+            "then rotate the key",
+            file=sys.stderr,
+        )
+    if UNKNOWN in seen:
+        print("context7-config-check: could not verify every file (see above)", file=sys.stderr)
+        return UNKNOWN
+    return FINDING if FINDING in seen else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
