@@ -56,6 +56,15 @@
         ]
       },
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/bin/agent-env-tripwire\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "^(startup|resume|clear|compact|fork)$",
         "hooks": [
           {

@@ -282,6 +282,54 @@ launcher, flags static headers, `env` values and key flags in every scope
 and leftover copy, refuses unreadable files and directories and `null`
 containers, and prints no value.
 
+### Session environment tripwire
+
+Removing the exports does not clean a process that was started before: a
+long-lived parent (herdr, tmux, a terminal) keeps its old environment and
+hands it to every agent it launches. `bin/agent-env-tripwire` is a Claude Code
+`SessionStart` hook (`config/claude/settings.json`, every session source) that
+looks at the names in the session's own environment, which every command and
+MCP server of that session inherits, and warns when a credential-like name is
+set. It reports names only: it never reads a value, needs no network and no
+vault, and always exits 0, so it cannot fail or block a session start (an
+internal error becomes a fixed warning that names no variable). The warning
+reaches the user as the hook's `systemMessage` and the model as
+`additionalContext`, with an instruction not to print the values.
+
+A name is reported when it is set (even empty), is made of ASCII letters,
+digits and `_`, and:
+
+- is one of the former global keys or the service account token
+  (`CONTEXT7_API_KEY`, `JIRA_API_TOKEN`, `OBSS_LLM_API_KEY`,
+  `OPENROUTER_API_KEY`, `XAI_API_KEY`, `OP_SERVICE_ACCOUNT_TOKEN`), or
+- ends, in upper case, in `_API_KEY`, `_APIKEY`, `_TOKEN`, `_SECRET`,
+  `_SECRET_KEY` or `_PASSWORD`,
+
+unless it is excluded as not a secret for this purpose:
+`CLAUDE_CODE_MESSAGING_TOKEN` (a session-scoped token Claude Code sets for its
+own children) and git's `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>`
+configuration pairs. Exclusions are exact names, never prefixes, so for
+example `CLAUDE_CODE_OAUTH_TOKEN` is still reported. The lists live at the top
+of the script.
+
+It is a hook rather than an `install.sh` check because the drift lives in the
+environment of an already running agent, which only a check inside that
+session can see; `install.sh` runs in a fresh shell and would report clean.
+It is a tripwire, not a scrub: it removes nothing, and a clean result is not
+evidence that no secret is set (a credential under an unmatched name, or a
+name with other characters, passes). Codex is not wired: whether a Codex
+hook process sees the full session environment or the
+`shell_environment_policy`-filtered one has not been measured.
+
+`tests/agent-env-tripwire.sh` (CI job "Agent env tripwire", Linux and macOS
+`/bin/bash` 3.2) runs the script under `env -i` with synthetic values only:
+a clean environment and near-miss names print nothing; the former keys and the
+pattern are reported by name; excluded names stay silent; no synthetic value
+ever appears in the output (one value is itself a credential-like name, so a
+scan of values would show up); every case exits 0 with empty stderr; and the
+command registered in `settings.json`, run through `sh` with a `~/bin` link,
+behaves the same.
+
 ### Adding a key
 
 1. In 1Password, add an API Credential item to the `agent-keys` vault: value
@@ -564,6 +612,7 @@ Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
 
 | Script               | Description |
 |----------------------|-------------|
+| `agent-env-tripwire` | Claude Code `SessionStart` hook: warn, by name only, about credential-like variables in the session, see [Agent Keys](#session-environment-tripwire) |
 | `brew-why`           | List installed packages and their dependents |
 | `context7-config-check` | Check agent configs for a static Context7 key (`install.sh doctor`), see [Agent Keys](#agent-keys) |
 | `context7-headers`   | Claude Code `headersHelper` for Context7, see [Agent Keys](#agent-keys) |
