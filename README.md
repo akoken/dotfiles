@@ -368,7 +368,8 @@ protection**, not a fix:
   guarded one (`git show --ext-diff` after a `diff.external` line written by
   the same input), so the list is gone. To read or search a file that
   mentions a name, an agent that has file tools uses them (the hook is
-  registered for the shell tool only), and it hands over text that holds a
+  registered for the shell tool only; whether Codex has a read path outside
+  the shell tool was not measured), and it hands over text that holds a
   name from a file (`git commit -F <file>`). Keys stay usable through
   `with-secret <item> <VAR> <command>` and the launchers (`grok`, `jira`,
   `qwen`, `qwen-or`, `copilot-obss`, `with-openrouter`, `with-obss-llm`),
@@ -410,10 +411,11 @@ protection**, not a fix:
   - SECRET-LIMIT-05: the spelling test is a test on the text, not on what a
     shell or a filesystem resolves. It removes the quotes of `$''` and `$""`
     and leaves the `$`, so `env secret-$''get x` (bash and zsh) and
-    `env secret-$""get x` (bash) run the command and pass. It folds case with
-    `lower()`, which keeps U+017F (`ſ`), and a case-insensitive macOS volume
-    resolves that letter to `s`, so the name written with it runs the command
-    and passes.
+    `env secret-$""get x` (bash) run the command and pass. Case is folded with
+    `str.casefold()`, so the name written with the long s (`ſ`), which a
+    case-insensitive macOS volume resolved to `s` when measured, is refused;
+    that covers this one letter and is not a statement about every
+    equivalence a filesystem applies.
   - ENV-LEXER-01: the lexer reads some forms differently from the shells, so
     inputs that dump the environment pass when they spell no guarded name (for
     example `echo ${x:-'}'$(env)'}'} #'`, `printf 'env\n' | bash /dev/stdin`,

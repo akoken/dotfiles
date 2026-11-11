@@ -1165,18 +1165,21 @@ def check_ps(args):
 # no shell syntax and holds no grammar, command list or `op` table, so an
 # input that spells a name cannot be allowed by a form the rule misread.
 #
-# G1 Spelling. The raw text is case-folded and every ', ", backslash and
-#    backslash-newline is removed; the input spells a guarded name when the
-#    result holds `secret-get`, `op_run_no_masking` or `op` as a word (not
-#    preceded or followed by a letter, digit, `_`, `.` or `-`). Quote splicing
-#    such as s''ecret-get therefore spells the name, and so does a mention (a
-#    search pattern, a path, a commit message): it is refused too.
+# G1 Spelling. Every ', ", backslash and backslash-newline is removed from the
+#    raw text and the rest is case-folded with str.casefold(); the input
+#    spells a guarded name when the result holds `secret-get`,
+#    `op_run_no_masking` or `op` as a word (not preceded or followed by a
+#    letter, digit, `_`, `.` or `-`). Quote splicing such as s''ecret-get
+#    therefore spells the name, and so does a mention (a search pattern, a
+#    path, a commit message): it is refused too. casefold(), not lower(),
+#    because U+017F (long s) is a lower-case letter that a case-insensitive
+#    macOS volume resolved to `s` when measured. This covers that letter; it
+#    is not a statement about every equivalence a filesystem applies.
 #
 # A name reached without spelling it (glob, expansion, ANSI-C escape, copy,
 # alias, script file) is a stated protection limit, not a case this rule
 # decides. So is the boundary of the test itself: it removes the quotes of
-# $'' and $"" and leaves the `$`, and lower() keeps U+017F, which a
-# case-insensitive volume resolves to `s`.
+# $'' and $"" and leaves the `$`.
 # ---------------------------------------------------------------------------
 
 SECRET_HINT = (
@@ -1201,9 +1204,9 @@ class SecretRead(Deny):
 
 
 def spelled_name(text):
-    """Gate G1: the first guarded name the text spells once it is folded and
-    its quotes and backslashes are removed, or None."""
-    found = GATE_LEXEME.search(GATE_FOLD.sub("", text).lower())
+    """Gate G1: the first guarded name the text spells once its quotes and
+    backslashes are removed and its case is folded, or None."""
+    found = GATE_LEXEME.search(GATE_FOLD.sub("", text).casefold())
     return GUARDED_NAMES[found.group(0)] if found else None
 
 

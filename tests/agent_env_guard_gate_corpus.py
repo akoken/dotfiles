@@ -338,6 +338,26 @@ SR_01 = [
 ]
 
 
+# U+017F (LATIN SMALL LETTER LONG S) in place of an `s`. A case-insensitive
+# macOS volume ran the guarded command under this spelling when measured, and
+# str.lower() keeps the letter, so the spelling test folds case with
+# str.casefold(). Each row is denied; the test states that expectation as a
+# literal and does not ask the guard whether the row spells a name.
+LONG_S = [
+    "\u017fecret-get synthitem",
+    "env \u017fecret-get synthitem",
+    "/tmp/x/bin/\u017fecret-get synthitem",
+    "\u017fECRET-GET synthitem",
+    "echo ok && \u017fecret-get synthitem 2>&1 >/dev/null | rg real",
+]
+LONG_S_ARGV = [
+    ["\u017fecret-get", "synthitem"],
+    ["/tmp/x/bin/\u017fecret-get", "synthitem"],
+    ["bash", "-lc", "\u017fecret-get synthitem"],
+    ["zsh", "-lc", "env \u017fecret-get synthitem"],
+]
+
+
 # The seven mention forms of the original brief and one pipeline form. They
 # print no key, and they spell a guarded name: preserving them was retired for
 # shell inputs (2026-11-11), so each is denied.
@@ -522,12 +542,10 @@ STATED_LIMITS = {
     # a launcher or with-secret child can print its own key
     "SECRET-LIMIT-04": ["with-secret obss-llm KEY printenv KEY"],
     # the boundary of the spelling test: it removes the quotes of $'' and $""
-    # and leaves the `$`, and it folds case with lower(), which keeps U+017F
-    # (a case-insensitive macOS volume resolves that letter to `s`)
+    # and leaves the `$`
     "SECRET-LIMIT-05": [
         "env secret-$''get synthitem",
         "env secret-$\"\"get synthitem",
-        "\u017fecret-get synthitem",
     ],
     # not fixed here: the env-dump lexer class of issue 24, and `sudo -k env`
     # of issue 25. They pass on main and pass here.

@@ -891,7 +891,8 @@ def pinned_rows():
             ("HEREDOC_DENY", HEREDOC_DENY, "deny"), ("HEREDOC_ALLOW", HEREDOC_ALLOW, "allow"),
             ("LEXING_DENY", LEXING_DENY, "deny"), ("LEXING_ALLOW", LEXING_ALLOW, "allow"),
             ("SECRET_DENY", gate_corpus.SECRET_DENY, "deny"), ("ROUND_6", gate_corpus.ROUND_6, "deny"),
-            ("SR_01", gate_corpus.SR_01, "deny"), ("MENTIONS", gate_corpus.MENTIONS, "deny"),
+            ("SR_01", gate_corpus.SR_01, "deny"), ("LONG_S", gate_corpus.LONG_S, "deny"),
+            ("MENTIONS", gate_corpus.MENTIONS, "deny"),
             ("SPELLED_HARMLESS", gate_corpus.SPELLED_HARMLESS, "deny"),
             ("RUNS_PROGRAM", gate_corpus.RUNS_PROGRAM, "deny"),
             ("NOT_GATED_ALLOW", gate_corpus.NOT_GATED_ALLOW, "allow")):
@@ -986,11 +987,11 @@ class SecretReadGate(unittest.TestCase):
                 else:
                     self.assertEqual(decision, expected)
                     self.assertNotIn("secret-read rule", reason)
-        self.assertEqual(spelled, 227 + 2 + 2 + 8 + 89 + 8 + 42)
+        self.assertEqual(spelled, 227 + 2 + 2 + 5 + 8 + 89 + 8 + 42)
 
     def test_tables_hold_the_rows_their_names_say(self):
         spells = self.module.spells_guarded_name
-        for name in ("SECRET_DENY", "ROUND_6", "SR_01", "MENTIONS", "SPELLED_HARMLESS", "RUNS_PROGRAM"):
+        for name in ("SECRET_DENY", "ROUND_6", "SR_01", "LONG_S", "MENTIONS", "SPELLED_HARMLESS", "RUNS_PROGRAM"):
             for command in getattr(gate_corpus, name):
                 with self.subTest(table=name, command=command):
                     self.assertTrue(spells(command))
@@ -1002,6 +1003,32 @@ class SecretReadGate(unittest.TestCase):
                 self.assertEqual(spells(command), expected == "deny")
         self.assertEqual(len(gate_corpus.MENTIONS), 8)
         self.assertLessEqual(set(gate_corpus.MENTIONS), set(gate_corpus.SPELLED_HARMLESS))
+
+    def test_long_s_spelling_is_denied_as_text_and_as_list(self):
+        """The U+017F spelling of the guarded command, through the real hook.
+        The expected decision is the literal "deny": it is not derived from
+        the guard's own spelling test."""
+        self.assertEqual(len(gate_corpus.LONG_S), 5)
+        self.assertEqual(len(gate_corpus.LONG_S_ARGV), 4)
+        for command in gate_corpus.LONG_S:
+            self.assertIn("\u017f", command)
+            for shape in ("claude", "codex"):
+                with self.subTest(command=command, shape=shape):
+                    decision, reason = decide(command, shape)
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
+                    self.assertIn("the guarded name `secret-get`", reason)
+            with self.subTest(command=command, shape="list"):
+                decision, reason = decide_list(["bash", "-lc", command])
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+        for argv in gate_corpus.LONG_S_ARGV:
+            self.assertTrue(any("\u017f" in word for word in argv))
+            with self.subTest(argv=argv):
+                decision, reason = decide_list(argv)
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+                self.assertIn("the guarded name `secret-get`", reason)
 
     def test_list_payloads(self):
         for argv, expected in gate_corpus.LIST_PAYLOADS:
@@ -1094,7 +1121,8 @@ class SecretReadGate(unittest.TestCase):
 
     def test_spelling_ignores_quotes_backslashes_and_case(self):
         for command in ("echo s''ecret-get", 'echo "SECRET"-get', "echo secr\\et-get", "echo OP_run_NO_masking",
-                        "echo 'o'p", "echo o\\\np", "/usr/bin/OP read x", "echo x | op"):
+                        "echo 'o'p", "echo o\\\np", "/usr/bin/OP read x", "echo x | op",
+                        "echo \u017fecret-get", "echo \u017fECRET-GET", "echo OP_RUN_NO_MA\u017fKING"):
             with self.subTest(command=command):
                 self.assertTrue(self.module.spells_guarded_name(command))
 
@@ -1127,9 +1155,9 @@ class SecretReadGate(unittest.TestCase):
         named = set(re.findall(r"\b(?:SECRET-LIMIT|ENV-LEXER|ENV-SUDO-K)-\d\d\b", readme))
         self.assertEqual(named, set(gate_corpus.STATED_LIMITS))
         # the two boundary forms of the spelling test are named by their text
-        self.assertEqual(gate_corpus.STATED_LIMITS["SECRET-LIMIT-05"][:2],
+        self.assertEqual(gate_corpus.STATED_LIMITS["SECRET-LIMIT-05"],
                          ["env secret-$''get synthitem", 'env secret-$""get synthitem'])
-        for form in ("secret-$''get", 'secret-$""get', "U+017F"):
+        for form in ("secret-$''get", 'secret-$""get'):
             self.assertIn(form, readme)
 
     def test_the_gate_holds_no_grammar_and_no_command_table(self):
