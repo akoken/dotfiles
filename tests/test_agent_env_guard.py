@@ -9,10 +9,15 @@ startup files. Nothing reads the real environment or /proc.
 """
 
 import ast
+import importlib.machinery
+import importlib.util
+import io
 import json
 import os
 import pathlib
+import random
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -21,6 +26,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agent_env_guard_contract as contract  # noqa: E402
 import agent_env_guard_harness as harness  # noqa: E402
+import agent_env_guard_gate_corpus as gate_corpus  # noqa: E402
 from agent_env_guard_shell_corpus import CASES, KNOWN_LIMITS, PROFILES, WHY  # noqa: E402
 
 # AGENT_ENV_GUARD_UNDER_TEST runs the same table against another copy of the
@@ -109,6 +115,9 @@ ALLOW = [
     "declare -p PATH",
     "declare -x FOO=bar",
     "typeset -i n=3",
+    "integer n=3",
+    "float f=1.5",
+    "integer -x COUNT=1",
     "command -v env",
     "git status && git diff",
     "gh auth status",
@@ -433,9 +442,11 @@ class ContinuationSweep(ShellCase):
 
 # Structural rule (lexing contract): only LogicalSource reads the raw text.
 # Outside it, the typed command may only be handed to LogicalSource (or
-# type-checked, compared with "" and passed on to check_command).
+# type-checked, compared with "" and passed on to check_command). The
+# secret-read rule is the one other reader (its spelling test, G1): main()
+# hands the command to check_gate() and to nothing else.
 RAW_NAMES = {"main": {"payload", "tool_input", "command"}, "check_command": {"command", "text"}}
-RAW_SINKS = {"LogicalSource", "isinstance", "check_command"}
+RAW_SINKS = {"LogicalSource", "isinstance", "check_command", "check_gate"}
 # Reflection could reach LogicalSource's private text without naming it.
 REFLECTION = {"getattr", "setattr", "delattr", "vars", "eval", "exec", "compile",
               "globals", "locals", "__import__", "attrgetter", "methodcaller"}
@@ -792,9 +803,9 @@ class PinnedContractText(unittest.TestCase):
         seeds = {
             "seed in PROMISE": ('"evidence of security."', f'"evidence of security. {SEED_W1}"'),
             "seed after PROMISE in the message": (
-                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} {PROMISE} " + SEED_W1 + "\""),
+                "{hint} {PROMISE}\"", "{hint} {PROMISE} " + SEED_W1 + "\""),
             "seed before PROMISE in the message": (
-                "{SAFE_HINT} {PROMISE}\"", "{SAFE_HINT} " + SEED_W1 + " {PROMISE}\""),
+                "{hint} {PROMISE}\"", "{hint} " + SEED_W1 + " {PROMISE}\""),
             "one word of PROMISE": ('"The hook blocks the patterns it recognises;',
                                     '"The hook blocks the patterns it knows;'),
             "one word of the safe hint": ("Read a single variable", "Read a single value"),
@@ -809,6 +820,377 @@ class PinnedContractText(unittest.TestCase):
                     decision, reason = decide("env", guard=copy)
                     self.assertEqual(decision, "deny")
                     self.assertTrue(contract.deny_frame_violations(reason), reason)
+            # the secret-read hint is part of the frame too
+            for label, (old, new) in {
+                "one word of the secret hint": ("Do not print a stored key", "Do not show a stored key"),
+                "secret hint dropped": ("hand the value \"\n    \"to that one command", "hand the value \"\n    \"to one command"),
+            }.items():
+                with self.subTest(seed=label):
+                    self.assertEqual(guard.count(old), 1, old)
+                    copy = pathlib.Path(tmp) / "agent-env-guard"
+                    copy.write_text(guard.replace(old, new, 1))
+                    decision, reason = decide("secret-get fake-item", guard=copy)
+                    self.assertEqual(decision, "deny")
+                    self.assertTrue(contract.deny_frame_violations(reason), reason)
+
+
+def guard_module():
+    """The guard loaded as a module (honours AGENT_ENV_GUARD_UNDER_TEST)."""
+    loader = importlib.machinery.SourceFileLoader("agent_env_guard_under_test", str(GUARD))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def decide_list(argv, guard=None):
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": argv}}
+    proc = run_guard(json.dumps(payload), guard)
+    if proc.returncode != 0:
+        raise AssertionError(f"guard exited {proc.returncode}: {proc.stderr}")
+    if not proc.stdout.strip():
+        return "allow", ""
+    spec = json.loads(proc.stdout)["hookSpecificOutput"]
+    return spec["permissionDecision"], spec["permissionDecisionReason"]
+
+
+def hook_decision(module, command):
+    """The decision of the guard's main() run in this process on a hook
+    payload whose command is a string or an argv list: the code path of the
+    hook without a process per input (the sweep and the fuzz need thousands)."""
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command}}
+    stdin, stdout = sys.stdin, sys.stdout
+    sys.stdin, sys.stdout = io.StringIO(json.dumps(payload)), io.StringIO()
+    try:
+        module.main()
+        written = sys.stdout.getvalue()
+    finally:
+        sys.stdin, sys.stdout = stdin, stdout
+    if not written.strip():
+        return "allow", ""
+    spec = json.loads(written)["hookSpecificOutput"]
+    return spec["permissionDecision"], spec["permissionDecisionReason"]
+
+
+def env_dump_decision(module, text):
+    """What the env-dump rule alone decides (the whole of main's decision)."""
+    try:
+        module.check_command(text)
+    except Exception:  # a Deny, or a guard bug that main() reports as a deny
+        return "deny"
+    return "allow"
+
+
+def pinned_rows():
+    """(table, command, pinned decision) for every row of every table: the
+    main-era tables, the shell corpus and the secret-read corpus."""
+    rows = []
+    for name, commands, expected in (
+            ("DENY", DENY, "deny"), ("ALLOW", ALLOW, "allow"),
+            ("UNSEEN_DENY", UNSEEN_DENY, "deny"), ("UNSEEN_ALLOW", UNSEEN_ALLOW, "allow"),
+            ("HEREDOC_DENY", HEREDOC_DENY, "deny"), ("HEREDOC_ALLOW", HEREDOC_ALLOW, "allow"),
+            ("LEXING_DENY", LEXING_DENY, "deny"), ("LEXING_ALLOW", LEXING_ALLOW, "allow"),
+            ("SECRET_DENY", gate_corpus.SECRET_DENY, "deny"), ("ROUND_6", gate_corpus.ROUND_6, "deny"),
+            ("SR_01", gate_corpus.SR_01, "deny"), ("LONG_S", gate_corpus.LONG_S, "deny"),
+            ("BACKSLASH_NEWLINE", gate_corpus.BACKSLASH_NEWLINE, "deny"),
+            ("BACKSLASH_NEWLINE_COST", gate_corpus.BACKSLASH_NEWLINE_COST, "deny"),
+            ("MENTIONS", gate_corpus.MENTIONS, "deny"),
+            ("SPELLED_HARMLESS", gate_corpus.SPELLED_HARMLESS, "deny"),
+            ("RUNS_PROGRAM", gate_corpus.RUNS_PROGRAM, "deny"),
+            ("NOT_GATED_ALLOW", gate_corpus.NOT_GATED_ALLOW, "allow")):
+        rows += [(name, command, expected) for command in commands]
+    rows += [("CASES", case["command"], case["decision"]) for case in CASES]
+    rows += [("REVIEW_INPUTS", command, expected) for _, command, expected in gate_corpus.REVIEW_INPUTS]
+    for ident, commands in gate_corpus.STATED_LIMITS.items():
+        rows += [(ident, command, "allow") for command in commands]
+    return rows
+
+
+# Text inserted by the sweep and the fuzz: shell syntax, quoting, control and
+# non-ASCII characters, and whole or partial guarded names.
+SYNTAX = ["$", "`", "\\", "*", "?", "[", "]", "{", "}", "(", ")", "<", ">", "|", "&", ";", "'", '"', "~", "#",
+          "=", "!", " ", "\t", "\n", "\\\n", "\r", "\x00", "\u00a0", "\u017f", "\u00e9", "$'", '$"', "$(", "${",
+          "<<", "<("]
+NAME_PARTS = ["secret-get", "SECRET-GET", "Secret-Get", "s''ecret-get", 'sec"ret"-get', "sec\\ret-get",
+              "secret-\\\nget", "op", "OP", " op ", "'op'", "o\\p", "OP_RUN_NO_MASKING", "op_run_no_masking",
+              "secret", "-get", "_op", "op.", "top", "$''get", '$""get']
+SWEEP_BASES = ["rg secret-get README.md", "cat bin/secret-get | wc -l", "git log -- bin/secret-get",
+               "op whoami", "echo op && op vault list", "ls bin 2>&1 >/dev/null | rg secret-get",
+               "OP_RUN_NO_MASKING=1 true", "git status && printf '%s\\n' ok", "with-secret xai KEY true"]
+FUZZ_SEED = 20261111
+FUZZ_INPUTS = 4000
+
+
+def fuzz_inputs(rows):
+    """FUZZ_INPUTS mutated corpus rows, the same on every run."""
+    rng = random.Random(FUZZ_SEED)
+    for _ in range(FUZZ_INPUTS):
+        text = rng.choice(rows)
+        for _ in range(rng.randint(1, 4)):
+            index = rng.randint(0, len(text))
+            action = rng.random()
+            if action < 0.45:
+                text = text[:index] + rng.choice(SYNTAX) + text[index:]
+            elif action < 0.75:
+                text = text[:index] + rng.choice(NAME_PARTS) + text[index:]
+            elif action < 0.9:
+                text = text[:index] + text[index + rng.randint(1, 3):]
+            else:
+                text = text + rng.choice([" && ", " ; ", " | ", "\n", " "]) + rng.choice(rows)
+        if text:
+            yield text
+
+
+class SecretReadGate(unittest.TestCase):
+    """The secret-read rule: an input that spells a guarded name (G1) is
+    refused; an input that spells none is not examined and decides as the
+    env-dump rule does. Every decision is made on a string; nothing is
+    executed."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = guard_module()
+
+    def assertRefused(self, reason):
+        self.assertEqual(contract.deny_frame_violations(reason), [], reason)
+        self.assertIn("secret-read rule", reason)
+        self.assertIn("with-secret <item> <VAR> <command>", reason)
+
+    def test_the_2026_11_09_command_is_denied(self):
+        command = "/usr/bin/time -p ~/bin/secret-get obss-llm 2>&1 >/dev/null | rg real"
+        self.assertEqual(gate_corpus.SECRET_DENY[0], command)
+        for shape in ("claude", "codex"):
+            with self.subTest(shape=shape):
+                decision, reason = decide(command, shape)
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+                self.assertIn("the guarded name `secret-get`", reason)
+
+    def test_every_row_that_spells_a_name_is_denied_and_the_rest_decide_as_pinned(self):
+        """The acceptance property over every row of every table, through the
+        real hook: a row that spells a guarded name is denied as text and as a
+        list payload, a row that spells none keeps the decision its table
+        pins (for the main-era tables: the decision of main)."""
+        rows = pinned_rows()
+        self.assertEqual(len(gate_corpus.SECRET_DENY), 227)
+        self.assertEqual(len(gate_corpus.REVIEW_INPUTS), 43)
+        spelled = 0
+        for table, command, expected in rows:
+            with self.subTest(table=table, command=command):
+                decision, reason = decide(command)
+                if self.module.spells_guarded_name(command):
+                    spelled += 1
+                    self.assertEqual(expected, "deny", "a row that spells a name is pinned as an allow")
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
+                    decision, reason = decide_list(["bash", "-lc", command])
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
+                else:
+                    self.assertEqual(decision, expected)
+                    self.assertNotIn("secret-read rule", reason)
+        self.assertEqual(spelled, 227 + 2 + 2 + 5 + 8 + 2 + 8 + 89 + 8 + 42)
+
+    def test_tables_hold_the_rows_their_names_say(self):
+        spells = self.module.spells_guarded_name
+        for name in ("SECRET_DENY", "ROUND_6", "SR_01", "LONG_S", "BACKSLASH_NEWLINE", "BACKSLASH_NEWLINE_COST",
+                     "MENTIONS", "SPELLED_HARMLESS", "RUNS_PROGRAM"):
+            for command in getattr(gate_corpus, name):
+                with self.subTest(table=name, command=command):
+                    self.assertTrue(spells(command))
+        for command in gate_corpus.NOT_GATED_ALLOW + [c for rows in gate_corpus.STATED_LIMITS.values() for c in rows]:
+            with self.subTest(command=command):
+                self.assertFalse(spells(command))
+        for ident, command, expected in gate_corpus.REVIEW_INPUTS:
+            with self.subTest(id=ident):
+                self.assertEqual(spells(command), expected == "deny")
+        self.assertEqual(len(gate_corpus.MENTIONS), 8)
+        self.assertLessEqual(set(gate_corpus.MENTIONS), set(gate_corpus.SPELLED_HARMLESS))
+
+    def test_long_s_spelling_is_denied_as_text_and_as_list(self):
+        """The U+017F spelling of the guarded command, through the real hook.
+        The expected decision is the literal "deny": it is not derived from
+        the guard's own spelling test."""
+        self.assertEqual(len(gate_corpus.LONG_S), 5)
+        self.assertEqual(len(gate_corpus.LONG_S_ARGV), 4)
+        for command in gate_corpus.LONG_S:
+            self.assertIn("\u017f", command)
+            for shape in ("claude", "codex"):
+                with self.subTest(command=command, shape=shape):
+                    decision, reason = decide(command, shape)
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
+                    self.assertIn("the guarded name `secret-get`", reason)
+            with self.subTest(command=command, shape="list"):
+                decision, reason = decide_list(["bash", "-lc", command])
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+        for argv in gate_corpus.LONG_S_ARGV:
+            self.assertTrue(any("\u017f" in word for word in argv))
+            with self.subTest(argv=argv):
+                decision, reason = decide_list(argv)
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+                self.assertIn("the guarded name `secret-get`", reason)
+
+    def test_backslash_newline_readings_are_denied_as_text_and_as_list(self):
+        """A backslash-newline read as a real newline (after an escaped
+        backslash, in a comment) or as a continuation, before, inside or after
+        the name, once or several times, through the real hook. The expected
+        decision is the literal "deny": it is not derived from the guard's own
+        spelling test."""
+        rows = gate_corpus.BACKSLASH_NEWLINE + gate_corpus.BACKSLASH_NEWLINE_COST
+        self.assertEqual(len(gate_corpus.BACKSLASH_NEWLINE), 8)
+        self.assertEqual(len(gate_corpus.BACKSLASH_NEWLINE_COST), 2)
+        for command in rows:
+            self.assertIn("\\\n", command)
+            for shape in ("claude", "codex"):
+                with self.subTest(command=command, shape=shape):
+                    decision, reason = decide(command, shape)
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
+            for argv in (["bash", "-lc", command], ["sh", "-c", command]):
+                with self.subTest(argv=argv):
+                    decision, reason = decide_list(argv)
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
+
+    def test_list_payloads(self):
+        for argv, expected in gate_corpus.LIST_PAYLOADS:
+            with self.subTest(argv=argv):
+                self.assertEqual(self.module.spells_guarded_name(shlex.join(argv)), expected == "deny")
+                decision, reason = decide_list(argv)
+                self.assertEqual(decision, expected)
+                if expected == "deny":
+                    self.assertRefused(reason)
+
+    def test_in_process_decisions_equal_the_hook(self):
+        """hook_decision() (used by the sweep and the fuzz) is the hook."""
+        for command in gate_corpus.SR_01 + gate_corpus.MENTIONS + gate_corpus.NOT_GATED_ALLOW[:4] + ["env", "ps aux"]:
+            with self.subTest(command=command):
+                self.assertEqual(hook_decision(self.module, command), decide(command))
+                argv = ["bash", "-lc", command]
+                self.assertEqual(hook_decision(self.module, argv), decide_list(argv))
+
+    def check_property(self, text):
+        """The acceptance property for one input, as text and as list payload."""
+        argv = ["bash", "-lc", text]
+        if self.module.spells_guarded_name(text):
+            for payload in (text, argv):
+                decision, reason = hook_decision(self.module, payload)
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+            return True
+        self.assertEqual(hook_decision(self.module, text)[0], env_dump_decision(self.module, text))
+        self.assertEqual(hook_decision(self.module, argv)[0], env_dump_decision(self.module, shlex.join(argv)))
+        return False
+
+    def test_sweep_no_inserted_text_gets_a_spelled_input_through(self):
+        """Any SYNTAX or NAME_PARTS text inserted anywhere in a base command:
+        while the result spells a guarded name it is denied, otherwise the
+        env-dump rule alone decides it."""
+        spelled = unspelled = 0
+        for base in SWEEP_BASES:
+            for index in range(len(base) + 1):
+                for piece in SYNTAX + NAME_PARTS:
+                    mutated = base[:index] + piece + base[index:]
+                    with self.subTest(mutated=mutated):
+                        if self.check_property(mutated):
+                            spelled += 1
+                        else:
+                            unspelled += 1
+        self.assertGreater(spelled, 5000)
+        self.assertGreater(unspelled, 1000)
+
+    def test_fuzz_no_mutated_row_gets_a_spelled_input_through(self):
+        rows = [command for _, command, _ in pinned_rows()]
+        spelled = unspelled = 0
+        for text in fuzz_inputs(rows):
+            with self.subTest(text=text):
+                if self.check_property(text):
+                    spelled += 1
+                else:
+                    unspelled += 1
+        self.assertGreater(spelled, 1000)
+        self.assertGreater(unspelled, 500)
+
+    def test_the_reason_names_the_spelled_name_and_never_the_command(self):
+        for command, name in ((f"secret-get {MARKER}", "secret-get"), (f"echo {MARKER}; OP read x", "op"),
+                              (f"Op_Run_No_Masking=1 {MARKER}", "OP_RUN_NO_MASKING"),
+                              (f"echo {MARKER} s''ecret-get", "secret-get")):
+            with self.subTest(name=name):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+                self.assertIn(f"the guarded name `{name}`", reason)
+                self.assertNotIn(MARKER, reason)
+                self.assertEqual(safety_claims(reason), [])
+
+    def test_a_spelled_input_is_refused_before_the_lexer_reads_it(self):
+        """The refusal does not depend on what the env-dump lexer makes of
+        the input: its own denials and its limits come second."""
+        for command in ("env; echo secret-get", "cat /proc/self/environ secret-get",
+                        "echo secret-get " + "a" * 200_001, "echo secret-get " + "$(" * 12 + "date" + ")" * 12,
+                        "echo 'secret-get", "echo $'a' secret-get"):
+            with self.subTest(command=command[:40]):
+                decision, reason = decide(command)
+                self.assertEqual(decision, "deny")
+                self.assertRefused(reason)
+
+    def test_not_spelled_means_not_examined(self):
+        for command in ("echo hi", "git status && git diff", "bash script.sh", "echo $(date)", "sh -c 'echo ok'"):
+            with self.subTest(command=command):
+                self.assertFalse(self.module.spells_guarded_name(command))
+                self.module.check_gate(command)  # no refusal, whatever the syntax
+                self.assertEqual(decide(command)[0], "allow")
+
+    def test_spelling_ignores_quotes_backslashes_and_case(self):
+        for command in ("echo s''ecret-get", 'echo "SECRET"-get', "echo secr\\et-get", "echo OP_run_NO_masking",
+                        "echo 'o'p", "echo o\\\np", "/usr/bin/OP read x", "echo x | op",
+                        "echo \u017fecret-get", "echo \u017fECRET-GET", "echo OP_RUN_NO_MA\u017fKING"):
+            with self.subTest(command=command):
+                self.assertTrue(self.module.spells_guarded_name(command))
+
+    def test_op_is_a_word_only(self):
+        for command in ("echo top", "echo stop", "echo copy", "echo op2", "echo my-op", "echo op.exe", "echo op_x"):
+            with self.subTest(command=command):
+                self.assertFalse(self.module.spells_guarded_name(command))
+
+    def test_stated_limits_decide_as_main(self):
+        for ident, rows in gate_corpus.STATED_LIMITS.items():
+            for command in rows:
+                with self.subTest(limit=ident, command=command):
+                    self.assertEqual(decide(command)[0], "allow")
+
+    def test_scope_is_stated_in_the_docstring_and_the_readme(self):
+        guard = " ".join(GUARD.read_text().split())
+        readme = " ".join((GUARD.parent.parent / "README.md").read_text().split())
+        for surface, text in (("docstring", guard), ("README", readme)):
+            with self.subTest(surface=surface):
+                self.assertIn("examines only inputs whose text spells a guarded name", text)
+                self.assertIn("is refused whole, whatever it would do", text)
+                self.assertIn("is not examined by this rule", text)
+                self.assertIn("explicit protection limit", text)
+                self.assertNotIn("grammar v1", text)
+        self.assertNotIn("value never lands", readme)
+        self.assertNotIn("What still passes", readme)
+
+    def test_every_stated_limit_has_a_corpus_row_and_a_readme_entry(self):
+        readme = (GUARD.parent.parent / "README.md").read_text()
+        named = set(re.findall(r"\b(?:SECRET-LIMIT|ENV-LEXER|ENV-SUDO-K)-\d\d\b", readme))
+        self.assertEqual(named, set(gate_corpus.STATED_LIMITS))
+        # the two boundary forms of the spelling test are named by their text
+        self.assertEqual(gate_corpus.STATED_LIMITS["SECRET-LIMIT-05"],
+                         ["env secret-$''get synthitem", 'env secret-$""get synthitem'])
+        for form in ("secret-$''get", 'secret-$""get'):
+            self.assertIn(form, readme)
+
+    def test_the_gate_holds_no_grammar_and_no_command_table(self):
+        """The rule is one spelling test: the strict scanner, the head list
+        and the `op` table of the earlier design are gone."""
+        for name in ("StrictScanner", "GATE_HEADS", "GATE_GIT", "OP_FORMS", "GATE_REASONS", "check_gate_command"):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(self.module, name))
 
 
 class Limits(unittest.TestCase):

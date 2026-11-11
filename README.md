@@ -260,8 +260,14 @@ report file names, never the matched text.
 1. In 1Password, add an API Credential item to the `agent-keys` vault: value
    in `credential`, the env var name in `key name`. Item names may contain
    only letters, digits, `.`, `_` and `-`.
-2. Check it without displaying it: `secret-get <item> | wc -c` (a non-zero
-   count and exit status 0).
+2. Check it without displaying it:
+   `with-secret <item> CHECK sh -c 'test -n "$CHECK"' && echo ok` (prints `ok`
+   when the key reads and is not empty; the single quotes keep `$CHECK` for
+   the inner shell, so no shell expands the value on a command line and
+   nothing prints it). An agent cannot run `secret-get` or `op read` for this:
+   the command guard denies them (see "Agent Secret Hygiene"). A human in
+   their own terminal, outside an agent, is unaffected and can still run
+   `secret-get <item>`.
 3. Give its consumer a wrapper in `config/zsh/.zsh_agent_keys`, for example
    `mytool() { with-secret myitem MYTOOL_API_KEY mytool "$@"; }`. If the new
    variable should also be stripped from other consumers, add it to the
@@ -297,8 +303,10 @@ report file names, never the matched text.
   so the Context7 key is in Claude Code's memory (not its environment) while
   the server is connected.
 - Anyone who can run commands as you can run `secret-get` and read every key
-  in the `agent-keys` vault (but nothing outside it). Keep only agent-usable
-  keys in that vault.
+  in the `agent-keys` vault (but nothing outside it). The command guard refuses
+  `secret-get` to an agent when the command spells the name, and only as a
+  tripwire (see "Agent Secret Hygiene"). Keep only agent-usable keys in that
+  vault.
 
 ## Agent Secret Hygiene (partial)
 
@@ -335,6 +343,48 @@ protection**, not a fix:
   `/hooks`. Tests: `python3 -m unittest discover -s tests -p 'test_agent_env_guard.py'`
   (needs `sh`, `bash` and `zsh`; the shell corpus runs each case in a
   synthetic environment, never the real one).
+- **Secret-read rule**: the same hook refuses an agent command that spells
+  the name of a command or setting that prints a stored key. **Scope**: the
+  rule examines only inputs whose text spells a guarded name (`secret-get`,
+  `op` as a word, `OP_RUN_NO_MASKING`) after quotes and backslashes are
+  removed and case is folded; each backslash-newline counts both as a line
+  continuation and as a real newline, the two ways a shell can read it.
+  Such an input is refused whole, whatever it
+  would do, as a command string and as an argument list alike: the rule reads
+  no shell syntax and keeps no list of harmless commands, so `secret-get
+  <item>`, `op read`, `op item get` and `OP_RUN_NO_MASKING=1 op run` are
+  refused by any path and inside any pipeline, substitution, `sh -c` string
+  or wrapper, and so is a command that only mentions a name. An input that
+  spells no guarded name is not examined by this rule: it gets the env-dump
+  decision above, exactly as on `main`. **Access without spelling the name is
+  an explicit protection limit** of this rule (see the limits below), not a
+  finding. The rule lowers the chance of a mistake; it does not promise that a
+  key never reaches tool output or a transcript.
+  The refusal has one named reason, which states the guarded name that was
+  spelled and never quotes the command. **Mentions are refused too**:
+  `rg secret-get README.md`, `cat bin/secret-get`, `git log -- bin/secret-get`,
+  `op --version`, `op whoami`, `op vault list`, `op item list`, a commit
+  message or a here-document that holds a name, and the word `op` in prose.
+  An earlier design read such inputs with a strict grammar and a list of
+  read-only commands, and a listed command could still be made to run the
+  guarded one (`git show --ext-diff` after a `diff.external` line written by
+  the same input), so the list is gone. To read or search a file that
+  mentions a name, an agent that has file tools uses them (the hook is
+  registered for the shell tool only; whether Codex has a read path outside
+  the shell tool was not measured), and it hands over text that holds a
+  name from a file (`git commit -F <file>`). Keys stay usable through
+  `with-secret <item> <VAR> <command>` and the launchers (`grok`, `jira`,
+  `qwen`, `qwen-or`, `copilot-obss`, `with-openrouter`, `with-obss-llm`),
+  which hand the value to one command and never print it; a call that spells
+  no guarded name is not examined by this rule. Check that a key reads without
+  displaying it with
+  `with-secret <item> CHECK sh -c 'test -n "$CHECK"' && echo ok`. Why it
+  exists: under zsh, `MULTIOS` makes `secret-get obss-llm 2>&1 >/dev/null | cat`
+  send the value to the pipe as well as to `/dev/null` (bash prints nothing),
+  which is how a key reached a session transcript. Humans running commands in
+  their own terminal, outside an agent, are unaffected: the hook only sees what
+  an agent types. Same limit as the rest of the guard: a tripwire, not a
+  boundary.
 - **Known limitations of the guard** (commands that still dump and pass; kept
   as `KNOWN_LIMITS` rows in `tests/agent_env_guard_shell_corpus.py`):
   - ENV-GUARD-11: a function body without braces is not checked, so
@@ -345,6 +395,39 @@ protection**, not a fix:
     `readonly FAKE_TEST_API_KEY; readonly -p PATH` (dash) list everything.
   - ENV-GUARD-13: `env` skips an operand whose value is unknown as if it were
     an assignment, so `env "$(printf env)" -u X` passes.
+  - SECRET-LIMIT-01: a guarded command reached by another name is not
+    examined, because the name is not spelled: a copy, symlink, alias or
+    function (`mykey fake-item`).
+  - SECRET-LIMIT-02: a script file is not read. One command can write it and
+    another run it: a write that spells the name is refused, but
+    `printf '%s-get x\n' secret > s.sh` passes and then `sh s.sh` passes
+    (neither spells a name).
+  - SECRET-LIMIT-03: a name that is not spelled in the text is not examined,
+    whatever builds it: `find . -exec sec*et-get x ';'`, an interpreter string
+    such as `python3 -c 'os.system("sec"+"ret-get x")'`, an `env` operand
+    (`env "$(printf sec)ret-get" x`, the ENV-GUARD-13 family), or a
+    configuration file a tool reads
+    (`printf '[diff]\n\texternal = %s-get x\n' secret >> .git/config && git show --ext-diff`).
+  - SECRET-LIMIT-04: a command run through `with-secret` or a launcher can
+    print its own key, so `with-secret obss-llm KEY printenv KEY` passes.
+  - SECRET-LIMIT-05: the spelling test is a test on the text, not on what a
+    shell or a filesystem resolves. It removes the quotes of `$''` and `$""`
+    and leaves the `$`, so `env secret-$''get x` (bash and zsh) and
+    `env secret-$""get x` (bash) run the command and pass. Case is folded with
+    `str.casefold()`, so the name written with the long s (`ſ`), which a
+    case-insensitive macOS volume resolved to `s` when measured, is refused;
+    that covers this one letter and is not a statement about every
+    equivalence a filesystem applies. A backslash-newline is read both as a
+    continuation and as a real newline (after an escaped backslash or inside
+    a comment a shell reads the second), so `true x\\` newline `op item get x`
+    is refused; the cost is that a real continuation directly next to `op`
+    (`true x\` newline `op ...`, the single word `xop`) is refused as well.
+  - ENV-LEXER-01: the lexer reads some forms differently from the shells, so
+    inputs that dump the environment pass when they spell no guarded name (for
+    example `echo ${x:-'}'$(env)'}'} #'`, `printf 'env\n' | bash /dev/stdin`,
+    `{fd}>/dev/null env`, `if [[ -n x ]] env`). This is the defect class of
+    issue #24 and is **not fixed** by the secret-read rule.
+  - ENV-SUDO-K-01: `sudo -k env` passes (issue #25), **not fixed** here.
   - Anything the guard cannot see: what a started program, script file or
     interpreter does, and variables set outside the command.
 
