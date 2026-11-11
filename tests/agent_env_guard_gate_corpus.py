@@ -358,6 +358,34 @@ LONG_S_ARGV = [
 ]
 
 
+# Backslash-newline. A shell reads one as a line continuation (the two
+# characters vanish and the text around them joins) or, after an escaped
+# backslash or inside a comment, as a backslash followed by a real newline (a
+# command separator). The spelling test keeps both readings for each
+# occurrence. Each row of BACKSLASH_NEWLINE ran a synthetic stand-in named `op`
+# in bash 3.2, bash 5.3, zsh 5.9 and dash when measured on macOS, except the
+# `secret-get` row (no stand-in of that name was measured); each is denied.
+# The test states that expectation as a literal and does not ask the guard
+# whether the row spells a name.
+BACKSLASH_NEWLINE = [
+    "true x\\\\\nop item get synthitem",                  # before the name: escaped backslash, real newline
+    "true #x\\\nop item get synthitem",                   # before the name: inside a comment
+    "o\\\np item get synthitem",                          # inside the name: a continuation
+    "true #c\\\no\\\np item get synthitem",               # several: comment line, then inside the name
+    "true x\\\\\nop\\\n item get synthitem",              # before and after the name
+    "true x\\\\\ntrue y\\\\\nop item get synthitem",      # several: two escaped-backslash lines
+    "true #c\\\ntrue x\\\\\nop item get synthitem",       # several: a comment line, then the first row
+    "secret-\\\nget synthitem",                           # inside `secret-get`: a continuation
+]
+# The cost of keeping both readings: a real continuation directly before or
+# after `op` joins it into a longer word that is not the guarded command (the
+# stand-in did not run in those four shells), and the row is refused anyway.
+BACKSLASH_NEWLINE_COST = [
+    "true x\\\nop item get synthitem",                    # the word `xop`
+    "op\\\nx item get synthitem",                         # the word `opx`
+]
+
+
 # The seven mention forms of the original brief and one pipeline form. They
 # print no key, and they spell a guarded name: preserving them was retired for
 # shell inputs (2026-11-11), so each is denied.

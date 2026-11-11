@@ -892,6 +892,8 @@ def pinned_rows():
             ("LEXING_DENY", LEXING_DENY, "deny"), ("LEXING_ALLOW", LEXING_ALLOW, "allow"),
             ("SECRET_DENY", gate_corpus.SECRET_DENY, "deny"), ("ROUND_6", gate_corpus.ROUND_6, "deny"),
             ("SR_01", gate_corpus.SR_01, "deny"), ("LONG_S", gate_corpus.LONG_S, "deny"),
+            ("BACKSLASH_NEWLINE", gate_corpus.BACKSLASH_NEWLINE, "deny"),
+            ("BACKSLASH_NEWLINE_COST", gate_corpus.BACKSLASH_NEWLINE_COST, "deny"),
             ("MENTIONS", gate_corpus.MENTIONS, "deny"),
             ("SPELLED_HARMLESS", gate_corpus.SPELLED_HARMLESS, "deny"),
             ("RUNS_PROGRAM", gate_corpus.RUNS_PROGRAM, "deny"),
@@ -987,11 +989,12 @@ class SecretReadGate(unittest.TestCase):
                 else:
                     self.assertEqual(decision, expected)
                     self.assertNotIn("secret-read rule", reason)
-        self.assertEqual(spelled, 227 + 2 + 2 + 5 + 8 + 89 + 8 + 42)
+        self.assertEqual(spelled, 227 + 2 + 2 + 5 + 8 + 2 + 8 + 89 + 8 + 42)
 
     def test_tables_hold_the_rows_their_names_say(self):
         spells = self.module.spells_guarded_name
-        for name in ("SECRET_DENY", "ROUND_6", "SR_01", "LONG_S", "MENTIONS", "SPELLED_HARMLESS", "RUNS_PROGRAM"):
+        for name in ("SECRET_DENY", "ROUND_6", "SR_01", "LONG_S", "BACKSLASH_NEWLINE", "BACKSLASH_NEWLINE_COST",
+                     "MENTIONS", "SPELLED_HARMLESS", "RUNS_PROGRAM"):
             for command in getattr(gate_corpus, name):
                 with self.subTest(table=name, command=command):
                     self.assertTrue(spells(command))
@@ -1029,6 +1032,28 @@ class SecretReadGate(unittest.TestCase):
                 self.assertEqual(decision, "deny")
                 self.assertRefused(reason)
                 self.assertIn("the guarded name `secret-get`", reason)
+
+    def test_backslash_newline_readings_are_denied_as_text_and_as_list(self):
+        """A backslash-newline read as a real newline (after an escaped
+        backslash, in a comment) or as a continuation, before, inside or after
+        the name, once or several times, through the real hook. The expected
+        decision is the literal "deny": it is not derived from the guard's own
+        spelling test."""
+        rows = gate_corpus.BACKSLASH_NEWLINE + gate_corpus.BACKSLASH_NEWLINE_COST
+        self.assertEqual(len(gate_corpus.BACKSLASH_NEWLINE), 8)
+        self.assertEqual(len(gate_corpus.BACKSLASH_NEWLINE_COST), 2)
+        for command in rows:
+            self.assertIn("\\\n", command)
+            for shape in ("claude", "codex"):
+                with self.subTest(command=command, shape=shape):
+                    decision, reason = decide(command, shape)
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
+            for argv in (["bash", "-lc", command], ["sh", "-c", command]):
+                with self.subTest(argv=argv):
+                    decision, reason = decide_list(argv)
+                    self.assertEqual(decision, "deny")
+                    self.assertRefused(reason)
 
     def test_list_payloads(self):
         for argv, expected in gate_corpus.LIST_PAYLOADS:
