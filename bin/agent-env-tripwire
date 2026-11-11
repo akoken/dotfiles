@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""SessionStart tripwire: warn when an agent session inherits key-like names.
+
+Claude Code runs this as a SessionStart hook (config/claude/settings.json).
+The hook process inherits Claude Code's own environment, so whatever it finds
+here also reaches every shell command and every MCP server the session starts.
+The typical cause is a long-lived parent (herdr, tmux, a terminal) started
+while the agent keys were still exported globally: it keeps the old
+environment and hands it to every agent it launches. See README "Agent Keys".
+
+What it reports: the NAMES of set variables that look like credentials.
+
+  * the former global agent keys and the service account token (FORMER_KEYS)
+  * any name ending in one of SUFFIXES, compared in upper case
+  * minus the known non-secret or session-scoped names in EXCLUDED
+
+Only names made of ASCII letters, digits and `_` (not starting with a digit)
+are considered; any other name is skipped, so it is never printed either.
+
+Guarantees:
+
+  * It never reads a value: it iterates the environment's names only, so no
+    value can reach its output. A name that is set but empty is reported too.
+  * It never fails or blocks the session: every path exits 0. An internal
+    error turns into a fixed warning that names no variable.
+  * No network, no vault, no files, no stdin: it reads only its own
+    environment's names.
+
+Output: nothing when no name matches. Otherwise one JSON object on stdout:
+`systemMessage` (a warning Claude Code shows to the user) and
+`hookSpecificOutput.additionalContext` (the same facts for the model).
+
+This is a tripwire, not a scrub: it does not remove anything, and a clean
+result is not evidence that no secret is in the environment (a credential
+under an unmatched name passes).
+"""
+
+import json
+import os
+import re
+import sys
+
+# The keys that used to be exported from ~/.zshenv.local before they moved to
+# the agent-keys vault, plus the 1Password service account token. Same list as
+# the managed names in bin/with-secret.
+FORMER_KEYS = frozenset(
+    {
+        "CONTEXT7_API_KEY",
+        "JIRA_API_TOKEN",
+        "OBSS_LLM_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "OP_SERVICE_ACCOUNT_TOKEN",
+    }
+)
+
+# Conservative name suffixes: a name ending in one of these almost always
+# holds a credential. Broader words (KEY, AUTH, PASS anywhere in the name)
+# are left out on purpose; they match too many ordinary variables.
+SUFFIXES = (
+    "_API_KEY",
+    "_APIKEY",
+    "_TOKEN",
+    "_SECRET",
+    "_SECRET_KEY",
+    "_PASSWORD",
+)
+
+# Names that match a suffix but are not secrets a session should be warned
+# about. Exact names only, never prefixes, so a real credential that happens
+# to share a prefix (for example CLAUDE_CODE_OAUTH_TOKEN) is still reported.
+EXCLUDED = frozenset(
+    {
+        # Session-scoped token Claude Code sets for its own child processes.
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+    }
+)
+
+# git's GIT_CONFIG_KEY_<n> / GIT_CONFIG_VALUE_<n> pairs (git-config(1),
+# GIT_CONFIG_COUNT) carry configuration, not credentials. They match no suffix
+# today; the explicit rule keeps them out if the suffix list grows.
+EXCLUDED_PATTERN = re.compile(r"GIT_CONFIG_(KEY|VALUE)_[0-9]+")
+
+NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def flagged(names):
+    """Return the sorted names that look like credentials."""
+    hits = set()
+    for name in names:
+        if not NAME.fullmatch(name):
+            continue
+        if name in EXCLUDED or EXCLUDED_PATTERN.fullmatch(name):
+            continue
+        upper = name.upper()
+        if upper in FORMER_KEYS or upper.endswith(SUFFIXES):
+            hits.add(name)
+    return sorted(hits)
+
+
+def report(hits):
+    joined = ", ".join(hits)
+    user = (
+        f"agent-env-tripwire: this session's environment holds {len(hits)} "
+        f"credential-like variable(s): {joined}. Every command and MCP server "
+        "this session starts inherits them. Usually a long-lived parent "
+        "(herdr, tmux, a terminal) was started while keys were still exported "
+        "globally: restart that parent or unset these names in it, then start "
+        "a new session. Names only; no value was read."
+    )
+    model = (
+        f"agent-env-tripwire warning: this session's environment holds the "
+        f"credential-like variable names {joined}. Tell the user about this "
+        "warning. Never print, echo, log or otherwise read the values of "
+        "these variables."
+    )
+    return {
+        "systemMessage": user,
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": model,
+        },
+    }
+
+
+def main():
+    try:
+        hits = flagged(list(os.environ.keys()))
+        out = report(hits) if hits else None
+    except Exception:  # never fail the session start
+        out = {
+            "systemMessage": (
+                "agent-env-tripwire: internal error, the environment name "
+                "check was skipped for this session."
+            )
+        }
+    if out is not None:
+        try:
+            sys.stdout.write(json.dumps(out) + "\n")
+            sys.stdout.flush()
+        except Exception:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

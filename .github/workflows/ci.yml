@@ -90,6 +90,25 @@ jobs:
       - name: secret-get / with-secret / context7-headers / shell wrappers / MCP configs
         run: bash tests/agent-keys.sh
 
+  agent-env-tripwire:
+    # macOS runs the test under /bin/bash 3.2, the shell the target machine has.
+    name: Agent env tripwire (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Lint tripwire syntax
+        run: python3 -m py_compile bin/agent-env-tripwire
+      - name: SessionStart names-only tripwire (synthetic environments)
+        run: /bin/bash tests/agent-env-tripwire.sh
+
   docker-smoke:
     name: Docker install.sh smoke (Linux)
     runs-on: ubuntu-latest
