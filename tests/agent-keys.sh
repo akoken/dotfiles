@@ -2,8 +2,8 @@
 
 # Controls for the per-command agent key flow (README "Agent keys"):
 # bin/secret-get, bin/with-secret, bin/context7-headers, bin/context7-mcp,
-# the shell wrappers in config/zsh/.zsh_agent_keys, the Context7 MCP configs
-# and `install.sh mcp`.
+# the shell wrappers in config/zsh/.zsh_agent_keys, the Context7 MCP configs,
+# `install.sh mcp`, and bin/context7-config-check (`install.sh doctor`).
 #
 # Every case runs against a fake `security`, `op`, `npm` and `npx` placed
 # first on a private PATH, with synthetic values only. Nothing here reads the
@@ -488,5 +488,106 @@ pkg = lock["packages"]["node_modules/@upstash/context7-mcp"]
 assert pkg["version"] == spec and pkg.get("integrity", "").startswith("sha512-")
 assert all(p.get("integrity") for k, p in lock["packages"].items() if k), "a locked package lacks integrity"
 PY
+
+# --- context7-config-check: no static Context7 credential in agent configs ---
+# Synthetic ~/.claude.json, its leftover copies and ~/.copilot/mcp-config.json
+# in a temp HOME. Every fixture value is a marker; the check names files and
+# entries only, so no output stream may hold one.
+chk="$work/chk-home"
+# Built at runtime so no Context7-shaped literal sits in this file.
+prefixed_ctx="ctx7""sk-synthetic0prefixed53"
+tl='~' # the check prints paths under HOME as ~/...
+markers+=("$prefixed_ctx")
+
+reset_chk() {
+  rm -rf "$chk"
+  mkdir -p "$chk/.copilot"
+}
+write_claude() { # <servers-json> [<projects-json>] [<file>]
+  local projects="${2-}"
+  [ -n "$projects" ] || projects='{}'
+  printf '{"numStartups":3,"mcpServers":%s,"projects":%s}\n' "$1" "$projects" >"${3:-$chk/.claude.json}"
+}
+write_copilot() { # <servers-json>
+  printf '{"mcpServers":%s}\n' "$1" >"$chk/.copilot/mcp-config.json"
+}
+run_check() { # <label> <expected-status> [<name that stderr must mention>...]
+  local label="$1" want="$2" status=0 name
+  shift 2
+  env HOME="$chk" context7-config-check >"$work/chk.out" 2>"$work/chk.err" || status=$?
+  [ "$status" -eq "$want" ] || fail "context7-config-check $label: exit $status, want $want"
+  no_marker_in "$work/chk.out" "context7-config-check $label stdout"
+  no_marker_in "$work/chk.err" "context7-config-check $label stderr"
+  for name in "$@"; do
+    grep -qF -e "$name" "$work/chk.err" || fail "context7-config-check $label: stderr does not name '$name'"
+  done
+}
+
+helper='{"type":"http","url":"https://mcp.context7.com/mcp","headersHelper":"\"$HOME/bin/context7-headers\""}'
+launcher='{"type":"local","command":"sh","args":["-c","exec \"$HOME/bin/context7-mcp\""],"tools":["*"]}'
+# Healthy neighbour: another server may keep its own static header.
+other="{\"type\":\"http\",\"url\":\"https://other.invalid/mcp\",\"headers\":{\"Authorization\":\"Bearer $other_or\"}}"
+static_hdr="{\"type\":\"http\",\"url\":\"https://mcp.context7.com/mcp\",\"headers\":{\"Authorization\":\"Bearer $other_ctx\"}}"
+
+reset_chk
+run_check "no config files" 0
+grep -qxF 'absent: ~/.claude.json' "$work/chk.out" || fail "context7-config-check did not report the missing ~/.claude.json"
+grep -qxF 'absent: ~/.copilot/mcp-config.json' "$work/chk.out" || fail "context7-config-check did not report the missing Copilot config"
+
+write_claude "{\"context7\":$helper,\"other\":$other}" "{\"/work/p\":{\"mcpServers\":{\"other\":$other}}}"
+write_copilot "{\"context7\":$launcher,\"other\":$other}"
+write_claude "{\"context7\":$helper}" '{}' "$chk/.claude.json.tmp.123.456"
+run_check "headersHelper, launcher and a clean leftover copy" 0
+[ "$(grep -c '^ok: ' "$work/chk.out")" -eq 3 ] || fail "context7-config-check did not report all three clean files"
+
+write_claude "{\"context7\":$static_hdr,\"other\":$other}"
+run_check "static Authorization header (user scope)" 1 "$tl/.claude.json" "mcpServers.context7"
+
+write_claude "{\"context7\":$helper}" "{\"/work/p\":{\"mcpServers\":{\"docs\":$static_hdr}}}"
+run_check "static header in a project scope, entry found by url" 1 "projects[/work/p].mcpServers.docs"
+
+write_claude '{"context7":{"type":"http","url":"https://mcp.context7.com/mcp","headers":{"CONTEXT7_API_KEY":"${CONTEXT7_API_KEY}"}}}'
+run_check "header from an exported variable" 1 "mcpServers.context7"
+
+write_claude "{\"context7\":{\"type\":\"stdio\",\"command\":\"npx\",\"args\":[\"-y\",\"@upstash/context7-mcp\",\"--api-key\",\"$other_ctx\"]}}"
+run_check "key flag on the command line" 1 "mcpServers.context7"
+
+write_claude "{\"context7\":$helper,\"other\":{\"type\":\"stdio\",\"command\":\"x\",\"env\":{\"K\":\"$prefixed_ctx\"}}}"
+run_check "Context7-shaped key outside a Context7 entry" 1 "mcpServers.other.env.K"
+
+write_claude "{\"context7\":$helper}"
+write_claude "{\"context7\":$static_hdr}" '{}' "$chk/.claude.json.tmp.789.1"
+run_check "static header in a leftover tmp copy" 1 "$tl/.claude.json.tmp.789.1"
+rm -f "$chk"/.claude.json.tmp.*
+mkdir -p "$chk/.claude/backups"
+write_claude "{\"context7\":$static_hdr}" '{}' "$chk/.claude/backups/.claude.json.backup.1700000000000"
+run_check "static header in a Claude Code backup" 1 "$tl/.claude/backups/.claude.json.backup.1700000000000"
+rm -rf "$chk/.claude"
+
+write_copilot "{\"context7\":$static_hdr}"
+run_check "Copilot header instead of the launcher" 1 "$tl/.copilot/mcp-config.json" "mcpServers.context7"
+write_copilot "{\"context7\":{\"type\":\"local\",\"command\":\"node\",\"args\":[\"server.js\"],\"env\":{\"CONTEXT7_API_KEY\":\"$other_ctx\"}}}"
+run_check "Copilot env literal instead of the launcher" 1 "mcpServers.context7"
+
+write_copilot "{\"context7\":$launcher}"
+printf '{"mcpServers":{"context7":{"headers":{"Authorization":"Bearer %s"}}' "$other_ctx" >"$chk/.claude.json"
+run_check "truncated JSON is unknown, never a pass" 2 "$tl/.claude.json"
+write_claude '[]'
+run_check "mcpServers of the wrong type" 2 "mcpServers"
+printf '\377{}' >"$chk/.claude.json"
+run_check "invalid UTF-8" 2 "$tl/.claude.json"
+write_claude "{\"context7\":$static_hdr}"
+write_copilot '"x"'
+run_check "a finding and an unknown together report both" 2 "mcpServers.context7" "$tl/.copilot/mcp-config.json"
+
+# install.sh doctor runs the same check.
+write_claude "{\"context7\":$helper}"
+write_copilot "{\"context7\":$launcher}"
+env HOME="$chk" bash "$repo/install.sh" doctor >"$work/doctor.log" 2>&1 || fail "install.sh doctor failed on clean configs"
+write_claude "{\"context7\":$static_hdr}"
+if env HOME="$chk" bash "$repo/install.sh" doctor >"$work/doctor.log" 2>&1; then
+  fail "install.sh doctor passed a static Context7 header"
+fi
+no_marker_in "$work/doctor.log" "install.sh doctor output"
 
 echo "PASS: agent key flow injects one key into one command and fails closed"

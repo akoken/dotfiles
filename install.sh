@@ -1044,6 +1044,16 @@ setup_mcp() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# Read-only health checks of agent configs this repo does not manage. Each
+# check names files and entries only, never a value.
+# ---------------------------------------------------------------------------
+doctor() {
+  title "Checking agent configs for static Context7 credentials"
+  "$DOTFILES/bin/context7-config-check" ||
+    error "static or unverifiable Context7 credential config (see above); README \"Agent Keys\" has the fix"
+}
+
 usage() {
   cat <<EOF
 
@@ -1059,6 +1069,7 @@ Commands:
   skills           Link config/skills into every harness dir and ~/.claude/skills (also run by link)
   hooks            Install githooks/pre-commit via 'git config core.hooksPath'
   mcp              Install pinned MCP servers (mcp/*) into ~/.local/share/agent-mcp
+  doctor           Check ~/.claude.json and ~/.copilot/mcp-config.json for a static Context7 key
   git              Set up Git identity and credential helper
   homebrew         Install Homebrew and run 'brew bundle' from the Brewfile
   shell            Set Zsh as the default shell and pre-install Zinit
@@ -1120,6 +1131,9 @@ hooks)
   ;;
 mcp)
   setup_mcp
+  ;;
+doctor)
+  doctor
   ;;
 git)
   setup_git

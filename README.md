@@ -103,7 +103,7 @@ dotfiles/
 ## Install Script
 
 ```bash
-./install.sh [--dry-run] [--non-interactive] {backup|clean|link|copy|codex-sync|skills|hooks|git|homebrew|shell|macos|all|help}
+./install.sh [--dry-run] [--non-interactive] {backup|clean|link|copy|codex-sync|skills|hooks|mcp|doctor|git|homebrew|shell|macos|all|help}
 ```
 
 | Command      | Description |
@@ -116,6 +116,7 @@ dotfiles/
 | `skills`     | Link `config/skills/` into every `config/<harness>/skills/` and `~/.claude/skills/` (also run by `link`) |
 | `hooks`      | Install `githooks/pre-commit` via `git config core.hooksPath` |
 | `mcp`        | Install the pinned MCP servers from `mcp/*` into `~/.local/share/agent-mcp/` (see [Agent Keys](#agent-keys)) |
+| `doctor`     | Read-only check that `~/.claude.json` (and its leftover copies) and `~/.copilot/mcp-config.json` hold no static Context7 credential (see [Agent Keys](#agent-keys)) |
 | `git`        | Set up Git identity and credential helper |
 | `homebrew`   | Install Homebrew and run `brew bundle` from the [Brewfile](./Brewfile) |
 | `shell`      | Set Zsh as the default shell and pre-install Zinit |
@@ -233,6 +234,25 @@ claude mcp add-json -s user context7 \
   '{"type":"http","url":"https://mcp.context7.com/mcp","headersHelper":"\"$HOME/bin/context7-headers\""}'
 ```
 
+Neither file is managed here, so nothing else stops a static key from
+coming back (an old `claude mcp add --header`, a hand edit, a copied
+snippet). `./install.sh doctor` (or `bin/context7-config-check`) checks,
+read-only:
+
+- `~/.claude.json`, user scope and every project scope, plus the copies
+  Claude Code leaves next to it (`~/.claude.json.tmp.*`,
+  `~/.claude.json.backup*`, `~/.claude/backups/.claude.json.backup*`);
+- `~/.copilot/mcp-config.json`.
+
+It fails when a Context7 entry (name, url, command or args mention
+`context7`) has a `headers` or `env` field with entries, a literal or a
+`${VAR}` value alike, or an `--api-key` argument, and when any string in
+those files contains a Context7-shaped key (`ctx7sk-`). It parses the JSON
+and prints file and entry names only, never a value. Exit 0 is clean (a
+missing file is fine), 1 is a static credential, 2 is a file it could not
+read or parse, which is never a pass. After removing a static key, rotate
+it: it has sat in a plain file.
+
 Qwen Code reads its key from the variable that its provider config names in
 `envKey`, so each wrapper hands it only the key of one provider. `qwen-or`
 selects the OpenRouter key, not an OpenRouter model: choose the model
@@ -252,8 +272,11 @@ status through the same way, and leaves none of the three
 `COPILOT_PROVIDER_*` variables in the parent shell; every failure path, and every path
 under an inherited `xtrace`, prints neither value nor token and starts
 nothing; the Codex and OpenCode launches, run inside a project that ships its
-own `context7-mcp` package, start only the pinned install; and the leak scans
-report file names, never the matched text.
+own `context7-mcp` package, start only the pinned install; the leak scans
+report file names, never the matched text; and `context7-config-check`,
+run on synthetic configs in a temp HOME, passes the `headersHelper` and the
+launcher, flags static headers, `env` values and key flags in every scope
+and leftover copy, refuses unreadable files, and prints no value.
 
 ### Adding a key
 
@@ -527,6 +550,7 @@ Custom scripts in `bin/` are symlinked to `~/bin` and available on `$PATH`:
 | Script               | Description |
 |----------------------|-------------|
 | `brew-why`           | List installed packages and their dependents |
+| `context7-config-check` | Check agent configs for a static Context7 key (`install.sh doctor`), see [Agent Keys](#agent-keys) |
 | `context7-headers`   | Claude Code `headersHelper` for Context7, see [Agent Keys](#agent-keys) |
 | `context7-mcp`       | Start the pinned Context7 MCP server with its key, see [Agent Keys](#agent-keys) |
 | `extract`            | Extract any archive format automatically |
