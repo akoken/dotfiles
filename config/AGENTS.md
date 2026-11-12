@@ -11,6 +11,7 @@
 
 # Tool Preferences
 - For code search,never use `grep`/`find`.If the repo has a tgrep index (`.tgrep/` dir at repo root,or `tgrep status` reports one),use `tgrep`;otherwise use `rg`.Check once per session with `tgrep status`.(Grep tool is already ripgrep.)
+- Symbol definitions,usages,and callers (TS/JS,C#,Rust) in Claude Code:use the `LSP` tool first (load with ToolSearch `select:LSP`),e.g. `{"operation":"findReferences","filePath":"<abs path>","line":37,"character":17}`;also `goToDefinition`,`incomingCalls`,`workspaceSymbol` (+`query`).LSP root is the session cwd,so start in the repo root.If C# returns "server is starting",retry.Cross-check reference counts with `tgrep`/`rg`:files excluded by tsconfig (e.g. aura `*.test.ts`) are invisible to LSP.Use `tgrep`/`rg` for strings,config,and docs.
 - Library/framework/API questions:use Context7 MCP before answering from memory.
 
 # Agent Memory (Hindsight)

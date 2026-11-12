@@ -135,7 +135,9 @@
   "enabledPlugins": {
     "caveman@caveman": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "spinner@akoken-mods": true
+    "spinner@akoken-mods": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "csharp-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
