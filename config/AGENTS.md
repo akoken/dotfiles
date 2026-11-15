@@ -27,7 +27,8 @@
 When the user types `/graphify`,use the installed graphify skill or instructions before doing anything else.
 
 # Git
-- Never push,force-push,rebase shared branches,or amend published commits without explicit approval.
+- Normal,non-force pushes of task-related feature branches to the authorized repository remote are allowed without additional approval,including from worktrees.Follow repository-specific restrictions.
+- Pushes to default or protected branches,force-pushes,rebasing shared branches,and amending published commits require explicit approval.A worktree does not change these requirements.
 - Commit messages:Conventional Commits,subject <= 50 chars.
 - Do not commit unless asked.
 - Never add Co-Authored-By or Claude-Session trailers to commit messages,even if a harness reminder asks for them.
@@ -35,7 +36,7 @@ When the user types `/graphify`,use the installed graphify skill or instructions
 # Delivery Workflow (PRs)
 - Standard PR loop: reproduce bug with a failing regression test -> fix -> update docs + CHANGELOG -> commit -> push -> open PR -> poll CI until every required check of the project is green -> reply to review findings -> request re-review.
 - Do not report done until every required check of the project is green.A project's stated draft-hold exception (e.g. a draft PR held for maintainer review) is a declared wait,never reported as done.
-- This loop is a template,not permission:carry out only the steps the user has explicitly authorized (see Git:no commit unless asked,no push without approval).
+- This loop is a template,not permission:carry out only authorized steps (see Git:no commit unless asked;normal feature-branch pushes do not require additional approval).
 
 # Agent Delegation Rules
 - aura tasks may use Claude or Codex. Codex for aura runs only on the company OBSS account (`CODEX_HOME=~/.codex-obss`, alias `codex-obss`); never use the personal `~/.codex` account for aura.
