@@ -89,3 +89,5 @@ config/database.yml
 
 # tgrep trigram index (per-repo, local)
 .tgrep/
+
+**/.claude/.cc-writes/
