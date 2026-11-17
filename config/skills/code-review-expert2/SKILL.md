@@ -2,7 +2,7 @@
 name: code-review-expert2
 description: "Review a diff, branch, commit range, or PR using verified findings, explicit coverage, risk-based re-review, and an incomplete-review verdict. Use for general code reviews; use pr-review2 for AURA merge-readiness or pre-PR self-review."
 metadata:
-  version: "2.6.0"
+  version: "2.7.0"
   derived-from: code-review-expert
 ---
 
@@ -128,6 +128,13 @@ files` and baseline coverage separately; prior coverage is not current-pass work
 | No blocker, but review incomplete or required gate unresolved | INCOMPLETE / NEEDS_REVIEW |
 | No blocker, planned coverage complete, required gates satisfied | APPROVE |
 
+Run status is a separate axis from the verdict: complete only when the run delivered
+full assurance for the requested target. The validator computes it from review.json, never
+from a claim of completion; a complete run can still be REQUEST_CHANGES. Every open gap
+carries a cause class and evidence under the review record. An approved narrower scope
+leaves the run incomplete with cause scope_limit and its authority; approved_scope_status
+then says whether the approved task itself was done.
+
 If no runnable gate applies, explain that with evidence rather than treating it as missing.
 Approval is a review conclusion for one revision, not merge authorization or a substitute
 for required human approval. Recheck the head/patch digest before reporting; a changed
@@ -148,6 +155,8 @@ missing metadata honestly; never invent a record just to satisfy the schema.
 Lead with the verdict and finding count. Include:
 
 - Skill identity: name, metadata.version and package fingerprint under the review record.
+- Run status from the validator output: state, approved_scope_status, causes with their
+  authority or evidence, stopped; plus the paths of the kept review.json and validator output.
 - Contract; base/head SHAs or working-patch digest; reviewed source and REVIEW.md scope.
 - Coverage, risk tier with reasons, review round/mode, and baseline evidence or unavailable.
 - Commands/checks actually run, outcomes, skipped work and unresolved verification.

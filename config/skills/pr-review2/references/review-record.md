@@ -1,8 +1,10 @@
 # Revision-Bound Review Record
 
 For a real review, keep review.json in the authorized review workspace, outside the
-reviewed source tree by default. Link the readable report to it. Do not commit or publish
-it unless requested. Resolve target/preflight guards before constructing a record.
+reviewed source tree by default, together with validator-output.txt holding the exact
+validator command line and its full output. Link the readable report to both; they outlive
+a disposable checkout only when kept with the report. Do not commit or publish them unless
+requested. Resolve target/preflight guards before constructing a record.
 For fixture-only exercises, use supplied evidence and report missing metadata instead of
 fabricating revisions, gate outcomes or inspection.
 
@@ -40,7 +42,9 @@ No score, row count, JSON field or validator output proves that those observatio
 
 ## Record fields
 
-Use schema_version 1 and profile general, aura-peer or aura-self. The record contains:
+Use schema_version 2 and profile general, aura-peer or aura-self. Schema 1 is the legacy
+shape without causes; the validator still accepts it and reads what it lacks as unknown
+(see run status below). The record contains:
 
 - skill: the identity of the skill that ran: name, version (its SKILL.md metadata.version,
   X.Y.Z) and fingerprint. Compute the fingerprint with
@@ -51,8 +55,8 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   containing a newline or other control character refused, since they could forge or hide
   a line). On a clean tree it equals `find SKILL.md references scripts -type f | LC_ALL=C
   sort | xargs shasum -a 256 | shasum -a 256`. Write the same three values in the report
-  header. A record without skill (or with null) is a legacy record: it stays valid and reads as
-  identity unknown, never as the current version.
+  header. Schema 2 requires it. A schema 1 record without skill (or with null) stays valid
+  and reads as identity unknown, never as the current version.
 - rereview: include it on every re-review (any round after the first, full or delta) and
   omit it on a first review. previous_head is the full SHA of the previously reviewed head
   (in delta mode it equals coverage.baseline_head); prior_finding_ids lists the IDs already
@@ -63,9 +67,12 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   reviewed dirty input, including included untracked files.
 - contract: state resolved, none, missing_reference or unavailable; evidence references.
   General reviews can have no explicit contract; AURA peer missing references use its
-  existing blocking precondition, and an unresolved self contract remains incomplete.
+  existing blocking precondition, and an unresolved self contract remains incomplete; it
+  then carries gap, the id of the material verification gap that explains it.
 - coverage: mode full/delta; files with path, state reviewed/baseline/unreviewed and evidence;
-  dimensions_complete and context_complete booleans; baseline_head is null or full SHA;
+  each unreviewed file carries gap naming its material verification gap; dimensions_complete
+  and context_complete booleans, each false one explained by dimensions_gap or context_gap;
+  baseline_head is null or full SHA;
   delta_files is the exact changed-since-last-review path list, empty for full mode.
   If that list includes a reverted/deleted-from-diff path absent from the current base-to-head
   diff, inspect its reversion and prior findings, then use a new full pass. This validator
@@ -73,7 +80,11 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
 - checks: unique id, required boolean, status passed/failed/pending/unavailable/skipped,
   attribution introduced/pre_existing/unknown/not_applicable, head and evidence. Required
   checks are bound to the current head. An inapplicable check is omitted with policy evidence,
-  rather than marked required-and-passed. Record specialist security passes here too.
+  rather than marked required-and-passed. Record specialist security passes here too. A
+  required check that stays open (not passed, and not a failure attributed to the change)
+  carries cause, and authority when the cause is scope_limit. List every planned required
+  check here even when it never ran; a required check absent from the record reads as
+  cause unknown.
 - findings: unique id; severity Critical/Minor/Style; route finding/observation/carried;
   status open/fixed-and-verified/rejected-with-evidence/deferred-with-rationale;
   verified boolean, origin change/base/unknown, defect and reachable booleans; anchors,
@@ -91,10 +102,13 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   Use only verified admitted findings; unresolved suspicions belong in verification_gaps.
 - requirements: unique id, text, state met/unmet/partial/unverified, implementation and
   verification evidence arrays, and optional verification_basis reviewer/ci/static/
-  author-recorded naming the source of the verification evidence. Use an empty list only
+  author-recorded naming the source of the verification evidence. An unverified criterion
+  carries gap naming its material verification gap. Use an empty list only
   when there are no explicit criteria. The validator lists author-recorded criteria in its
   output so the report discloses them; it does not verify that evidence.
-- verification_gaps: id, material boolean and evidence explaining what is unverified. A
+- verification_gaps: id, material boolean, cause (authority with scope_limit) and evidence
+  explaining what is unverified. One gap can explain several files, criteria and coverage
+  flags; the gap is where their cause is written once. A
   material gap names concretely the unresolved requirement or the material correctness or
   security question it leaves open, for example a missing or pending required check or
   specialist pass, a feasible in-scope check not run, a criterion whose stated evidence form
@@ -102,13 +116,59 @@ Use schema_version 1 and profile general, aura-peer or aura-self. The record con
   for independent reproduction. Being unable to rerun or authenticate an author record that
   the criterion only asked the author to produce is not material by itself; record it with
   material false and say what was not inspected.
+- stopped: null, or an object with cause and evidence when the review run ended before its
+  planned work (a platform refusal, an exhausted quota, a tool or environment failure).
+  An approved scope limit is not a stop; it never uses this field.
 - claimed_verdict: APPROVE, REQUEST_CHANGES or NEEDS_REVIEW, calculated by the reviewer.
+- claimed_run_status: complete or incomplete, calculated by the reviewer under the run
+  status rule below.
 - timing: optional observational object described below; never a verdict input.
 
 Paths are repository-relative with forward slashes. Evidence arrays contain nonempty
 references, not invented output. In delta mode baseline states require prior report
 evidence at the independently pinned baseline SHA; report current/delta and reused
 coverage separately. Changes in delta_files must be reviewed now, never marked baseline.
+
+## Run status and causes
+
+Run status says whether the run delivered full-PR assurance; the verdict says what the
+evidence shows. They are separate: a complete run can request changes and an incomplete
+run can already carry a proven blocker. The validator computes both; a model's claim of
+completion is never evidence of it.
+
+The run is incomplete exactly when an incompleteness source exists: a material verification
+gap, an unreviewed file, a false dimensions_complete or context_complete, an unresolved
+contract, an unverified requirement, an open required check, a required check absent from
+the record, an unresolved required-check policy, an empty changed-file set, or a stopped
+run. Each source becomes one run_status reason with its cause, authority and evidence; a
+linked source takes the cause and evidence of its gap. A schema 2 record that leaves any
+record-side source without its cause or gap link, links to a missing or non-material gap,
+or claims a run status other than the computed one, is invalid. Causes:
+
+- platform_refusal: an explicit platform safety refusal of a model run; quote its text.
+- quota: an account or usage quota ran out.
+- tool_failure: a tool, fetch, API error or timeout; not a platform refusal.
+- environment: a missing dependency, fixture, host, sandbox or credential.
+- missing_specialist: a required specialist pass or agent was not available.
+- pending: the evidence exists but is not available yet, such as a running CI check or a
+  human gate still waiting.
+- scope_limit: an approved scope narrower than the full PR excluded it. authority names the
+  approval (the brief line, issue comment or user/maintainer decision) and is required.
+- other: a known cause outside these classes; the evidence names it.
+- unknown: the cause is not evidenced. Never pick a specific class without evidence.
+
+A deliberately limited review is incomplete with cause scope_limit, never complete: full-PR
+assurance is missing even when the approved task was done. approved_scope_status records
+the approved task separately: complete when every reason is a scope_limit (the run did all
+the approved scope asked), incomplete otherwise. A stopped run is never complete in either.
+Sources the validator finds outside the record (policy not supplied, a required check
+absent from the record, an empty changed-file set) read as cause unknown with a validator
+evidence line.
+
+A schema 1 record has no causes: every reason reads cause unknown, and stopped, claimed
+status and approved_scope_status read unknown unless the run is complete. Schema 2 fields
+inside a schema 1 record are rejected by key presence, even with a null value, rather than
+half-read; migrate the whole record.
 
 ## Timing without weakening review
 
@@ -172,8 +232,14 @@ never authorizes approval. A claimed positive verdict inconsistent with the evid
 rejected; do not edit evidence to satisfy the claimed verdict.
 
 The validator checks identity, coverage accounting, requirement states, finding lifecycle,
-required check outcomes and verdict consistency. Its output echoes skill (null for a legacy
-record) and, on a re-review, the new finding IDs grouped by present_at_previous_head. It
+required check outcomes, verdict and run-status consistency. Its output states the
+schema_version, the reviewed subject (base, head, patch_digest), skill (name, version and
+fingerprint, each unknown for a record without identity) with skill_identity verified (both
+expected values supplied and matched), self_reported or unknown, run_status (state, claimed,
+approved_scope_status, causes, authorities, stopped and one reason per incompleteness source)
+and, on a re-review, the new finding IDs grouped by present_at_previous_head. An invalid
+record prints valid false with run_status incomplete and cause unknown. Report run status
+and approved scope status from this output, never from the run's own claim. It
 cannot authenticate evidence or replace source review. A changed head/config/test selection
 invalidates affected evidence under the protocol even when JSON syntax remains valid. Public review publication still requires
 the session's explicit authorization and final current-head check.

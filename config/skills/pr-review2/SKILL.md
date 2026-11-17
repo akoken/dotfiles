@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.7.0"
+  version: "2.8.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -169,6 +169,13 @@ Apply the following order; completeness follows the protocol:
 Peer non-blocking Critical/Minor findings do not independently change the merge verdict.
 Self is deliberately stricter. Routed observations/Carried never trigger the self gate.
 Report incomplete coverage even when a proven blocker already justifies a negative verdict.
+
+Run status is a separate axis: complete only when the run delivered full-PR assurance.
+The validator computes it from review.json, never from a claim of completion; a complete
+run can still be Not ready to merge. Every open gap carries a cause class and evidence
+under the review record. A scope narrower than the PR approved by the brief, issue or a
+user/maintainer decision leaves the run incomplete with cause scope_limit and that
+authority; approved_scope_status then says whether the approved task itself was done.
 A review verdict is not permission to merge or a substitute for required human approval.
 
 ## 5. Evidence record and reviewable report
@@ -195,6 +202,9 @@ remains, say so first in one plain sentence, for example "Nothing to fix: 0 new 
 
 - Skill identity: name, metadata.version and package fingerprint of the skill that ran,
   computed under the review record from the directory actually read, never copied.
+- Run status from the validator output: state, approved_scope_status, each reason's cause
+  with its authority or evidence, and whether the run stopped; plus the paths of the kept
+  review.json and validator-output.txt.
 - PR URL/title or self branch, linked contract, base/head full SHAs; for dirty input add
   the reviewed patch digest. Record reviewed instruction/REVIEW.md paths.
 - Required gate states at that head and exact commands/outcomes observed locally. Distinguish
