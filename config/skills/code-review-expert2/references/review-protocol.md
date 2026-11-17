@@ -151,9 +151,13 @@ which real defects the review can report.
 
 Completeness requires all planned files/dimensions inspected, critical affected call paths
 traced, stable input revisions, and applicable required gates resolved. Skipped low-risk
-files still make an otherwise no-blocker review incomplete unless an explicit project/user
-scope excludes them with justification. A missing required gate is not a pass. A verified
-blocker can justify a negative verdict even while coverage remains incomplete; disclose both.
+files make an otherwise no-blocker review incomplete. An explicit project/user scope that
+excludes part of the PR still leaves the run incomplete: record cause scope_limit with the
+authority that approved it, and report separately whether that approved scope was done. A
+missing required gate is not a pass. Every open gap names its cause under the review
+record, unknown when not evidenced. Run status is computed by the validator, never claimed.
+A verified blocker can justify a negative verdict even while coverage remains incomplete;
+disclose both.
 
 ## Feedback into evaluations
 

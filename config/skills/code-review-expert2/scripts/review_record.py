@@ -16,6 +16,13 @@ DIGEST = re.compile(r'[0-9a-f]{64}\Z')
 VERSION = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+\Z')
 PACKAGE_PARTS = ('SKILL.md', 'references', 'scripts')
 PRESENCE = ('yes', 'no', 'unknown')
+SCHEMAS = (1, 2)
+UNKNOWN = 'unknown'
+RUN_STATES = ('complete', 'incomplete')
+# Why a run lacks full-PR assurance. scope_limit is the only deliberate, approved cause.
+CAUSES = ('platform_refusal', 'quota', 'tool_failure', 'environment', 'missing_specialist',
+          'pending', 'scope_limit', 'other', UNKNOWN)
+UNKNOWN_SKILL = {'name': UNKNOWN, 'version': UNKNOWN, 'fingerprint': UNKNOWN}
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 
 
@@ -119,14 +126,38 @@ def validate_skill(skill, expected_version, expected_fingerprint):
     return {key: skill[key] for key in ('name', 'version', 'fingerprint')}
 
 
+def run_status(reasons, current, claimed, stopped):
+    """Compute run completeness from the explained incompleteness sources, never from a claim."""
+    state = 'incomplete' if reasons else 'complete'
+    if not reasons or all(item['cause'] == 'scope_limit' for item in reasons):
+        approved = 'complete'
+    else:
+        # A legacy record cannot show which gaps an approved scope excluded.
+        approved = 'incomplete' if current else UNKNOWN
+    return {'state': state, 'claimed': claimed if claimed is not None else UNKNOWN,
+            'approved_scope_status': approved,
+            'causes': sorted({item['cause'] for item in reasons}),
+            'authorities': sorted({item['authority'] for item in reasons if item['authority']}),
+            'stopped': stopped, 'reasons': sorted(reasons, key=lambda item: item['ref'])}
+
+
+def invalid_run_status(error):
+    """An unusable record never reads as a complete run."""
+    reason = {'ref': 'record', 'cause': UNKNOWN, 'authority': None, 'gap': None,
+              'evidence': ['validator: ' + error]}
+    return run_status([reason], False, None, UNKNOWN)
+
+
 def evaluate(record, *, expected_profile, expected_base, expected_head, changed_files, required_checks=(),
              policy_known=False, expected_patch_digest=None, baseline_head=None,
              delta_files=None, expected_skill_version=None, expected_skill_fingerprint=None,
              expected_previous_head=None):
-    """Return canonical verdict and reasons, or reject malformed/inconsistent evidence."""
+    """Return canonical verdict, run status and reasons, or reject malformed/inconsistent evidence."""
     try:
         require(isinstance(record, dict) and type(record['schema_version']) is int
-                and record['schema_version'] == 1, 'unsupported schema')
+                and record['schema_version'] in SCHEMAS, 'unsupported schema')
+        # Schema 1 is the legacy shape: it carries no causes, so each reads as unknown.
+        current = record['schema_version'] == 2
         if 'timing' in record:
             validate_timing(record['timing'])
         require(expected_skill_version is None or (isinstance(expected_skill_version, str)
@@ -136,6 +167,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         require(expected_previous_head is None or (isinstance(expected_previous_head, str)
                 and SHA.fullmatch(expected_previous_head)), 'expected previous head')
         skill = validate_skill(record.get('skill'), expected_skill_version, expected_skill_fingerprint)
+        require(not current or skill is not None, 'schema 2 record needs skill identity')
         profile = record['profile']
         require(expected_profile in ('general', 'aura-peer', 'aura-self')
                 and profile == expected_profile, 'profile differs from trusted review mode')
@@ -147,17 +179,65 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         require(expected_patch_digest is None or (isinstance(expected_patch_digest, str)
                 and DIGEST.fullmatch(expected_patch_digest)), 'expected patch digest')
         require(subject['patch_digest'] == expected_patch_digest, 'stale dirty-input digest')
-        blockers, gaps = set(), set()
+        blockers, gaps, explanations = set(), set(), []
+
+        def schema2_field(holder, keys, label, needed):
+            """Schema 2 fields appear exactly where needed; schema 1 never carries them."""
+            present = any(key in holder for key in keys)
+            require(not present or current, 'schema 2 field in schema 1 record: ' + label)
+            require(not present or needed, 'field not applicable: ' + label)
+            require(present or not (current and needed), 'missing ' + '/'.join(keys) + ': ' + label)
+            return present
+
+        def cause(holder, label, needed):
+            if not schema2_field(holder, ('cause', 'authority'), label, needed):
+                return UNKNOWN, None
+            require('cause' in holder, 'authority without cause: ' + label)
+            value, authority = holder['cause'], holder.get('authority')
+            require(isinstance(value, str) and value in CAUSES, 'cause class: ' + label)
+            require((value == 'scope_limit') == (authority is not None),
+                    'authority is required with scope_limit and only there: ' + label)
+            require(authority is None or text(authority), 'authority: ' + label)
+            return value, authority
+
+        def incomplete(reason, ref, value, authority, evidence, gap=None):
+            gaps.add(reason)
+            explanations.append({'ref': ref, 'cause': value, 'authority': authority,
+                                 'evidence': list(evidence), 'gap': gap})
+
+        explained = {}
+        for gap in object_list(record, 'verification_gaps'):
+            references(gap['evidence'], 'gap evidence')
+            value, authority = cause(gap, 'gap ' + gap['id'], True)
+            if boolean(gap['material'], 'gap material'):
+                explained[gap['id']] = (value, authority, gap['evidence'])
+                incomplete('material gap: ' + gap['id'], 'gap:' + gap['id'],
+                           value, authority, gap['evidence'], gap['id'])
+
+        def linked(holder, reason, ref, needed, evidence=(), key='gap'):
+            """Attribute an incompleteness source to the material gap that explains it."""
+            if not schema2_field(holder, (key,), ref, needed):
+                if needed:
+                    incomplete(reason, ref, UNKNOWN, None, evidence)
+                return
+            gap = holder[key]
+            require(isinstance(gap, str) and gap in explained,
+                    'gap link must name a material verification gap: ' + ref)
+            incomplete(reason, ref, explained[gap][0], explained[gap][1], explained[gap][2], gap)
+
         if not boolean(policy_known, 'policy_known'):
-            gaps.add('required-check policy unresolved')
+            incomplete('required-check policy unresolved', 'policy', UNKNOWN, None,
+                       ['validator: --policy-known not supplied'])
         contract = record['contract']
         require(contract['state'] in ('resolved', 'none', 'missing_reference', 'unavailable'), 'contract')
         references(contract['evidence'], 'contract evidence', contract['state'] != 'none')
+        unresolved = False
         if profile == 'aura-peer' and contract['state'] in ('none', 'missing_reference'):
             blockers.add('missing-issue-reference')
         elif contract['state'] in ('unavailable', 'missing_reference') or (
                 profile == 'aura-self' and contract['state'] != 'resolved'):
-            gaps.add('contract unresolved')
+            unresolved = True
+        linked(contract, 'contract unresolved', 'contract', unresolved, contract['evidence'])
 
         coverage = record['coverage']
         require(coverage['mode'] in ('full', 'delta'), 'coverage mode')
@@ -165,11 +245,11 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         require(isinstance(files, list) and all(isinstance(item, dict) for item in files), 'coverage files')
         current_paths = paths([item['path'] for item in files], 'coverage paths')
         if not current_paths:
-            gaps.add('no changed files')
+            incomplete('no changed files', 'changed-files', UNKNOWN, None,
+                       ['validator: changed-file set is empty'])
         require(current_paths == paths(changed_files, 'expected changed paths'), 'changed-file mismatch')
-        for key in ('dimensions_complete', 'context_complete'):
-            if not boolean(coverage[key], key):
-                gaps.add(key)
+        for key, link in (('dimensions_complete', 'dimensions_gap'), ('context_complete', 'context_gap')):
+            linked(coverage, key, 'coverage:' + key, not boolean(coverage[key], key), key=link)
         delta = paths(coverage['delta_files'], 'record delta paths')
         if coverage['mode'] == 'delta':
             require(isinstance(baseline_head, str) and SHA.fullmatch(baseline_head)
@@ -186,8 +266,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             references(item['evidence'], 'coverage evidence', state != 'unreviewed')
             require(state != 'baseline' or (coverage['mode'] == 'delta' and item['path'] not in delta),
                     'delta change hidden by baseline')
-            if state == 'unreviewed':
-                gaps.add('unreviewed file')
+            linked(item, 'unreviewed file', 'file:' + item['path'], state == 'unreviewed', item['evidence'])
 
         rereview, prior_ids = record.get('rereview'), set()
         if rereview is None:
@@ -212,7 +291,9 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         required = paths(list(required_checks), 'required check identities')
         checks = object_list(record, 'checks')
         check_ids = {item['id'] for item in checks}
-        gaps.update('missing required check: ' + item for item in required - check_ids)
+        for item in sorted(required - check_ids):
+            incomplete('missing required check: ' + item, 'check:' + item, UNKNOWN, None,
+                       ['validator: required check absent from record'])
         for check in checks:
             is_required = boolean(check['required'], 'check required')
             require(check['id'] not in required or is_required, 'required check downgraded')
@@ -221,11 +302,14 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             require(check['attribution'] in ('introduced', 'pre_existing', 'unknown', 'not_applicable'),
                     'check attribution')
             references(check['evidence'], 'check evidence')
-            if is_required and check['status'] != 'passed':
-                if check['status'] == 'failed' and check['attribution'] == 'introduced':
-                    blockers.add('check:' + check['id'])
-                else:
-                    gaps.add('unresolved check: ' + check['id'])
+            introduced = check['status'] == 'failed' and check['attribution'] == 'introduced'
+            open_gate = is_required and check['status'] != 'passed' and not introduced
+            value, authority = cause(check, 'check ' + check['id'], open_gate)
+            if is_required and introduced:
+                blockers.add('check:' + check['id'])
+            elif open_gate:
+                incomplete('unresolved check: ' + check['id'], 'check:' + check['id'],
+                           value, authority, check['evidence'])
 
         self_findings = set()
         reasons = {'introduced_defect', 'unmet_requirement', 'contradicted_claim', 'introduced_gate_failure'}
@@ -280,12 +364,26 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                 author_recorded.add(criterion['id'])
             if criterion['state'] in ('unmet', 'partial'):
                 blockers.add('requirement:' + criterion['id'])
-            elif criterion['state'] == 'unverified':
-                gaps.add('unverified requirement: ' + criterion['id'])
-        for gap in object_list(record, 'verification_gaps'):
-            references(gap['evidence'], 'gap evidence')
-            if boolean(gap['material'], 'gap material'):
-                gaps.add('material gap: ' + gap['id'])
+            linked(criterion, 'unverified requirement: ' + criterion['id'], 'requirement:' + criterion['id'],
+                   criterion['state'] == 'unverified', criterion['verification'])
+
+        stopped, claimed = UNKNOWN, record.get('claimed_run_status')
+        if current or 'stopped' in record:
+            require(current, 'schema 2 field in schema 1 record: stopped')
+            require('stopped' in record, 'missing stopped')
+            stopped = record['stopped']
+            if stopped is not None:
+                require(isinstance(stopped, dict), 'stopped')
+                references(stopped['evidence'], 'stopped evidence')
+                value, _ = cause(stopped, 'stopped', True)
+                require(value != 'scope_limit', 'an approved scope limit is not a stopped run')
+                stopped = {'cause': value, 'evidence': list(stopped['evidence'])}
+                incomplete('run stopped', 'stopped', value, None, stopped['evidence'])
+        require(claimed is None or current, 'schema 2 field in schema 1 record: claimed_run_status')
+        require(claimed in RUN_STATES or (claimed is None and not current), 'claimed run status')
+        status = run_status(explanations, current, claimed, stopped)
+        require(claimed is None or claimed == status['state'],
+                'claimed run status inconsistent with evidence')
 
         verdict = ('REQUEST_CHANGES' if blockers or (profile == 'aura-self' and self_findings)
                    else 'NEEDS_REVIEW' if gaps else 'APPROVE')
@@ -293,10 +391,15 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         result = {'valid': True, 'verdict': verdict, 'blockers': sorted(blockers),
                   'self_disqualifying': sorted(self_findings) if profile == 'aura-self' else [],
                   'incomplete_reasons': sorted(gaps), 'errors': [],
-                  'author_recorded_requirements': sorted(author_recorded)}
+                  'author_recorded_requirements': sorted(author_recorded),
+                  'run_status': status, 'schema_version': record['schema_version'],
+                  'subject': {key: subject[key] for key in ('base', 'head', 'patch_digest')}}
         if 'timing' in record:
             result['timing'] = record['timing']
-        result['skill'] = skill
+        result['skill'] = dict(skill or UNKNOWN_SKILL)
+        result['skill_identity'] = (UNKNOWN if skill is None else 'verified'
+                                    if expected_skill_version and expected_skill_fingerprint
+                                    else 'self_reported')
         if rereview is not None:
             result['previous_head'] = rereview['previous_head']
             result['previous_head_verified'] = (expected_previous_head is not None
@@ -372,8 +475,9 @@ def main():
         print(json.dumps(result, sort_keys=True))
         return 0 if result['verdict'] == 'APPROVE' else 1
     except (InvalidRecord, OSError, ValueError, RecursionError) as error:
-        print(json.dumps({'valid': False, 'verdict': 'NEEDS_REVIEW',
-                          'errors': [str(error) if isinstance(error, InvalidRecord) else 'unreadable JSON input']}))
+        message = str(error) if isinstance(error, InvalidRecord) else 'unreadable JSON input'
+        print(json.dumps({'valid': False, 'verdict': 'NEEDS_REVIEW', 'errors': [message],
+                          'run_status': invalid_run_status(message)}, sort_keys=True))
         return 2
 
 

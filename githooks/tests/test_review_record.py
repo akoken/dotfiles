@@ -383,10 +383,11 @@ class SkillIdentityTests(unittest.TestCase):
         self.assertNotIn('skill', legacy)
         result = self.evaluate(legacy)
         self.assertEqual('APPROVE', result['verdict'])
-        self.assertIsNone(result['skill'])
+        self.assertEqual(MODULE.UNKNOWN_SKILL, result['skill'])
+        self.assertEqual('unknown', result['skill_identity'])
         self.assertNotIn('new_findings_present_at_previous_head', result)
         legacy['skill'] = None
-        self.assertIsNone(self.evaluate(legacy)['skill'])
+        self.assertEqual(MODULE.UNKNOWN_SKILL, self.evaluate(legacy)['skill'])
 
     def test_recorded_identity_is_reported_and_matches_expectations(self):
         value = record()
@@ -395,7 +396,9 @@ class SkillIdentityTests(unittest.TestCase):
                                expected_skill_fingerprint='e' * 64)
         self.assertEqual('APPROVE', result['verdict'])
         self.assertEqual(identity(), result['skill'])
+        self.assertEqual('verified', result['skill_identity'])
         self.assertEqual(identity(), self.evaluate(value)['skill'])
+        self.assertEqual('self_reported', self.evaluate(value)['skill_identity'])
 
     def test_malformed_or_mismatched_identity_is_rejected(self):
         cases = [
@@ -608,6 +611,242 @@ class PreviousHeadPresenceTests(unittest.TestCase):
         result = self.evaluate(value, **delta)
         self.assertEqual('APPROVE', result['verdict'])
         self.assertTrue(result['previous_head_verified'])
+
+
+def current(**overrides):
+    """A schema 2 record: every incompleteness source carries a cause."""
+    value = record()
+    value.update(schema_version=2, skill=identity(), stopped=None, claimed_run_status='complete')
+    value.update(overrides)
+    return value
+
+
+def scoped(value, authority='brief: review src/paging.py only'):
+    """Exclude a second changed file under an approved, narrower scope."""
+    value['coverage']['files'].append({'path': 'src/other.py', 'state': 'unreviewed',
+                                       'evidence': [], 'gap': 'G-scope'})
+    value['verification_gaps'].append({'id': 'G-scope', 'material': True,
+                                       'evidence': ['src/other.py excluded by the approved scope'],
+                                       'cause': 'scope_limit', 'authority': authority})
+    value['claimed_verdict'], value['claimed_run_status'] = 'NEEDS_REVIEW', 'incomplete'
+    return value
+
+
+TWO_FILES = ['src/paging.py', 'src/other.py']
+
+
+class RunStatusTests(unittest.TestCase):
+    evaluate = ReviewRecordTests.evaluate
+
+    def test_complete_run_binds_revisions_and_skill_identity(self):
+        result = self.evaluate(current())
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(2, result['schema_version'])
+        self.assertEqual({'base': BASE, 'head': HEAD, 'patch_digest': None}, result['subject'])
+        self.assertEqual(identity(), result['skill'])
+        status = result['run_status']
+        self.assertEqual(('complete', 'complete', 'complete'),
+                         (status['state'], status['approved_scope_status'], status['claimed']))
+        self.assertEqual(([], [], [], None),
+                         (status['causes'], status['reasons'], status['authorities'], status['stopped']))
+
+    def test_complete_run_can_request_changes(self):
+        value = current(claimed_verdict='REQUEST_CHANGES', findings=[finding()])
+        result = self.evaluate(value)
+        self.assertEqual('REQUEST_CHANGES', result['verdict'])
+        self.assertEqual('complete', result['run_status']['state'])
+
+    def test_scope_limit_is_incomplete_but_distinct_from_an_abandoned_run(self):
+        result = self.evaluate(scoped(current()), changed_files=TWO_FILES)
+        status = result['run_status']
+        self.assertEqual('NEEDS_REVIEW', result['verdict'])
+        self.assertEqual(('incomplete', 'complete'), (status['state'], status['approved_scope_status']))
+        self.assertEqual(['scope_limit'], status['causes'])
+        self.assertEqual(['brief: review src/paging.py only'], status['authorities'])
+        self.assertEqual({'file:src/other.py', 'gap:G-scope'}, {item['ref'] for item in status['reasons']})
+        self.assertTrue(all(item['gap'] == 'G-scope' for item in status['reasons']))
+
+        abandoned = scoped(current())
+        abandoned['stopped'] = {'cause': 'tool_failure', 'evidence': ['session log: fetch timed out']}
+        status = self.evaluate(abandoned, changed_files=TWO_FILES)['run_status']
+        self.assertEqual(('incomplete', 'incomplete'), (status['state'], status['approved_scope_status']))
+        self.assertEqual(['scope_limit', 'tool_failure'], status['causes'])
+        self.assertEqual({'cause': 'tool_failure', 'evidence': ['session log: fetch timed out']},
+                         status['stopped'])
+
+    def test_scope_limited_required_check_keeps_approved_scope_complete(self):
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        value['checks'].append({'id': 'specialist:security', 'required': True, 'status': 'skipped',
+                                'attribution': 'not_applicable', 'head': HEAD,
+                                'evidence': ['specialist pass not run'], 'cause': 'scope_limit',
+                                'authority': 'maintainer decision 2026-11-01'})
+        status = self.evaluate(value, required_checks=['tests', 'specialist:security'])['run_status']
+        self.assertEqual(('incomplete', 'complete'), (status['state'], status['approved_scope_status']))
+        value['checks'][-1].update(cause='platform_refusal', evidence=['refusal text quoted in report'])
+        del value['checks'][-1]['authority']
+        status = self.evaluate(value, required_checks=['tests', 'specialist:security'])['run_status']
+        self.assertEqual(['platform_refusal'], status['causes'])
+        self.assertEqual('incomplete', status['approved_scope_status'])
+
+    def test_claimed_status_must_match_the_computed_one(self):
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'claimed run status inconsistent'):
+            self.evaluate(scoped(current(), 'brief line 4') | {'claimed_run_status': 'complete'},
+                          changed_files=TWO_FILES)
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'claimed run status inconsistent'):
+            self.evaluate(current(claimed_run_status='incomplete'))
+        for claimed in (None, 'partial', True):
+            with self.subTest(claimed=claimed):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'claimed run status'):
+                    self.evaluate(current(claimed_run_status=claimed))
+        value = current()
+        del value['claimed_run_status']
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'claimed run status'):
+            self.evaluate(value)
+
+    def test_every_open_source_needs_a_cause_and_evidence(self):
+        cases = []
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        value['verification_gaps'] = [{'id': 'G1', 'material': True, 'evidence': ['probe not run']}]
+        cases.append((value, {}, 'missing cause/authority: gap G1'))
+        value = scoped(current())
+        del value['coverage']['files'][-1]['gap']
+        cases.append((value, {'changed_files': TWO_FILES}, 'missing gap: file:src/other.py'))
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        value['checks'][0]['status'] = 'pending'
+        cases.append((value, {}, 'missing cause/authority: check tests'))
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        value['coverage']['dimensions_complete'] = False
+        cases.append((value, {}, 'missing dimensions_gap'))
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        value['requirements'][0].update(state='unverified', implementation=[], verification=[])
+        cases.append((value, {}, 'missing gap: requirement:R1'))
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        value['contract'] = {'state': 'unavailable', 'evidence': ['issue API unavailable']}
+        cases.append((value, {}, 'missing gap: contract'))
+        value = current()
+        value['verification_gaps'] = [{'id': 'G2', 'material': False, 'evidence': ['raw logs elsewhere']}]
+        cases.append((value, {}, 'missing cause/authority: gap G2'))
+        for value, options, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, message):
+                    self.evaluate(value, **options)
+
+    def test_linked_sources_take_the_material_gap_cause(self):
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        value['verification_gaps'] = [{'id': 'G1', 'material': True, 'cause': 'environment',
+                                       'evidence': ['no fixture database on this host']}]
+        value['coverage'].update(dimensions_complete=False, dimensions_gap='G1',
+                                 context_complete=False, context_gap='G1')
+        value['contract'] = {'state': 'unavailable', 'evidence': ['issue API down'], 'gap': 'G1'}
+        value['requirements'][0].update(state='unverified', implementation=[], verification=[], gap='G1')
+        status = self.evaluate(value)['run_status']
+        self.assertEqual(['environment'], status['causes'])
+        self.assertEqual({'gap:G1', 'coverage:dimensions_complete', 'coverage:context_complete',
+                          'contract', 'requirement:R1'}, {item['ref'] for item in status['reasons']})
+        self.assertTrue(all(item['evidence'] == ['no fixture database on this host']
+                            for item in status['reasons']))
+
+    def test_malformed_causes_links_and_stops_are_rejected(self):
+        def gap(**fields):
+            value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+            value['verification_gaps'] = [dict({'id': 'G1', 'material': True, 'evidence': ['e']}, **fields)]
+            return value
+        cases = [
+            (gap(cause='scope_limit'), 'authority is required with scope_limit'),
+            (gap(cause='scope_limit', authority=' '), 'authority: gap G1'),
+            (gap(cause='quota', authority='brief line 3'), 'authority is required with scope_limit'),
+            (gap(cause='Quota'), 'cause class'),
+            (gap(cause=['quota']), 'cause class'),
+            (gap(authority='brief line 3'), 'authority without cause'),
+            (current(stopped={'cause': 'scope_limit', 'authority': 'brief', 'evidence': ['e']}),
+             'not a stopped run'),
+            (current(stopped={'cause': 'quota', 'evidence': []}), 'stopped evidence'),
+            (current(stopped={'evidence': ['e']}), 'missing cause/authority: stopped'),
+            (current(stopped='quota'), 'stopped'),
+            (current(skill=None), 'needs skill identity'),
+        ]
+        value = current()
+        del value['stopped']
+        cases.append((value, 'missing stopped'))
+        value = scoped(current())
+        value['verification_gaps'][0]['material'] = False
+        cases.append((value, 'must name a material verification gap'))
+        value = scoped(current())
+        value['coverage']['files'][-1]['gap'] = 'G-missing'
+        cases.append((value, 'must name a material verification gap'))
+        value = current()
+        value['checks'][0]['cause'] = 'other'
+        cases.append((value, 'field not applicable: check tests'))
+        value = current()
+        value['coverage']['files'][0]['gap'] = 'G1'
+        cases.append((value, 'field not applicable: file:src/paging.py'))
+        for value, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, message):
+                    self.evaluate(value, changed_files=[item['path'] for item in value['coverage']['files']])
+
+    def test_validator_side_reasons_carry_unknown_cause_with_evidence(self):
+        value = current(claimed_verdict='NEEDS_REVIEW', claimed_run_status='incomplete')
+        result = self.evaluate(value, policy_known=False, required_checks=['tests', 'security-diff'])
+        status = result['run_status']
+        self.assertEqual(('incomplete', 'incomplete'), (status['state'], status['approved_scope_status']))
+        self.assertEqual(['unknown'], status['causes'])
+        evidence = {item['ref']: item['evidence'] for item in status['reasons']}
+        self.assertEqual({'policy': ['validator: --policy-known not supplied'],
+                          'check:security-diff': ['validator: required check absent from record']},
+                         evidence)
+
+    def test_legacy_record_reads_unknown_and_refuses_half_migration(self):
+        value = record()
+        value['coverage']['files'].append({'path': 'src/other.py', 'state': 'unreviewed', 'evidence': []})
+        value['claimed_verdict'] = 'NEEDS_REVIEW'
+        result = self.evaluate(value, changed_files=TWO_FILES)
+        status = result['run_status']
+        self.assertEqual(1, result['schema_version'])
+        self.assertEqual(('incomplete', 'unknown', 'unknown', 'unknown'),
+                         (status['state'], status['approved_scope_status'], status['stopped'],
+                          status['claimed']))
+        self.assertEqual(['unknown'], status['causes'])
+        self.assertEqual(MODULE.UNKNOWN_SKILL, result['skill'])
+        self.assertEqual('complete', self.evaluate(record())['run_status']['approved_scope_status'])
+        for field, item in (('claimed_run_status', 'incomplete'), ('stopped', None)):
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 2 field in schema 1 record'):
+                    self.evaluate(dict(value, **{field: item}), changed_files=TWO_FILES)
+        value['coverage']['files'][-1]['gap'] = 'G1'
+        value['verification_gaps'] = [{'id': 'G1', 'material': True, 'evidence': ['e'],
+                                       'cause': 'quota'}]
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 2 field in schema 1 record'):
+            self.evaluate(value, changed_files=TWO_FILES)
+        for version in (0, 3, '2', True):
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'unsupported schema'):
+                    self.evaluate(current(schema_version=version))
+
+    def test_cli_reports_run_status_and_identity_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            artifact, changed = folder / 'review.json', folder / 'changed.json'
+            changed.write_text(json.dumps(TWO_FILES))
+            artifact.write_text(json.dumps(scoped(current())))
+            args = [sys.executable, str(SCRIPT), str(artifact), '--expected-profile', 'general',
+                    '--expected-base', BASE, '--expected-head', HEAD, '--changed-files', str(changed),
+                    '--require-check', 'tests', '--policy-known']
+            result = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            output = json.loads(result.stdout)
+            self.assertEqual(('incomplete', 'complete'), (output['run_status']['state'],
+                                                          output['run_status']['approved_scope_status']))
+            self.assertEqual(HEAD, output['subject']['head'])
+            self.assertEqual('2.7.0', output['skill']['version'])
+            claimed = scoped(current()) | {'claimed_run_status': 'complete'}
+            artifact.write_text(json.dumps(claimed))
+            result = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(2, result.returncode)
+            output = json.loads(result.stdout)
+            self.assertFalse(output['valid'])
+            self.assertEqual(('incomplete', ['unknown']),
+                             (output['run_status']['state'], output['run_status']['causes']))
 
 
 if __name__ == '__main__':
