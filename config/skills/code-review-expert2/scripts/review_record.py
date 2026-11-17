@@ -379,8 +379,10 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                 require(value != 'scope_limit', 'an approved scope limit is not a stopped run')
                 stopped = {'cause': value, 'evidence': list(stopped['evidence'])}
                 incomplete('run stopped', 'stopped', value, None, stopped['evidence'])
-        require(claimed is None or current, 'schema 2 field in schema 1 record: claimed_run_status')
-        require(claimed in RUN_STATES or (claimed is None and not current), 'claimed run status')
+        # Presence, not value: an explicit null is still a schema 2 field.
+        require(current or 'claimed_run_status' not in record,
+                'schema 2 field in schema 1 record: claimed_run_status')
+        require(claimed in RUN_STATES or not current, 'claimed run status')
         status = run_status(explanations, current, claimed, stopped)
         require(claimed is None or claimed == status['state'],
                 'claimed run status inconsistent with evidence')

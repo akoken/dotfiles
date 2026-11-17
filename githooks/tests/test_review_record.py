@@ -823,6 +823,50 @@ class RunStatusTests(unittest.TestCase):
                 with self.assertRaisesRegex(MODULE.InvalidRecord, 'unsupported schema'):
                     self.evaluate(current(schema_version=version))
 
+    def test_schema1_rejects_schema2_keys_by_presence_even_when_null(self):
+        legacy = record()
+        self.assertNotIn('claimed_run_status', legacy)
+        self.assertTrue(self.evaluate(legacy)['valid'])
+        for field in ('claimed_run_status', 'stopped'):
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 2 field in schema 1 record'):
+                    self.evaluate(dict(record(), **{field: None}))
+        unreviewed = {'path': 'src/other.py', 'state': 'unreviewed', 'evidence': []}
+        for holder, key in (('gap', 'cause'), ('gap', 'authority'), ('file', 'gap'),
+                            ('coverage', 'dimensions_gap'), ('coverage', 'context_gap'),
+                            ('check', 'cause')):
+            with self.subTest(holder=holder, key=key):
+                value = record()
+                value['claimed_verdict'] = 'NEEDS_REVIEW'
+                value['checks'][0]['status'] = 'pending'
+                value['coverage'].update(dimensions_complete=False, context_complete=False)
+                value['coverage']['files'].append(dict(unreviewed))
+                value['verification_gaps'] = [{'id': 'G1', 'material': True, 'evidence': ['e']}]
+                target = {'gap': value['verification_gaps'][0], 'file': value['coverage']['files'][-1],
+                          'coverage': value['coverage'], 'check': value['checks'][0]}[holder]
+                self.assertTrue(self.evaluate(value, changed_files=TWO_FILES)['valid'])
+                target[key] = None
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 2 field in schema 1 record'):
+                    self.evaluate(value, changed_files=TWO_FILES)
+
+    def test_cli_rejects_explicit_null_claimed_run_status_in_schema1(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            artifact, changed = folder / 'review.json', folder / 'changed.json'
+            changed.write_text(json.dumps(['src/paging.py']))
+            args = [sys.executable, str(SCRIPT), str(artifact), '--expected-profile', 'general',
+                    '--expected-base', BASE, '--expected-head', HEAD, '--changed-files', str(changed),
+                    '--require-check', 'tests', '--policy-known']
+            artifact.write_text(json.dumps(record()))
+            result = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            artifact.write_text(json.dumps(record() | {'claimed_run_status': None}))
+            result = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+            output = json.loads(result.stdout)
+            self.assertFalse(output['valid'])
+            self.assertEqual('incomplete', output['run_status']['state'])
+
     def test_cli_reports_run_status_and_identity_and_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)

@@ -167,7 +167,8 @@ evidence line.
 
 A schema 1 record has no causes: every reason reads cause unknown, and stopped, claimed
 status and approved_scope_status read unknown unless the run is complete. Schema 2 fields
-inside a schema 1 record are rejected rather than half-read; migrate the whole record.
+inside a schema 1 record are rejected by key presence, even with a null value, rather than
+half-read; migrate the whole record.
 
 ## Timing without weakening review
 
