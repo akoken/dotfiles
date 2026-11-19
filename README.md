@@ -87,6 +87,7 @@ dotfiles/
     ├── nvim/       # Neovim (lazy.nvim + kickstart-based)
     ├── oh-my-posh/ # Prompt theme
     ├── opencode/   # OpenCode agents, skills, and provider config
+    ├── rex/        # Rex terminal keybindings
     ├── ripgrep/    # ripgrep defaults
     ├── skills/     # Shared agent skills (Claude/Codex/Copilot/OpenCode)
     ├── starship/   # Starship prompt config
