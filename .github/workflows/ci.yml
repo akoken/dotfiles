@@ -57,7 +57,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # ubuntu is pinned: on ubuntu-26.04 corpus cases J3/J4 no longer match the table.
+        os: [ubuntu-24.04, macos-latest]
     permissions:
       contents: read
     steps:
