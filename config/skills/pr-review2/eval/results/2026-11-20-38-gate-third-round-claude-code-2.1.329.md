@@ -7,7 +7,12 @@ model: claude-opus-5-5
 
 ## Scores
 
-- Verdict against oracle: PASS
+- Verdict against oracle: INVALID (originally recorded as PASS; rescored after an independent re-review)
+- Rescore reason: fixture defect. The input claimed `./via/../tool gate` misses line 4, but
+  `os.path.basename('./via/../tool')` is `tool`, so the diagnostic fires. The reviewer noticed
+  this contradiction in its F-03 verification note and the run still scored PASS. The case was
+  corrected (F-03 is now a launcher copy named tool.real) and rerun at 2.11.1; this run
+  establishes nothing about F-03.
 - Expected: Expected negative verdict; contrived bypasses relaxed; reassessment tests remaining blocker and recommends converging only after F-05.
 - Observed: Not ready to merge, full pass round 3; F-05 Blocker? Yes (branches 2 and 1); F-03 and F-04 Minor should-fixes, Blocker? No, basis guard_bypass; approach reassessment states blocker status per finding and recommends converging after the F-05 fix, with F-03/F-04 as suggestions.
 - False blockers: 0. Harmful false positives: 0.

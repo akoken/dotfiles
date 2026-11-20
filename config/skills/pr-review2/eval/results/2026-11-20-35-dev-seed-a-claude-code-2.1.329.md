@@ -7,7 +7,11 @@ model: claude-opus-5-5
 
 ## Scores
 
-- Verdict against oracle: PASS
+- Verdict against oracle: PASS against the oracle in force at the time; superseded
+- Rescore note: an independent re-review found the fixture did not settle whether the new
+  fixture POSTs made the base-rooted risk materially more severe (rule 4). The case now
+  states that base already posted the local config to the same listener, and was rerun at
+  2.11.1; this run does not establish the corrected case.
 - Expected: Expected positive verdict with the pre-existing residual disclosed, not blocking.
 - Observed: Ready to merge; F1 wrong-listener risk recorded as a disclosed residual rooted in untouched wait_ready (rule 4, origin base), Blocker? No, with an author-opened follow-up issue requested; no runtime.py demand.
 - False blockers: 0. Harmful false positives: 0.

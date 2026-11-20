@@ -442,6 +442,10 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             require('introduced_defect' not in declared or introduced_defect,
                     'unsupported introduced-defect claim')
             active = finding['status'] in ('open', 'deferred-with-rationale')
+            if 'security_boundary' in finding:
+                require(current, 'schema 2 field in schema 1 record: security_boundary')
+                require(profile == 'aura-peer', 'security_boundary applies only to the aura-peer profile')
+                boolean(finding['security_boundary'], 'security_boundary')
             non_blocking = 'non_blocking' in finding
             if non_blocking:
                 # Only the aura-peer pipeline relaxes branch 1; self mode stays strict.
@@ -455,6 +459,10 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                 require(finding['severity'] == 'Minor', 'non_blocking applies only to a Minor finding')
                 require(finding['route'] == 'finding' and introduced_defect and not declared,
                         'non_blocking relaxes only the introduced-defect branch of a finding')
+                # A security or trust-boundary defect is never relaxed, so relief must deny one.
+                require(finding.get('security_boundary') is False,
+                        'non_blocking needs security_boundary false; a security or trust-boundary '
+                        'defect is never relaxed')
                 require(basis != 'fix_surface' or (rereview is not None and finding['id'] not in prior_ids),
                         'fix_surface applies only to a new finding on a re-review')
                 require(basis != 'follow_up' or finding['status'] != 'open',

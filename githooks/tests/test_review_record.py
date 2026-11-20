@@ -1250,7 +1250,7 @@ class NonBlockingTests(unittest.TestCase):
     def test_relaxed_peer_minor_does_not_block_and_is_listed(self):
         for basis in ('immaterial', 'guard_bypass'):
             with self.subTest(basis=basis):
-                result = self.evaluate(peer(finding(non_blocking=relief(basis))))
+                result = self.evaluate(peer(finding(security_boundary=False, non_blocking=relief(basis))))
                 self.assertEqual('APPROVE', result['verdict'])
                 self.assertEqual([], result['blockers'])
                 self.assertEqual(['F1'], result['non_blocking'][basis])
@@ -1264,7 +1264,7 @@ class NonBlockingTests(unittest.TestCase):
     def test_relief_is_rejected_outside_aura_peer(self):
         for profile in ('general', 'aura-self'):
             with self.subTest(profile=profile):
-                value = peer(finding(non_blocking=relief()), profile=profile)
+                value = peer(finding(security_boundary=False, non_blocking=relief()), profile=profile)
                 with self.assertRaisesRegex(MODULE.InvalidRecord, 'only to the aura-peer profile'):
                     self.evaluate(value)
         value = peer(finding(), profile='aura-self', claimed_verdict='REQUEST_CHANGES')
@@ -1273,7 +1273,7 @@ class NonBlockingTests(unittest.TestCase):
     def test_relief_is_rejected_in_a_schema1_record(self):
         value = record()
         value['profile'] = 'aura-peer'
-        value['findings'] = [finding(non_blocking=relief())]
+        value['findings'] = [finding(security_boundary=False, non_blocking=relief())]
         with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 2 field in schema 1 record'):
             self.evaluate(value)
 
@@ -1290,9 +1290,50 @@ class NonBlockingTests(unittest.TestCase):
         ]
         for changes, message in cases:
             with self.subTest(changes=changes):
-                value = peer(finding(non_blocking=relief(), **changes))
+                value = peer(finding(security_boundary=False, non_blocking=relief(), **changes))
                 with self.assertRaisesRegex(MODULE.InvalidRecord, message):
                     self.evaluate(value)
+
+    def test_security_or_trust_boundary_defect_is_never_relaxed(self):
+        evidence = ['issue: author-opened follow-up', 'PR body: discloses the follow-up issue']
+        for basis in ('immaterial', 'guard_bypass', 'follow_up'):
+            with self.subTest(basis=basis):
+                status = 'deferred-with-rationale' if basis == 'follow_up' else 'open'
+                value = peer(finding(status=status, security_boundary=True,
+                                     non_blocking=relief(basis, evidence)))
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'never relaxed'):
+                    self.evaluate(value)
+        value = peer(finding(id='F0', status='fixed-and-verified'),
+                     finding(security_boundary=True, present_at_previous_head='no',
+                             non_blocking=relief('fix_surface', ['added only to fix F0'])))
+        value['rereview'] = {'previous_head': PRIOR, 'prior_finding_ids': ['F0']}
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'never relaxed'):
+            self.evaluate(value)
+        value = peer(finding(security_boundary=True), claimed_verdict='REQUEST_CHANGES')
+        self.assertEqual(['finding:F1'], self.evaluate(value)['blockers'])
+
+    def test_relief_must_deny_a_security_or_trust_boundary_defect(self):
+        value = peer(finding(non_blocking=relief()))
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'needs security_boundary false'):
+            self.evaluate(value)
+
+    def test_security_boundary_field_is_bound_to_aura_peer_schema2(self):
+        for flag in (None, 'false', 0, 1, []):
+            with self.subTest(flag=flag):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'security_boundary'):
+                    self.evaluate(peer(finding(security_boundary=flag)))
+        for profile in ('general', 'aura-self'):
+            with self.subTest(profile=profile):
+                value = peer(finding(security_boundary=True), profile=profile,
+                             claimed_verdict='REQUEST_CHANGES')
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'only to the aura-peer profile'):
+                    self.evaluate(value)
+        value = record()
+        value['profile'] = 'aura-peer'
+        value['findings'] = [finding(security_boundary=False)]
+        value['claimed_verdict'] = 'REQUEST_CHANGES'
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 2 field in schema 1 record'):
+            self.evaluate(value)
 
     def test_pre_existing_residual_uses_base_origin_without_relief(self):
         value = peer(finding(origin='base'))
@@ -1307,13 +1348,13 @@ class NonBlockingTests(unittest.TestCase):
                       {'basis': ['immaterial'], 'evidence': ['x']}):
             with self.subTest(value=value):
                 with self.assertRaisesRegex(MODULE.InvalidRecord, 'non_blocking'):
-                    self.evaluate(peer(finding(non_blocking=value)))
+                    self.evaluate(peer(finding(security_boundary=False, non_blocking=value)))
 
     def test_fix_surface_applies_only_to_a_new_rereview_finding(self):
         with self.assertRaisesRegex(MODULE.InvalidRecord, 'new finding on a re-review'):
-            self.evaluate(peer(finding(non_blocking=relief('fix_surface'))))
+            self.evaluate(peer(finding(security_boundary=False, non_blocking=relief('fix_surface'))))
         value = peer(finding(id='F0', status='fixed-and-verified'),
-                     finding(non_blocking=relief('fix_surface', ['added only to fix F0']),
+                     finding(security_boundary=False, non_blocking=relief('fix_surface', ['added only to fix F0']),
                              present_at_previous_head='no'))
         value['rereview'] = {'previous_head': PRIOR, 'prior_finding_ids': ['F0']}
         result = self.evaluate(value)
@@ -1327,9 +1368,9 @@ class NonBlockingTests(unittest.TestCase):
     def test_follow_up_needs_the_finding_moved_out_of_open(self):
         evidence = ['issue: author-opened follow-up', 'PR body: discloses the follow-up issue']
         with self.assertRaisesRegex(MODULE.InvalidRecord, 'moved out of open'):
-            self.evaluate(peer(finding(non_blocking=relief('follow_up', evidence))))
+            self.evaluate(peer(finding(security_boundary=False, non_blocking=relief('follow_up', evidence))))
         value = peer(finding(status='deferred-with-rationale',
-                             non_blocking=relief('follow_up', evidence)))
+                             security_boundary=False, non_blocking=relief('follow_up', evidence)))
         result = self.evaluate(value)
         self.assertEqual('APPROVE', result['verdict'])
         self.assertEqual(['F1'], result['non_blocking']['follow_up'])
@@ -1337,7 +1378,7 @@ class NonBlockingTests(unittest.TestCase):
         self.assertEqual(['finding:F1'], self.evaluate(value)['blockers'])
 
     def test_closed_relieved_finding_is_not_listed_as_active(self):
-        value = peer(finding(status='fixed-and-verified', non_blocking=relief()))
+        value = peer(finding(status='fixed-and-verified', security_boundary=False, non_blocking=relief()))
         result = self.evaluate(value)
         self.assertEqual('APPROVE', result['verdict'])
         self.assertEqual([], result['non_blocking']['immaterial'])
@@ -1346,7 +1387,7 @@ class NonBlockingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             artifact, changed = root / 'review.json', root / 'changed.json'
-            artifact.write_text(json.dumps(peer(finding(non_blocking=relief('guard_bypass')))))
+            artifact.write_text(json.dumps(peer(finding(security_boundary=False, non_blocking=relief('guard_bypass')))))
             changed.write_text(json.dumps(['src/paging.py']))
             args = [sys.executable, str(SCRIPT), str(artifact), '--expected-profile', 'aura-peer',
                     '--expected-base', BASE, '--expected-head', HEAD, '--changed-files', str(changed),

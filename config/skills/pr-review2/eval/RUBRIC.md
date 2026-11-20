@@ -27,6 +27,8 @@ Further peer cases cover a round-two finding in fix-only text next to one that r
 earlier finding, a residual rooted in untouched code beside the same PR making it more
 likely, a disclosed author-opened follow-up for a Minor beside a Critical that must stay,
 and a round-three reassessment with contrived and realistic remaining blockers.
+A security case gives a Minor trust-boundary defect whose trigger needs crafted input; it
+must still block.
 The PR profile also covers missing/invalid targets, unresolved dirty self scope, own-PR
 publication, the stricter self Minor gate, and a clean self draft. One case expects a defect class recurring in
 three changed files as one finding with three instances; Tier 2 below adds seeded class
@@ -60,7 +62,8 @@ Score observable decisions and causal evidence, not exact prose or section spell
 - Peer materiality: a Minor blocks only with an ordinary trigger and a concrete user-visible
   or data consequence. A contrived bypass of a convenience guard that is no boundary and no
   claimed resistance is a listed should-fix, not a blocker; a realistic Minor still blocks.
-  Self mode applies none of the materiality relaxations.
+  Self mode applies none of the materiality relaxations, and a verified security or
+  trust-boundary defect is never relaxed, even when only crafted input reaches it.
 - An author-recorded run is judged against the criterion's exact text: a recorded error
   satisfies "run and record", not "passes". Inaccessible raw artifacts or the reviewer's
   inability to rerun do not block unless the contract requires them; an absent or

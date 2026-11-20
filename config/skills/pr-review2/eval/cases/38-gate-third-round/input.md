@@ -19,7 +19,8 @@ error that tells the user how to proceed; a test proves it.
 This is round three; the maintainer asked for a full pass. Rounds one and two were
 published by pr-review2 at an earlier metadata.version (different package fingerprint, same
 reviewer model family). Round two left three open findings it marked "Minor, blocking":
-- F-03: the early diagnostic misses `./via/../tool gate` when via/ is a symlinked dir.
+- F-03: the early diagnostic misses a copy of the launcher named tool.real, run as
+  `./tool.real gate`.
 - F-04: on a case-insensitive filesystem it misses a project binary literally named TOOL.
 - F-05: the refusal message tells users to unset TOOL_GATE, but the marker is TOOL_GATE_ROOT.
 No commit since round two; the author asked for a reassessment instead of more fixes.

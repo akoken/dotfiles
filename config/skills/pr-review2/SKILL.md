@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.11.0"
+  version: "2.11.1"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -157,13 +157,22 @@ severity table stands, and a change-introduced Critical defect always blocks. Re
 finding relaxed by rule 1, 2, 3 or 5 with its basis in the review record's non_blocking
 field; rule 4 records origin base instead.
 
-1. Materiality bar. A Minor branch-1 finding blocks only when both hold: a realistic
-   trigger in ordinary, non-adversarial use of the changed feature (an input or state a
-   normal user, operator or caller produces without crafting it), and a concrete
-   user-visible or data consequence (wrong output, a failed command, lost or corrupted
-   data, or a message that leads the user to a wrong action). Otherwise it is a non-blocking
-   should-fix (basis immaterial): list it with its remedy; it may land as a suggestion, a
-   small follow-up commit, or a follow-up issue the author opens.
+Security exemption. Rules 1, 2, 3 and 5 never relax a verified security or trust-boundary
+defect. It is one when project policy, security docs, the linked issue or code comments
+name the affected check or path a security or trust boundary, or when the baseline security
+pass shows an untrusted source can reach it and cause an effect that source could not
+otherwise cause. For such a defect, crafted attacker input is a realistic trigger and the
+boundary effect is a concrete consequence: it blocks under branch 1 at any severity, and
+it is fixed in the PR rather than deferred. The record marks every relaxed finding
+security_boundary false.
+
+1. Materiality bar. Outside the security exemption, a Minor branch-1 finding blocks only
+   when both hold: a realistic trigger in ordinary, non-adversarial use of the changed
+   feature (an input or state a normal user, operator or caller produces without crafting
+   it), and a concrete user-visible or data consequence (wrong output, a failed command,
+   lost or corrupted data, or a message that leads the user to a wrong action). Otherwise
+   it is a non-blocking should-fix (basis immaterial): list it with its remedy; it may land
+   as a suggestion, a small follow-up commit, or a follow-up issue the author opens.
 2. Guard versus boundary. Decide first what the changed check is, from evidence in this
    order, and state the deciding evidence in the finding:
    1. Project policy, security docs, the linked issue, or code comments name it a security
@@ -176,7 +185,7 @@ field; rule 4 records origin base instead.
    4. Otherwise it is a convenience or accident-prevention guard. Contrived or deliberately
       obfuscated inputs that bypass it (renamed symlinks, odd path spellings, case tricks,
       exotic launcher operands) are non-blocking Minor should-fixes (basis guard_bypass).
-   Bypasses of a boundary follow the ordinary rules.
+   A bypass of a boundary is a security or trust-boundary defect under the exemption above.
 3. Fix-surface churn. From round two, a new non-Critical finding located in text or code the
    author added only to address an earlier finding is non-blocking (basis fix_surface)
    unless it reopens that earlier finding's own failure. Name the earlier finding ID.
