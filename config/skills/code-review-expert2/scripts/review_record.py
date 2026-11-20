@@ -24,6 +24,8 @@ CAUSES = ('platform_refusal', 'quota', 'tool_failure', 'environment', 'missing_s
           'pending', 'scope_limit', 'other', UNKNOWN)
 UNKNOWN_SKILL = {'name': UNKNOWN, 'version': UNKNOWN, 'fingerprint': UNKNOWN}
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
+ANCHOR_KEYS = {'path', 'line', 'quote'}
+LINE_BREAK = re.compile(r'[\n\r]')
 
 
 class InvalidRecord(ValueError):
@@ -42,6 +44,22 @@ def text(value):
 def references(value, label, required=True):
     require(isinstance(value, list) and all(text(item) for item in value), label)
     require(not required or bool(value), label)
+
+
+def anchors(value, label, required=True):
+    """Check anchor shape only: a nonempty string or a {path, line, quote} object."""
+    require(isinstance(value, list) and (not required or bool(value)), label)
+    for item in value:
+        if not isinstance(item, dict):
+            require(text(item), label)
+            continue
+        require('path' in item and set(item) <= ANCHOR_KEYS, label + ': anchor keys')
+        paths([item['path']], label + ': anchor path')
+        require('line' not in item or (type(item['line']) is int and item['line'] >= 1),
+                label + ': anchor line')
+        # A quote is one line of the reviewed head, so it cannot contain a line break.
+        require('quote' not in item or (text(item['quote']) and not LINE_BREAK.search(item['quote'])),
+                label + ': anchor quote')
 
 
 def object_list(record, key):
@@ -330,7 +348,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             else:
                 require('present_at_previous_head' not in finding,
                         'present_at_previous_head applies only to new re-review findings')
-            references(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
+            anchors(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
             if 'class' in finding or 'instances' in finding:
                 require(text(finding.get('class')), 'finding class')
                 references(finding.get('instances'), 'finding class instances')

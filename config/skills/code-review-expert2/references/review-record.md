@@ -90,6 +90,11 @@ shape without causes; the validator still accepts it and reads what it lacks as 
   verified boolean, origin change/base/unknown, defect and reachable booleans; anchors,
   evidence, and blocking_reasons. Reasons are introduced_defect, unmet_requirement,
   contradicted_claim, introduced_gate_failure, plus aspirational_doc/missing_issue for AURA.
+  An anchor is a nonempty string or an object with path (repository-relative), optional line
+  (1-based, at the reviewed head) and optional quote: one whole line copied verbatim from
+  that file at the reviewed head, without a line break. Give every admitted finding an object
+  anchor with a quote; the quote, not the line number, locates the finding, so it survives
+  line drift and can be checked mechanically under anchor verification below.
   Optional class (nonempty string) names a recurring defect class; instances then lists
   every verified instance as nonempty path:line anchors. Give both or neither.
   On a re-review, every finding whose ID is not in rereview.prior_finding_ids records
@@ -243,3 +248,36 @@ and approved scope status from this output, never from the run's own claim. It
 cannot authenticate evidence or replace source review. A changed head/config/test selection
 invalidates affected evidence under the protocol even when JSON syntax remains valid. Public review publication still requires
 the session's explicit authorization and final current-head check.
+
+## Verify anchors against the reviewed head
+
+The validator checks anchor shape only. Locating anchors reads the reviewed files, so it is
+a separate script, [verify_anchors.py](../scripts/verify_anchors.py), run after the
+validator and before reporting or publishing:
+
+```
+python3 scripts/verify_anchors.py review.json --expected-head <head> \
+  --changed-files changed.json --repo <checkout containing head>
+```
+
+Use the same trusted head and changed-file list as the validator. The script reads file
+content from the head commit through git, never from the working tree, and checks that:
+
+1. every finding with route finding and origin change has an object anchor whose path is a
+   changed file, unless it was admitted through the contract or the PR body (blocking
+   reasons unmet_requirement, contradicted_claim or missing_issue); a string anchor cannot
+   be located and does not count;
+2. every object anchor with a quote or line resolves at head: the path is a regular UTF-8
+   file, the quote matches a whole line once each whitespace run is collapsed to one space
+   and both ends are trimmed, and a given line number holds the quote (or exists, without
+   a quote).
+
+It exits 0 when every check passes, 1 when any anchor mismatches, with the finding ID,
+anchor index, path and problem of each, and 2 for invalid input or a git failure. A
+mismatch means the finding is not verified where the record says. Send it back to
+verification at the head; correct the anchor only from that re-verification, never by
+editing a quote until it matches, or move the concern to verification_gaps. Use the
+resolved line numbers for the report and any published comment. A dirty-input record
+(patch_digest set) is refused because its reviewed content is not a commit; say in the
+report that its anchors were not mechanically verified. Keep the command line and output
+with validator-output.txt.

@@ -893,5 +893,55 @@ class RunStatusTests(unittest.TestCase):
                              (output['run_status']['state'], output['run_status']['causes']))
 
 
+class AnchorShapeTests(unittest.TestCase):
+    """The validator checks anchor shape only; locating anchors belongs to verify_anchors.py."""
+
+    def evaluate(self, *anchors, route='finding'):
+        value = record()
+        value['findings'] = [finding(anchors=list(anchors), route=route, origin='base', defect=False)]
+        value['claimed_verdict'] = 'APPROVE'
+        return MODULE.evaluate(value, expected_profile='general', expected_base=BASE,
+                               expected_head=HEAD, changed_files=['src/paging.py'],
+                               required_checks=['tests'], policy_known=True)
+
+    def test_string_and_object_anchors_are_accepted_without_reading_targets(self):
+        accepted = [
+            ('changed:src/paging.py:2',),
+            ({'path': 'src/paging.py'},),
+            ({'path': 'src/paging.py', 'line': 2, 'quote': '    return page * size'},),
+            # Shape only: a path outside the changed set or absent on disk is still well formed.
+            ({'path': 'docs/never-read.md', 'quote': 'not opened by the validator'},
+             'issue:321'),
+        ]
+        for anchors in accepted:
+            with self.subTest(anchors=anchors):
+                self.assertEqual('APPROVE', self.evaluate(*anchors)['verdict'])
+        self.assertEqual('APPROVE', self.evaluate(route='observation')['verdict'])
+
+    def test_malformed_anchor_objects_are_rejected(self):
+        rejected = [
+            {},
+            {'line': 2, 'quote': 'x = 1'},
+            {'path': 'src/paging.py', 'qoute': 'typo keys are not silently ignored'},
+            {'path': '/abs/src/paging.py'},
+            {'path': '../src/paging.py'},
+            {'path': 'src/paging.py', 'line': 0},
+            {'path': 'src/paging.py', 'line': True},
+            {'path': 'src/paging.py', 'line': '2'},
+            {'path': 'src/paging.py', 'quote': '   '},
+            {'path': 'src/paging.py', 'quote': 'two\nlines'},
+            {'path': 'src/paging.py', 'quote': 'carriage\rreturn'},
+            {'path': 'src/paging.py', 'quote': 7},
+            '',
+            7,
+        ]
+        for anchor in rejected:
+            with self.subTest(anchor=anchor):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'finding anchors'):
+                    self.evaluate(anchor)
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'finding anchors'):
+            self.evaluate()
+
+
 if __name__ == '__main__':
     unittest.main()

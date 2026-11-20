@@ -170,5 +170,9 @@ jobs:
         run: python3 -m unittest discover -s githooks/tests -p 'test_skills_lint.py' -v
       - name: Test review record decisions and CLI
         run: python3 -m unittest discover -s githooks/tests -p 'test_review_record.py' -v
+      - name: Test anchor verification against a real git head
+        run: python3 -m unittest discover -s githooks/tests -p 'test_verify_anchors.py' -v
       - name: Lint changed Python test syntax
-        run: python3 -m py_compile githooks/tests/test_review_record.py githooks/tests/test_skills_lint.py
+        run: >-
+          python3 -m py_compile githooks/tests/test_review_record.py githooks/tests/test_skills_lint.py
+          githooks/tests/test_verify_anchors.py
