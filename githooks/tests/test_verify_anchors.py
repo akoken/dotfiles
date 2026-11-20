@@ -155,7 +155,7 @@ class VerifyAnchorsTests(unittest.TestCase):
 
     def test_empty_blob_has_zero_lines(self):
         # Regression: a zero-byte file used to count as one empty line.
-        tree = MODULE.HeadTree(self.repo, self.head)
+        tree = MODULE.CommitTree(self.repo, self.head)
         self.assertEqual(([], None), tree.lines('src/empty.py'))
         self.assertEqual(([''], None), tree.lines('src/blank.py'))
         self.assertEqual((['first', 'last'], None), tree.lines('src/no_newline.py'))
@@ -294,7 +294,7 @@ class VerifyAnchorsTests(unittest.TestCase):
                 self.assertEqual(code != 2, output['valid'])
                 if code == 0:
                     self.assertEqual([{'finding': 'F1', 'anchor': 0, 'path': 'src/paging.py',
-                                       'line': 3}], output['resolved'])
+                                       'line': 3, 'commit': self.head}], output['resolved'])
                 if code == 1:
                     self.assertEqual([{'finding': 'F1', 'anchor': 0, 'path': 'src/paging.py',
                                        'problem': 'quote not found at head'}], output['mismatches'])
@@ -302,6 +302,117 @@ class VerifyAnchorsTests(unittest.TestCase):
             result = subprocess.run(args, capture_output=True, text=True)
             self.assertEqual(2, result.returncode)
             self.assertEqual(['duplicate JSON key'], json.loads(result.stdout)['errors'])
+
+
+VALIDATOR = ROOT / 'config/skills/pr-review2/scripts/review_record.py'
+
+
+class ClosedFindingTests(unittest.TestCase):
+    """A fix that restores a file to base removes it from the diff; its closed finding stays valid."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.folder = Path(cls.temp.name)
+        cls.repo = cls.folder / 'repo'
+        cls.repo.mkdir()
+        git(cls.repo, 'init', '-q')
+        write(cls.repo, {'lib.py': 'def total(items):\n    return sum(items)\n', 'notes.md': 'v1\n'})
+        git(cls.repo, 'add', '-A')
+        git(cls.repo, 'commit', '-q', '-m', 'base')
+        cls.base = git(cls.repo, 'rev-parse', 'HEAD')
+        write(cls.repo, {'lib.py': 'def total(items):\n    return sum(items) + 1\n'})
+        git(cls.repo, 'commit', '-q', '-am', 'previously reviewed head with the defect')
+        cls.previous = git(cls.repo, 'rev-parse', 'HEAD')
+        write(cls.repo, {'lib.py': 'def total(items):\n    return sum(items)\n', 'notes.md': 'v2\n'})
+        git(cls.repo, 'commit', '-q', '-am', 'fix restores lib.py to base')
+        cls.head = git(cls.repo, 'rev-parse', 'HEAD')
+        changed = git(cls.repo, 'diff', '--name-only', cls.base, cls.head).split()
+        assert changed == ['notes.md'], changed  # lib.py has left the diff entirely
+        cls.changed = cls.folder / 'changed.json'
+        cls.changed.write_text(json.dumps(changed))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def record(self, status='fixed-and-verified', **anchor):
+        quoted = {'path': 'lib.py', 'line': 2, 'quote': 'return sum(items) + 1',
+                  'commit': self.previous}
+        quoted.update(anchor)
+        quoted = {key: value for key, value in quoted.items() if value is not None}
+        active = status in ('open', 'deferred-with-rationale')
+        return {
+            'schema_version': 2, 'profile': 'general',
+            'skill': {'name': 'pr-review2', 'version': '2.9.0', 'fingerprint': 'e' * 64},
+            'subject': {'base': self.base, 'head': self.head, 'patch_digest': None},
+            'contract': {'state': 'none', 'evidence': []},
+            'coverage': {'mode': 'full', 'files': [
+                {'path': 'notes.md', 'state': 'reviewed', 'evidence': ['static:notes.md:1']}],
+                'dimensions_complete': True, 'context_complete': True,
+                'baseline_head': None, 'delta_files': []},
+            'rereview': {'previous_head': self.previous, 'prior_finding_ids': ['F1']},
+            'checks': [], 'requirements': [], 'verification_gaps': [], 'stopped': None,
+            'findings': [{'id': 'F1', 'severity': 'Minor', 'route': 'finding', 'status': status,
+                          'verified': True, 'origin': 'change', 'defect': True, 'reachable': True,
+                          'anchors': [quoted], 'evidence': ['static:lib.py restored to base at head'],
+                          'blocking_reasons': ['introduced_defect']}],
+            'claimed_verdict': 'REQUEST_CHANGES' if active else 'APPROVE',
+            'claimed_run_status': 'complete'}
+
+    def run_both(self, value):
+        artifact = self.folder / 'review.json'
+        artifact.write_text(json.dumps(value))
+        validator = subprocess.run(
+            [sys.executable, '-I', str(VALIDATOR), str(artifact), '--expected-profile', 'general',
+             '--expected-base', self.base, '--expected-head', self.head, '--changed-files',
+             str(self.changed), '--policy-known', '--expected-previous-head', self.previous],
+            capture_output=True, text=True)
+        verifier = subprocess.run(
+            [sys.executable, '-I', str(SCRIPT), str(artifact), '--expected-head', self.head,
+             '--changed-files', str(self.changed), '--repo', str(self.repo)],
+            capture_output=True, text=True)
+        return validator, verifier
+
+    def test_closed_finding_on_file_that_left_the_diff_passes_both_clis(self):
+        validator, verifier = self.run_both(self.record())
+        self.assertEqual(0, validator.returncode, validator.stdout + validator.stderr)
+        self.assertEqual('APPROVE', json.loads(validator.stdout)['verdict'])
+        self.assertEqual(0, verifier.returncode, verifier.stdout + verifier.stderr)
+        output = json.loads(verifier.stdout)
+        self.assertEqual([{'finding': 'F1', 'anchor': 0, 'path': 'lib.py', 'line': 2,
+                           'commit': self.previous}], output['resolved'])
+        self.assertEqual([], output['mismatches'])
+
+    def test_closed_quote_is_still_checked_at_its_commit(self):
+        cases = {
+            'quote absent at the bound commit': (dict(quote='return sum(items) + 2'),
+                                                 'quote not found at ' + self.previous),
+            'unbound quote defaults to the head': (dict(commit=None), 'quote not found at head'),
+            'bound commit missing from repo': (dict(commit='f' * 40),
+                                               'commit not found in repository: ' + 'f' * 40),
+        }
+        for label, (anchor, problem) in cases.items():
+            with self.subTest(label):
+                validator, verifier = self.run_both(self.record(**anchor))
+                self.assertEqual(0, validator.returncode, validator.stdout)
+                self.assertEqual(1, verifier.returncode, verifier.stdout + verifier.stderr)
+                self.assertEqual([problem], [item['problem']
+                                             for item in json.loads(verifier.stdout)['mismatches']])
+
+    def test_active_finding_still_needs_a_quote_in_the_current_diff(self):
+        for status in ('open', 'deferred-with-rationale'):
+            with self.subTest(status=status):
+                validator, verifier = self.run_both(self.record(status))
+                self.assertEqual(1, validator.returncode, validator.stdout)
+                self.assertEqual(1, verifier.returncode, verifier.stdout + verifier.stderr)
+                self.assertEqual(
+                    ['quote of an active finding is bound to ' + self.previous + ', not the head',
+                     'no verified quote in a changed file'],
+                    [item['problem'] for item in json.loads(verifier.stdout)['mismatches']])
+        # Healthy neighbour: a rejected finding is closed too.
+        validator, verifier = self.run_both(self.record('rejected-with-evidence'))
+        self.assertEqual((0, 0), (validator.returncode, verifier.returncode), verifier.stdout)
 
 
 if __name__ == '__main__':

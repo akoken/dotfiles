@@ -2,21 +2,26 @@
 """Check review-record finding anchors against the reviewed head commit.
 
 Reads review.json, a trusted head SHA, a trusted changed-file list and a git
-repository that contains the head commit. File content comes from the head
-commit's tree through git, never from the working tree, and nothing in the
-record is executed. Two checks run:
+repository that contains the head commit. File content comes from commit
+trees through git (the head, or the earlier commit a closed finding's quote
+is bound to), never from the working tree, and nothing in the record is
+executed. Two checks run:
 
-1. Every quote resolves to exactly one head line: the path is a regular UTF-8
-   file there and the quote equals a whole line after collapsing each
-   whitespace run to one space and trimming both ends. A given line must be
-   one of the matching lines and is the one reported; without a line, the
-   quote must match a single line.
-2. Every admitted change finding (route finding, origin change, not admitted
-   through the contract with unmet_requirement, contradicted_claim or
-   missing_issue) has a verified quote in a changed file. The only exception
-   is a path-only anchor on a changed file with no line to quote at head
-   (absent, not a regular file, not UTF-8, or blank); it is listed under
-   file_level. String and path-only anchors prove no location otherwise.
+1. Every quote resolves to exactly one line at its commit: the anchor's commit
+   when given, else the reviewed head. The path is a regular UTF-8 file there
+   and the quote equals a whole line after collapsing each whitespace run to
+   one space and trimming both ends. A given line must be one of the matching
+   lines and is the one reported; without a line, the quote must match a
+   single line. Only a closed finding (fixed-and-verified or
+   rejected-with-evidence) may bind a quote to a commit other than the head.
+2. Every active (open or deferred-with-rationale) admitted change finding
+   (route finding, origin change, not admitted through the contract with
+   unmet_requirement, contradicted_claim or missing_issue) has a verified
+   quote at head in a changed file. The only exception is a path-only anchor
+   on a changed file with no line to quote at head (absent, not a regular
+   file, not UTF-8, or blank); it is listed under file_level. String and
+   path-only anchors prove no location otherwise. A closed finding may refer
+   to a file that has since left the diff, so it is exempt from this check.
 
 Exit codes: 0 every check passed, 1 at least one mismatch (each names its
 finding and anchor), 2 invalid input or git failure. A record with a patch
@@ -39,6 +44,9 @@ InvalidRecord, require = record_tools.InvalidRecord, record_tools.require
 
 # Findings admitted through the linked contract or the PR body need no changed line.
 CONTRACT_REASONS = {'unmet_requirement', 'contradicted_claim', 'missing_issue'}
+# Matches the record validator: only these states can still block or need a fix.
+ACTIVE = ('open', 'deferred-with-rationale')
+STATES = ACTIVE + ('fixed-and-verified', 'rejected-with-evidence')
 REGULAR_MODES = (b'100644', b'100755')
 ABSENT, NOT_REGULAR, NOT_TEXT = ('path absent at head', 'not a regular file at head',
                                  'file is not UTF-8 text at head')
@@ -52,7 +60,7 @@ def normalise(line):
     return ' '.join(line.split())
 
 
-class HeadTree:
+class CommitTree:
     """Read files of one commit from a repository; cache each path's lines or problem."""
 
     def __init__(self, repo, head):
@@ -60,8 +68,8 @@ class HeadTree:
         try:
             resolved = self.git('rev-parse', '--verify', '--quiet', head + '^{commit}')
         except InvalidRecord as error:
-            raise InvalidRecord('head commit not found in repository: ' + str(error)) from error
-        require(resolved.decode().strip() == head, 'head commit not found in repository')
+            raise InvalidRecord('commit not found in repository: ' + head) from error
+        require(resolved.decode().strip() == head, 'commit not found in repository: ' + head)
 
     def git(self, *args):
         try:
@@ -105,16 +113,16 @@ class HeadTree:
         return None, ABSENT
 
 
-def resolve(tree, anchor):
-    """Return (line, None) when the quote names exactly one head line, else (None, problem)."""
+def resolve(tree, anchor, where):
+    """Return (line, None) when the quote names exactly one line of tree, else (None, problem)."""
     lines, problem = tree.lines(anchor['path'])
     if problem:
-        return None, problem
+        return None, problem if where == 'head' else problem.replace('at head', 'at ' + where)
     quote = normalise(anchor['quote'])
     found = [number for number, text in enumerate(lines, 1) if normalise(text) == quote]
     line = anchor.get('line')
     if not found:
-        return None, 'quote not found at head'
+        return None, 'quote not found at ' + where
     if line is not None:
         if line in found:
             return line, None
@@ -149,31 +157,53 @@ def check(record, *, expected_head, changed_files, repo):
         for finding in findings:
             require(finding['route'] in ('finding', 'observation', 'carried'), 'finding route')
             require(finding['origin'] in ('change', 'base', 'unknown'), 'finding origin')
+            require(finding['status'] in STATES, 'finding state')
             require(isinstance(finding['blocking_reasons'], list), 'blocking reasons')
             record_tools.anchors(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
-        tree = HeadTree(repo, expected_head)
+        tree = CommitTree(repo, expected_head)
+        trees = {expected_head: tree}
         mismatches, resolved, file_level, exempt, unlocated = [], [], [], [], []
+
+        def tree_at(commit):
+            """Return the tree of a bound commit, or None when the repository lacks it."""
+            if commit not in trees:
+                try:
+                    trees[commit] = CommitTree(repo, commit)
+                except InvalidRecord:
+                    trees[commit] = None
+            return trees[commit]
 
         def mismatch(finding, index, anchor, problem):
             mismatches.append({'finding': finding['id'], 'anchor': index,
                                'path': anchor['path'] if anchor else None, 'problem': problem})
 
         for finding in findings:
-            quoted = set()
+            quoted, active = set(), finding['status'] in ACTIVE
             for index, anchor in enumerate(finding['anchors']):
                 if not isinstance(anchor, dict):
                     unlocated.append(finding['id'])
                     continue
                 if 'quote' not in anchor:
                     continue
-                line, problem = resolve(tree, anchor)
+                commit = anchor.get('commit', expected_head)
+                if commit != expected_head and active:
+                    mismatch(finding, index, anchor, 'quote of an active finding is bound to '
+                             + commit + ', not the head')
+                    continue
+                bound = tree_at(commit)
+                if bound is None:
+                    mismatch(finding, index, anchor, 'commit not found in repository: ' + commit)
+                    continue
+                line, problem = resolve(bound, anchor, 'head' if commit == expected_head else commit)
                 if problem:
                     mismatch(finding, index, anchor, problem)
                     continue
-                quoted.add(anchor['path'])
+                if commit == expected_head:
+                    quoted.add(anchor['path'])
                 resolved.append({'finding': finding['id'], 'anchor': index,
-                                 'path': anchor['path'], 'line': line})
-            if finding['route'] != 'finding' or finding['origin'] != 'change':
+                                 'path': anchor['path'], 'line': line, 'commit': commit})
+            # A closed finding's file may have left the diff (a fix restoring it to base).
+            if not active or finding['route'] != 'finding' or finding['origin'] != 'change':
                 continue
             if set(finding['blocking_reasons']) & CONTRACT_REASONS:
                 exempt.append(finding['id'])

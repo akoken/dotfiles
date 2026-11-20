@@ -909,6 +909,7 @@ class AnchorShapeTests(unittest.TestCase):
             ('changed:src/paging.py:2',),
             ({'path': 'src/paging.py'},),
             ({'path': 'src/paging.py', 'line': 2, 'quote': '    return page * size'},),
+            ({'path': 'src/paging.py', 'line': 2, 'quote': 'return page * size', 'commit': PRIOR},),
             # Shape only: a path outside the changed set or absent on disk is still well formed.
             ({'path': 'docs/never-read.md', 'quote': 'not opened by the validator'},
              'issue:321'),
@@ -926,6 +927,9 @@ class AnchorShapeTests(unittest.TestCase):
             {'path': '/abs/src/paging.py'},
             {'path': '../src/paging.py'},
             {'path': 'src/paging.py', 'line': 2},
+            {'path': 'src/paging.py', 'commit': PRIOR},
+            {'path': 'src/paging.py', 'quote': 'x = 1', 'commit': 'not-a-sha'},
+            {'path': 'src/paging.py', 'quote': 'x = 1', 'commit': PRIOR.upper()},
             {'path': 'src/paging.py', 'line': 0},
             {'path': 'src/paging.py', 'line': True},
             {'path': 'src/paging.py', 'line': '2'},

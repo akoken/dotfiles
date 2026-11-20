@@ -24,7 +24,7 @@ CAUSES = ('platform_refusal', 'quota', 'tool_failure', 'environment', 'missing_s
           'pending', 'scope_limit', 'other', UNKNOWN)
 UNKNOWN_SKILL = {'name': UNKNOWN, 'version': UNKNOWN, 'fingerprint': UNKNOWN}
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
-ANCHOR_KEYS = {'path', 'line', 'quote'}
+ANCHOR_KEYS = {'path', 'line', 'quote', 'commit'}
 LINE_BREAK = re.compile(r'[\n\r]')
 
 
@@ -47,7 +47,7 @@ def references(value, label, required=True):
 
 
 def anchors(value, label, required=True):
-    """Check anchor shape only: a nonempty string or a {path, line, quote} object."""
+    """Check anchor shape only: a nonempty string or a {path, quote, line, commit} object."""
     require(isinstance(value, list) and (not required or bool(value)), label)
     for item in value:
         if not isinstance(item, dict):
@@ -61,6 +61,9 @@ def anchors(value, label, required=True):
         # A quote is one line of the reviewed head, so it cannot contain a line break.
         require('quote' not in item or (text(item['quote']) and not LINE_BREAK.search(item['quote'])),
                 label + ': anchor quote')
+        # commit binds a quote to the revision it was verified at, such as an earlier round's head.
+        require('commit' not in item or ('quote' in item and isinstance(item['commit'], str)
+                                         and SHA.fullmatch(item['commit'])), label + ': anchor commit')
 
 
 def object_list(record, key):
