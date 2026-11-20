@@ -1365,6 +1365,16 @@ class NonBlockingTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.InvalidRecord, 'new finding on a re-review'):
             self.evaluate(value)
 
+    def test_fix_surface_needs_a_prior_finding_on_the_rereview(self):
+        value = peer(finding(security_boundary=False, present_at_previous_head='no',
+                             non_blocking=relief('fix_surface', ['added only to fix F9'])))
+        value['rereview'] = {'previous_head': PRIOR, 'prior_finding_ids': []}
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'with prior findings'):
+            self.evaluate(value)
+        value['findings'][0].pop('non_blocking')
+        value['claimed_verdict'] = 'REQUEST_CHANGES'
+        self.assertEqual(['finding:F1'], self.evaluate(value)['blockers'])
+
     def test_follow_up_needs_the_finding_moved_out_of_open(self):
         evidence = ['issue: author-opened follow-up', 'PR body: discloses the follow-up issue']
         with self.assertRaisesRegex(MODULE.InvalidRecord, 'moved out of open'):

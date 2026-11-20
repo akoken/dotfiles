@@ -463,8 +463,10 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                 require(finding.get('security_boundary') is False,
                         'non_blocking needs security_boundary false; a security or trust-boundary '
                         'defect is never relaxed')
-                require(basis != 'fix_surface' or (rereview is not None and finding['id'] not in prior_ids),
-                        'fix_surface applies only to a new finding on a re-review')
+                # Fix-surface churn needs an earlier finding whose fix the new one sits on.
+                require(basis != 'fix_surface' or (rereview is not None and bool(prior_ids)
+                                                   and finding['id'] not in prior_ids),
+                        'fix_surface applies only to a new finding on a re-review with prior findings')
                 require(basis != 'follow_up' or finding['status'] != 'open',
                         'follow_up needs the finding moved out of open')
                 if active:

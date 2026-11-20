@@ -139,7 +139,8 @@ shape without causes; the validator still accepts it and reads what it lacks as 
   rejects non_blocking without security_boundary false, on another profile, on a Critical
   or Style finding, on a routed observation or carried item, beside a declared blocking
   reason, on a finding that is not a reachable change-introduced defect, and fix_surface
-  outside a new re-review finding; any other blocking reason still blocks. It lists the active ones by basis in its
+  outside a new finding on a re-review with prior findings; any other blocking reason still
+  blocks. It lists the active ones by basis in its
   output. It checks shape and these constraints, not whether the basis is true.
   On a re-review, every finding whose ID is not in rereview.prior_finding_ids records
   present_at_previous_head: yes when evidence (code at previous_head, a probe there) shows

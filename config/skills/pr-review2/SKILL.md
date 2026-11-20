@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.11.1"
+  version: "2.11.2"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -164,7 +164,12 @@ pass shows an untrusted source can reach it and cause an effect that source coul
 otherwise cause. For such a defect, crafted attacker input is a realistic trigger and the
 boundary effect is a concrete consequence: it blocks under branch 1 at any severity, and
 it is fixed in the PR rather than deferred. The record marks every relaxed finding
-security_boundary false.
+security_boundary false, which needs the boundary question resolved. When the evidence
+leaves it unresolved (for example the baseline security pass cannot tell whether an
+untrusted source reaches the check or path), the finding is never relaxed and is not a
+guard: record the open boundary question as a material verification gap under security
+routing, so the review stays incomplete (NEEDS_REVIEW) unless another verified blocker
+already makes it Not ready to merge.
 
 1. Materiality bar. Outside the security exemption, a Minor branch-1 finding blocks only
    when both hold: a realistic trigger in ordinary, non-adversarial use of the changed
@@ -182,9 +187,11 @@ security_boundary false.
       route it under security routing.
    3. The PR body, issue or changed docs claim it resists such inputs: the bypass
       contradicts that claim (branch 3); the remedy may be to narrow the claim.
-   4. Otherwise it is a convenience or accident-prevention guard. Contrived or deliberately
-      obfuscated inputs that bypass it (renamed symlinks, odd path spellings, case tricks,
-      exotic launcher operands) are non-blocking Minor should-fixes (basis guard_bypass).
+   4. Otherwise, once steps 1-3 are settled and none applies, it is a convenience or
+      accident-prevention guard; an unsettled step 2 keeps the finding unrelaxed, as stated
+      above. Contrived or deliberately obfuscated inputs that bypass a guard (renamed
+      symlinks, odd path spellings, case tricks, exotic launcher operands) are
+      non-blocking Minor should-fixes (basis guard_bypass).
    A bypass of a boundary is a security or trust-boundary defect under the exemption above.
 3. Fix-surface churn. From round two, a new non-Critical finding located in text or code the
    author added only to address an earlier finding is non-blocking (basis fix_surface)

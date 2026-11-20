@@ -29,6 +29,8 @@ likely, a disclosed author-opened follow-up for a Minor beside a Critical that m
 and a round-three reassessment with contrived and realistic remaining blockers.
 A security case gives a Minor trust-boundary defect whose trigger needs crafted input; it
 must still block.
+Another gives a guard bypass whose boundary status the evidence cannot settle; it must stay
+unrelaxed and keep the review incomplete.
 The PR profile also covers missing/invalid targets, unresolved dirty self scope, own-PR
 publication, the stricter self Minor gate, and a clean self draft. One case expects a defect class recurring in
 three changed files as one finding with three instances; Tier 2 below adds seeded class
