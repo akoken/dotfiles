@@ -982,6 +982,43 @@ class BaselineIdentityTests(unittest.TestCase):
                          tuple(result['baseline_identity'][key]
                                for key in ('state', 'delta_allowed', 'disclosure_required')))
 
+    def test_placeholder_model_family_is_missing_identity_not_a_family(self):
+        # A run whose model was not recorded may write a placeholder such as unknown. Two
+        # placeholders are not the same family: the delta must fall back to a full pass.
+        for placeholder in MODULE.PLACEHOLDER_FAMILIES:
+            for sides in (('record', 'rereview'), ('record',), ('rereview',)):
+                with self.subTest(placeholder=placeholder, sides=sides):
+                    value = delta_record()
+                    if 'record' in sides:
+                        value['reviewer'] = reviewer(placeholder, MODULE.UNKNOWN)
+                    if 'rereview' in sides:
+                        value['rereview']['previous_reviewer'] = reviewer(placeholder, MODULE.UNKNOWN)
+                    for claimed in ('same', 'model_family_unknown'):
+                        value['rereview']['baseline_identity'] = claimed
+                        with self.assertRaisesRegex(MODULE.InvalidRecord,
+                                                    'model family is unknown; perform a full review'):
+                            self.evaluate(value, **DELTA)
+                    full = as_full_pass(value)
+                    result = self.evaluate(full)
+                    self.assertEqual('model_family_unknown', result['baseline_identity']['state'])
+                    self.assertFalse(result['baseline_identity']['delta_allowed'])
+        value = as_full_pass(delta_record(previous_reviewer=reviewer('unknown'),
+                                          baseline_identity='model_family_unknown'))
+        value['reviewer'] = reviewer('unknown')
+        result = self.evaluate(value)
+        self.assertEqual(MODULE.UNKNOWN_REVIEWER, result['reviewer'])
+        self.assertEqual('unknown', result['reviewer_identity'])
+        self.assertEqual(MODULE.UNKNOWN_REVIEWER, result['baseline_identity']['previous_reviewer'])
+        # A placeholder can neither satisfy nor stand in for a trusted expectation.
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'reviewer identity absent'):
+            self.evaluate(value, expected_model_family='claude')
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'previous reviewer identity absent'):
+            self.evaluate(value, expected_previous_model_family='claude')
+        for option in ('expected_model_family', 'expected_previous_model_family'):
+            with self.subTest(option=option):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, option.replace('_', ' ')):
+                    self.evaluate(delta_record(), **DELTA, **{option: 'unknown'})
+
     def test_missing_previous_identity_reads_unknown_never_same(self):
         for holder, key in (('rereview', 'previous_reviewer'), ('record', 'reviewer')):
             for absent in ('omitted', 'null'):

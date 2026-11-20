@@ -62,6 +62,9 @@ shape without causes; the validator still accepts it and reads what it lacks as 
   version or size. Use one label per family; another spelling reads as another family.
   Write both in the report header next to the skill identity. Optional in schema 2 and
   absent from schema 1; absent or null reads unknown, which rules out a delta re-review.
+  A placeholder family (unknown, none, null, unset, unspecified, missing, na, n-a, tbd or
+  other) names no family: it reads as a missing identity, so two placeholders never match,
+  and it cannot satisfy or be passed as an expected model family.
 - rereview: include it on every re-review (any round after the first, full or delta) and
   omit it on a first review. previous_head is the full SHA of the previously reviewed head
   (in delta mode it equals coverage.baseline_head); prior_finding_ids lists the IDs already

@@ -26,6 +26,10 @@ UNKNOWN_SKILL = {'name': UNKNOWN, 'version': UNKNOWN, 'fingerprint': UNKNOWN}
 UNKNOWN_REVIEWER = {'host': UNKNOWN, 'model_family': UNKNOWN}
 # A lowercase vendor family label such as claude or gpt, not a model version or size.
 MODEL_FAMILY = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*\Z')
+# Labels that stand for a missing family rather than naming one. Two of them never match:
+# a record carrying one reads as identity unknown, exactly like an absent reviewer.
+PLACEHOLDER_FAMILIES = ('unknown', 'none', 'null', 'unset', 'unspecified', 'missing', 'na', 'n-a',
+                        'tbd', 'other')
 # How the baseline's reviewer identity compares with this run's. Missing data is unknown,
 # never same. A delta may reuse the baseline only when the model family is known and the
 # same; a differing or unknown skill identity then needs disclosure in record and report.
@@ -168,6 +172,8 @@ def validate_reviewer(reviewer, expected_family, label):
     require(isinstance(reviewer, dict) and text(reviewer['host']), label + ' host')
     require(isinstance(reviewer['model_family'], str)
             and MODEL_FAMILY.fullmatch(reviewer['model_family']), label + ' model family')
+    if reviewer['model_family'] in PLACEHOLDER_FAMILIES:
+        return validate_reviewer(None, expected_family, label)
     require(expected_family is None or reviewer['model_family'] == expected_family,
             label + ' model family differs from expected')
     return {key: reviewer[key] for key in ('host', 'model_family')}
@@ -227,7 +233,8 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                 (expected_previous_skill_version, VERSION, 'expected previous skill version'),
                 (expected_previous_skill_fingerprint, DIGEST, 'expected previous skill fingerprint'),
                 (expected_previous_model_family, MODEL_FAMILY, 'expected previous model family')):
-            require(value is None or (isinstance(value, str) and pattern.fullmatch(value)), label)
+            require(value is None or (isinstance(value, str) and pattern.fullmatch(value)
+                                      and value not in PLACEHOLDER_FAMILIES), label)
         require(expected_previous_head is None or (isinstance(expected_previous_head, str)
                 and SHA.fullmatch(expected_previous_head)), 'expected previous head')
         skill = validate_skill(record.get('skill'), expected_skill_version, expected_skill_fingerprint)
