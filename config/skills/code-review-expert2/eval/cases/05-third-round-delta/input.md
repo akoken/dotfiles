@@ -8,6 +8,9 @@ First-pass full report was published with full Reviewed-at-HEAD
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb and finding F-01, reject missing expiry.
 Second full report was published at cccccccccccccccccccccccccccccccccccccccc,
 links the first report, records round 2, full coverage 4/4 changed files and F-01 still open.
+Both report headers name the reviewer identity: skill code-review-expert2 at an earlier
+metadata.version with a package fingerprint different from the skill you are running,
+and the same reviewer model family as this run.
 Current head dddddddddddddddddddddddddddddddddddddddd descends from that second SHA.
 Base, contract, and caller invariants unchanged. Verified risk Medium, no sensitive-path
 classification changes. The only delta file is src/token.py; complete affected code follows:

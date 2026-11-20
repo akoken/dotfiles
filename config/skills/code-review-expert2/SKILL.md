@@ -2,7 +2,7 @@
 name: code-review-expert2
 description: "Review a diff, branch, commit range, or PR using verified findings, explicit coverage, risk-based re-review, and an incomplete-review verdict. Use for general code reviews; use pr-review2 for AURA merge-readiness or pre-PR self-review."
 metadata:
-  version: "2.7.0"
+  version: "2.8.0"
   derived-from: code-review-expert
 ---
 
@@ -154,11 +154,14 @@ missing metadata honestly; never invent a record just to satisfy the schema.
 
 Lead with the verdict and finding count. Include:
 
-- Skill identity: name, metadata.version and package fingerprint under the review record.
+- Skill identity: name, metadata.version and package fingerprint under the review record,
+  and the reviewer host and model family that ran it.
 - Run status from the validator output: state, approved_scope_status, causes with their
   authority or evidence, stopped; plus the paths of the kept review.json and validator output.
 - Contract; base/head SHAs or working-patch digest; reviewed source and REVIEW.md scope.
 - Coverage, risk tier with reasons, review round/mode, and baseline evidence or unavailable.
+  On re-review add the baseline identity state from the validator output; a qualified delta
+  states that the reused baseline came from a different or unknown reviewer skill identity.
 - Commands/checks actually run, outcomes, skipped work and unresolved verification.
   Include measured review/test/CI-wait timing under the review record; unknown stays unknown.
 - Mutation applicability/status, exact production/test scope, tool/config/revision identity,
