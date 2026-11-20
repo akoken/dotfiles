@@ -225,6 +225,43 @@ keep in the calling shell. It selects the provider and key, not the model:
 choose the model at startup (`--model` or `COPILOT_MODEL`). Plain `copilot`
 is not wrapped and keeps GitHub Copilot's own model routing.
 
+`copilot-obss` sends Copilot's requests straight to the OBSS endpoint, with
+no proxy that changes sampling parameters, because current Copilot sends
+none for the OBSS model ids. The OBSS LiteLLM endpoint holds each model's
+sampling values in its config (`GET /model/info`: for example
+`qwen3.8-27b-benchmark` temperature 1, top_p 0.95, top_k 20, presence
+penalty 0), and LiteLLM lets a value in the request replace the configured
+one. It has no request header or other client-side switch that makes the
+config win, and Copilot can add headers but not body fields. Copilot CLI
+1.0.81 to at least 1.0.97 sent temperature 0, top_p 0.95 and both penalties 0
+on every BYOK chat-completion request (github/copilot-cli#4950), so greedy
+decoding replaced those values. Measured on 2026-11-20 against a local stub
+that recorded the request bodies: 1.0.96 still sent them, while 1.0.106,
+1.0.110, 1.0.112 and 1.0.114 take sampling values from Copilot's built-in
+model catalog and send none for an id the catalog does not know. On 1.0.114
+the requests for `glm-5.3-flash`, `qwen3.8-27b-benchmark`, `qwen3.6-35b-a3b`
+and `claude-sonnet-4.5` carried only `model`, `messages`, `tools`, `stream`
+and `stream_options`, so the endpoint's per-model values apply. Catalog ids
+still get Copilot's values: `gpt-4.1` gets temperature 0, top_p 0.95 and
+both penalties 0, and `gpt-5.2` gets temperature 1. Neither id is an OBSS
+model name. Not measured: later turns with tool calls, subagents and
+compaction requests. After a Copilot update, re-check a model without a key
+and without a model call. Copilot logs each request body at `--log-level
+all`, and port 9 on loopback has no listener, so the request never leaves
+the machine:
+
+```bash
+d="$(mktemp -d)"
+env COPILOT_HOME="$d/home" COPILOT_PROVIDER_TYPE=openai \
+  COPILOT_PROVIDER_BASE_URL=http://127.0.0.1:9/v1 COPILOT_PROVIDER_API_KEY=unused \
+  COPILOT_MODEL=glm-5.3-flash copilot -p hi --log-level all --log-dir "$d/logs"
+rg -n '^\s*"(temperature|top_p|frequency_penalty|presence_penalty)"' "$d/logs"
+```
+
+No output means Copilot sent no sampling field for that model. The run
+itself fails because nothing listens on the port. A `gpt-4.1` run prints the
+four fields, which shows that the check can find them.
+
 Claude Code keeps MCP servers in `~/.claude.json`, which this repo does not
 manage. Register Context7 there once (the single quotes keep `$HOME` for the
 shell Claude Code runs the helper in):
