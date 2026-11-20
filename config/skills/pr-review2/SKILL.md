@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.8.0"
+  version: "2.9.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -102,7 +102,8 @@ available; a normal code review or green mutation score cannot stand in for it.
 1. Resolve the linked-issue contract. If absent, state the missing reference and continue
    reviewing available evidence; do not invent scope. Missing issue is branch 5 below.
 2. Verify every candidate under the protocol. Admit it only through a changed line, an
-   unmet linked-issue requirement/DoD, or a PR-body claim contradicted by the diff.
+   unmet linked-issue requirement/DoD, or a PR-body claim contradicted by the diff. Anchor
+   it with a verbatim quote of the head line under the review record.
 3. Compute `Blocker? Yes` only through these six branches:
    1. A reachable correctness, security, or regression defect introduced by the change.
    2. A failed linked-issue requirement/DoD.
@@ -185,8 +186,9 @@ acceptance criterion to implementation and verification against its exact text, 
 unmet/unverified criteria, accept an author-recorded run under the record's rule without
 adding evidence requirements the contract does not contain, and validate review.json against
 independently obtained revision/file/gate inputs before a positive verdict. This verifies
-consistency, not source truth. Missing-target and fixture-only exercises do not fabricate a
-record for unavailable metadata.
+consistency, not source truth. Then run the record's anchor verifier against the reviewed
+head and resolve every mismatch under the review record before reporting or publishing.
+Missing-target and fixture-only exercises do not fabricate a record for unavailable metadata.
 
 A criterion can demand a paid, live, credentialed or host-specific run while a trusted
 project policy line treats such runs as optional or post-merge. When the run's record is

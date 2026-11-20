@@ -12,7 +12,7 @@ REVIEW_SKILLS = ('code-review-expert2', 'pr-review2')
 REVIEW_SHARED_FILES = (
     'references/review-protocol.md', 'references/mutation-testing.md',
     'references/security-routing.md', 'references/review-record.md',
-    'scripts/review_record.py', 'references/focused-reviews.md',
+    'scripts/review_record.py', 'scripts/verify_anchors.py', 'references/focused-reviews.md',
 )
 # Inline links (including images) and reference-style link definitions.
 LINK = re.compile(r'\[[^\]\n]*\]\(\s*(<[^>\n]+>|[^\s)]+)(?:\s+["\'][^\n]*?["\'])?\s*\)')
