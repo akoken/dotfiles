@@ -55,8 +55,9 @@ def anchors(value, label, required=True):
             continue
         require('path' in item and set(item) <= ANCHOR_KEYS, label + ': anchor keys')
         paths([item['path']], label + ': anchor path')
-        require('line' not in item or (type(item['line']) is int and item['line'] >= 1),
-                label + ': anchor line')
+        # A line number alone cannot be checked against the head; it only picks among quote matches.
+        require('line' not in item or ('quote' in item and type(item['line']) is int
+                                       and item['line'] >= 1), label + ': anchor line')
         # A quote is one line of the reviewed head, so it cannot contain a line break.
         require('quote' not in item or (text(item['quote']) and not LINE_BREAK.search(item['quote'])),
                 label + ': anchor quote')

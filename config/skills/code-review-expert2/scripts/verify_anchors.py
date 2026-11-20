@@ -6,14 +6,17 @@ repository that contains the head commit. File content comes from the head
 commit's tree through git, never from the working tree, and nothing in the
 record is executed. Two checks run:
 
-1. Every admitted change finding (route finding, origin change, not admitted
+1. Every quote resolves to exactly one head line: the path is a regular UTF-8
+   file there and the quote equals a whole line after collapsing each
+   whitespace run to one space and trimming both ends. A given line must be
+   one of the matching lines and is the one reported; without a line, the
+   quote must match a single line.
+2. Every admitted change finding (route finding, origin change, not admitted
    through the contract with unmet_requirement, contradicted_claim or
-   missing_issue) has at least one object anchor whose path is a changed file.
-   String anchors cannot be located and do not count.
-2. Every object anchor with a quote or a line resolves at head: the path is a
-   regular UTF-8 file there, the quote equals a whole line after collapsing
-   each whitespace run to one space and trimming both ends, and a given line
-   number holds that quote (or exists, when the anchor has no quote).
+   missing_issue) has a verified quote in a changed file. The only exception
+   is a path-only anchor on a changed file with no line to quote at head
+   (absent, not a regular file, not UTF-8, or blank); it is listed under
+   file_level. String and path-only anchors prove no location otherwise.
 
 Exit codes: 0 every check passed, 1 at least one mismatch (each names its
 finding and anchor), 2 invalid input or git failure. A record with a patch
@@ -37,6 +40,8 @@ InvalidRecord, require = record_tools.InvalidRecord, record_tools.require
 # Findings admitted through the linked contract or the PR body need no changed line.
 CONTRACT_REASONS = {'unmet_requirement', 'contradicted_claim', 'missing_issue'}
 REGULAR_MODES = (b'100644', b'100755')
+ABSENT, NOT_REGULAR, NOT_TEXT = ('path absent at head', 'not a regular file at head',
+                                 'file is not UTF-8 text at head')
 # Literal pathspecs keep an anchor path from acting as a pattern; replace refs
 # could otherwise substitute different objects for the reviewed commit.
 GIT_ENV = {'GIT_LITERAL_PATHSPECS': '1', 'GIT_NO_REPLACE_OBJECTS': '1'}
@@ -84,18 +89,49 @@ class HeadTree:
             require(len(fields) == 3, 'unexpected git ls-tree output')
             mode, kind, obj = fields
             if kind != b'blob' or mode not in REGULAR_MODES:
-                return None, 'not a regular file at head'
+                return None, NOT_REGULAR
             data = self.git('cat-file', 'blob', obj.decode())
             if len(data) > record_tools.MAX_BYTES:
                 return None, 'file exceeds size limit at head'
             try:
                 content = data.decode('utf-8')
             except UnicodeDecodeError:
-                return None, 'file is not UTF-8 text at head'
+                return None, NOT_TEXT
+            if not content:
+                return [], None  # An empty blob has zero lines, not one empty line.
             # Count lines as git and editors do: split on newline only.
             parts = content.split('\n')
             return (parts[:-1] if content.endswith('\n') else parts), None
-        return None, 'path absent at head'
+        return None, ABSENT
+
+
+def resolve(tree, anchor):
+    """Return (line, None) when the quote names exactly one head line, else (None, problem)."""
+    lines, problem = tree.lines(anchor['path'])
+    if problem:
+        return None, problem
+    quote = normalise(anchor['quote'])
+    found = [number for number, text in enumerate(lines, 1) if normalise(text) == quote]
+    line = anchor.get('line')
+    if not found:
+        return None, 'quote not found at head'
+    if line is not None:
+        if line in found:
+            return line, None
+        return None, 'quote is at line(s) ' + ', '.join(map(str, found)) + ', not line ' + str(line)
+    if len(found) > 1:
+        return None, 'quote matches lines ' + ', '.join(map(str, found)) + '; add line to pick one'
+    return found[0], None
+
+
+def unquotable(tree, path):
+    """Name why a changed file has no line to quote at head, or None when it has one."""
+    lines, problem = tree.lines(path)
+    if problem in (ABSENT, NOT_REGULAR, NOT_TEXT):
+        return problem
+    if lines is not None and not any(text.strip() for text in lines):
+        return 'no nonblank line at head'
+    return None
 
 
 def check(record, *, expected_head, changed_files, repo):
@@ -116,49 +152,49 @@ def check(record, *, expected_head, changed_files, repo):
             require(isinstance(finding['blocking_reasons'], list), 'blocking reasons')
             record_tools.anchors(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
         tree = HeadTree(repo, expected_head)
-        mismatches, resolved, exempt, unlocated = [], [], [], []
+        mismatches, resolved, file_level, exempt, unlocated = [], [], [], [], []
 
         def mismatch(finding, index, anchor, problem):
             mismatches.append({'finding': finding['id'], 'anchor': index,
                                'path': anchor['path'] if anchor else None, 'problem': problem})
 
         for finding in findings:
-            located = [item for item in finding['anchors'] if isinstance(item, dict)]
-            if len(located) < len(finding['anchors']):
-                unlocated.append(finding['id'])
-            if finding['route'] == 'finding' and finding['origin'] == 'change':
-                if set(finding['blocking_reasons']) & CONTRACT_REASONS:
-                    exempt.append(finding['id'])
-                elif not any(item['path'] in changed for item in located):
-                    mismatch(finding, None, None, 'no object anchor in a changed file')
+            quoted = set()
             for index, anchor in enumerate(finding['anchors']):
-                if not isinstance(anchor, dict) or not {'line', 'quote'} & set(anchor):
+                if not isinstance(anchor, dict):
+                    unlocated.append(finding['id'])
                     continue
-                lines, problem = tree.lines(anchor['path'])
+                if 'quote' not in anchor:
+                    continue
+                line, problem = resolve(tree, anchor)
                 if problem:
                     mismatch(finding, index, anchor, problem)
                     continue
-                line = anchor.get('line')
-                if 'quote' in anchor:
-                    quote = normalise(anchor['quote'])
-                    found = [number for number, text in enumerate(lines, 1) if normalise(text) == quote]
-                    if not found:
-                        mismatch(finding, index, anchor, 'quote not found at head')
-                        continue
-                    if line is not None and line not in found:
-                        mismatch(finding, index, anchor, 'quote is at line(s) '
-                                 + ', '.join(map(str, found)) + ', not line ' + str(line))
-                        continue
-                else:
-                    if line > len(lines):
-                        mismatch(finding, index, anchor,
-                                 'line beyond end of file (' + str(len(lines)) + ' lines)')
-                        continue
-                    found = [line]
+                quoted.add(anchor['path'])
                 resolved.append({'finding': finding['id'], 'anchor': index,
-                                 'path': anchor['path'], 'lines': found})
+                                 'path': anchor['path'], 'line': line})
+            if finding['route'] != 'finding' or finding['origin'] != 'change':
+                continue
+            if set(finding['blocking_reasons']) & CONTRACT_REASONS:
+                exempt.append(finding['id'])
+                continue
+            if quoted & changed:
+                continue
+            # A changed file with no quotable line (deleted, binary, empty) anchors by path alone;
+            # the exception is listed so the report can disclose it.
+            exceptions = []
+            for index, anchor in enumerate(finding['anchors']):
+                if isinstance(anchor, dict) and anchor['path'] in changed and 'quote' not in anchor:
+                    reason = unquotable(tree, anchor['path'])
+                    if reason:
+                        exceptions.append({'finding': finding['id'], 'anchor': index,
+                                           'path': anchor['path'], 'reason': reason})
+            if exceptions:
+                file_level.extend(exceptions)
+            else:
+                mismatch(finding, None, None, 'no verified quote in a changed file')
         return {'valid': True, 'verified': not mismatches, 'head': expected_head,
-                'mismatches': mismatches, 'resolved': resolved,
+                'mismatches': mismatches, 'resolved': resolved, 'file_level': file_level,
                 'contract_admitted': sorted(exempt), 'string_anchors': sorted(set(unlocated)),
                 'errors': []}
     except (KeyError, TypeError, AttributeError) as error:

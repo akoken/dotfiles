@@ -925,6 +925,7 @@ class AnchorShapeTests(unittest.TestCase):
             {'path': 'src/paging.py', 'qoute': 'typo keys are not silently ignored'},
             {'path': '/abs/src/paging.py'},
             {'path': '../src/paging.py'},
+            {'path': 'src/paging.py', 'line': 2},
             {'path': 'src/paging.py', 'line': 0},
             {'path': 'src/paging.py', 'line': True},
             {'path': 'src/paging.py', 'line': '2'},

@@ -28,8 +28,14 @@ HEAD_FILES = {
                       '    return (page - 1) * size\n\n\ndef limit(size):\n\treturn  size\n'),
     'src/pkg/mod.py': 'VALUE = 1\r\nOTHER = 2\r\n',
     'src/binary.dat': b'\xff\xfe\x00bad',
+    'src/repeat.py': 'retry()\nwait()\n  retry()\n',
+    'src/empty.py': '',
+    'src/blank.py': '\n',
+    'src/no_newline.py': 'first\nlast',
 }
-CHANGED = ['src/paging.py', 'src/pkg/mod.py', 'src/binary.dat', 'src/removed.py', 'src/link.py']
+CHANGED = ['src/paging.py', 'src/pkg/mod.py', 'src/binary.dat', 'src/removed.py', 'src/link.py',
+           'src/repeat.py', 'src/empty.py', 'src/blank.py', 'src/no_newline.py']
+VERIFIED = {'path': 'src/paging.py', 'line': 3, 'quote': 'return (page - 1) * size'}
 
 
 def git(repo, *args):
@@ -41,18 +47,14 @@ def write(repo, files):
     for name, content in files.items():
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, bytes):
-            path.write_bytes(content)
-        else:
-            path.write_bytes(content.encode())
+        path.write_bytes(content if isinstance(content, bytes) else content.encode())
 
 
 def finding(id='F1', origin='change', route='finding', reasons=(), anchors=None):
     return {'id': id, 'severity': 'Minor', 'route': route, 'status': 'open', 'verified': True,
             'origin': origin, 'defect': True, 'reachable': True, 'evidence': ['static:trace'],
             'blocking_reasons': list(reasons),
-            'anchors': anchors if anchors is not None else [
-                {'path': 'src/paging.py', 'line': 3, 'quote': 'return (page - 1) * size'}]}
+            'anchors': anchors if anchors is not None else [dict(VERIFIED)]}
 
 
 class VerifyAnchorsTests(unittest.TestCase):
@@ -91,19 +93,23 @@ class VerifyAnchorsTests(unittest.TestCase):
     def problems(self, result):
         return [(item['finding'], item['anchor'], item['problem']) for item in result['mismatches']]
 
-    def test_real_anchors_resolve_with_whitespace_normalisation(self):
+    def resolved(self, result):
+        return {(item['finding'], item['anchor']): item['line'] for item in result['resolved']}
+
+    def test_real_anchors_resolve_to_one_line_with_whitespace_normalisation(self):
         result = self.check(
             finding(),
             finding('F2', anchors=[{'path': 'src/paging.py', 'quote': 'return size'}]),
             finding('F3', anchors=[{'path': 'src/pkg/mod.py', 'line': 2, 'quote': 'OTHER = 2'}]),
-            finding('F4', anchors=['changed:src/paging.py:6', {'path': 'src/paging.py', 'line': 6}]),
+            finding('F4', anchors=['changed:src/paging.py:6',
+                                   {'path': 'src/paging.py', 'line': 6, 'quote': 'def limit(size):'}]),
             finding('F5', origin='base', anchors=[
-                {'path': 'src/other.py', 'quote': '  return   cache.get(key)  '}]))
+                {'path': 'src/other.py', 'quote': '  return   cache.get(key)  '}]),
+            finding('F6', anchors=[{'path': 'src/no_newline.py', 'quote': 'last'}]))
         self.assertTrue(result['verified'], result)
-        self.assertEqual([], result['mismatches'])
-        resolved = {(item['finding'], item['anchor']): item['lines'] for item in result['resolved']}
-        self.assertEqual({('F1', 0): [3], ('F2', 0): [7], ('F3', 0): [2], ('F4', 1): [6],
-                          ('F5', 0): [2]}, resolved)
+        self.assertEqual({('F1', 0): 3, ('F2', 0): 7, ('F3', 0): 2, ('F4', 1): 6, ('F5', 0): 2,
+                          ('F6', 0): 2}, self.resolved(result))
+        self.assertEqual([], result['file_level'])
         self.assertEqual(['F4'], result['string_anchors'])
 
     def test_fabricated_or_misplaced_quotes_are_mismatches(self):
@@ -118,34 +124,98 @@ class VerifyAnchorsTests(unittest.TestCase):
             with self.subTest(label):
                 result = self.check(finding(anchors=[anchor]))
                 self.assertFalse(result['verified'])
-                self.assertEqual([('F1', 0, 'quote not found at head')], self.problems(result))
+                self.assertEqual([('F1', 0, 'quote not found at head'),
+                                  ('F1', None, 'no verified quote in a changed file')],
+                                 self.problems(result))
                 self.assertEqual('src/paging.py', result['mismatches'][0]['path'])
 
-    def test_drifted_line_and_out_of_range_line_are_mismatches(self):
+    def test_drifted_line_is_a_mismatch(self):
         result = self.check(finding(anchors=[
-            {'path': 'src/paging.py', 'line': 2, 'quote': 'return (page - 1) * size'},
-            {'path': 'src/paging.py', 'line': 99}]))
-        self.assertEqual([('F1', 0, 'quote is at line(s) 3, not line 2'),
-                          ('F1', 1, 'line beyond end of file (7 lines)')], self.problems(result))
+            {'path': 'src/paging.py', 'line': 2, 'quote': 'return (page - 1) * size'}, dict(VERIFIED)]))
+        self.assertEqual([('F1', 0, 'quote is at line(s) 3, not line 2')], self.problems(result))
 
-    def test_unreadable_targets_are_mismatches_not_passes(self):
+    def test_repeated_quote_resolves_only_the_given_line_or_must_be_unique(self):
+        # Regression: line 3 of a quote also on line 1 used to resolve as [1, 3].
+        result = self.check(finding(anchors=[{'path': 'src/repeat.py', 'line': 3, 'quote': 'retry()'}]))
+        self.assertTrue(result['verified'], result)
+        self.assertEqual({('F1', 0): 3}, self.resolved(result))
+        result = self.check(finding(anchors=[{'path': 'src/repeat.py', 'line': 1, 'quote': 'retry()'}]))
+        self.assertEqual({('F1', 0): 1}, self.resolved(result))
+        # Without a line the quote cannot pick a comment position, so it is not verified.
+        result = self.check(finding(anchors=[{'path': 'src/repeat.py', 'quote': 'retry()'}]))
+        self.assertEqual([('F1', 0, 'quote matches lines 1, 3; add line to pick one'),
+                          ('F1', None, 'no verified quote in a changed file')], self.problems(result))
+        self.assertEqual({}, self.resolved(result))
+        result = self.check(finding(anchors=[{'path': 'src/repeat.py', 'line': 2, 'quote': 'retry()'}]))
+        self.assertEqual([('F1', 0, 'quote is at line(s) 1, 3, not line 2'),
+                          ('F1', None, 'no verified quote in a changed file')], self.problems(result))
+        # Healthy neighbour: a unique line in the same file still resolves without a line.
+        result = self.check(finding(anchors=[{'path': 'src/repeat.py', 'quote': 'wait()'}]))
+        self.assertEqual({('F1', 0): 2}, self.resolved(result))
+
+    def test_empty_blob_has_zero_lines(self):
+        # Regression: a zero-byte file used to count as one empty line.
+        tree = MODULE.HeadTree(self.repo, self.head)
+        self.assertEqual(([], None), tree.lines('src/empty.py'))
+        self.assertEqual(([''], None), tree.lines('src/blank.py'))
+        self.assertEqual((['first', 'last'], None), tree.lines('src/no_newline.py'))
+        result = self.check(finding(anchors=[{'path': 'src/empty.py', 'line': 1, 'quote': 'x'}]))
+        self.assertIn(('F1', 0, 'quote not found at head'), self.problems(result))
+        # A line without a quote proves nothing and is refused as malformed.
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'anchor line'):
+            self.check(finding(anchors=[{'path': 'src/empty.py', 'line': 1}]))
+
+    def test_path_only_anchor_needs_unquotable_changed_file(self):
+        # Regression: a quotable changed file anchored by path alone used to verify with nothing resolved.
+        for path in ('src/paging.py', 'src/repeat.py', 'src/no_newline.py'):
+            with self.subTest(path=path):
+                result = self.check(finding(anchors=[{'path': path}]))
+                self.assertFalse(result['verified'])
+                self.assertEqual([('F1', None, 'no verified quote in a changed file')],
+                                 self.problems(result))
+                self.assertEqual([], result['file_level'])
+        exceptions = {
+            'src/removed.py': 'path absent at head',
+            'src/link.py': 'not a regular file at head',
+            'src/binary.dat': 'file is not UTF-8 text at head',
+            'src/empty.py': 'no nonblank line at head',
+            'src/blank.py': 'no nonblank line at head',
+        }
+        for path, reason in exceptions.items():
+            with self.subTest(path=path):
+                result = self.check(finding(anchors=[{'path': path}]))
+                self.assertTrue(result['verified'], result)
+                self.assertEqual([{'finding': 'F1', 'anchor': 0, 'path': path, 'reason': reason}],
+                                 result['file_level'])
+        # An unquotable file outside the changed set is no exception.
+        result = self.check(finding(anchors=[{'path': 'src/removed.py'}]),
+                            changed=[path for path in CHANGED if path != 'src/removed.py'])
+        self.assertEqual([('F1', None, 'no verified quote in a changed file')], self.problems(result))
+        # A verified quote makes extra path-only anchors irrelevant to the location check.
+        result = self.check(finding(anchors=[dict(VERIFIED), {'path': 'src/other.py'}]))
+        self.assertTrue(result['verified'], result)
+        self.assertEqual([], result['file_level'])
+
+    def test_unreadable_quote_targets_are_mismatches_not_passes(self):
         cases = {
             'path absent at head': {'path': 'src/removed.py', 'quote': 'return 1'},
             'not a regular file at head': {'path': 'src/link.py', 'quote': 'paging.py'},
-            'file is not UTF-8 text at head': {'path': 'src/binary.dat', 'line': 1},
+            'file is not UTF-8 text at head': {'path': 'src/binary.dat', 'quote': 'bad'},
         }
         for problem, anchor in cases.items():
             with self.subTest(problem):
-                self.assertEqual([('F1', 0, problem)], self.problems(self.check(finding(anchors=[anchor]))))
+                result = self.check(finding(anchors=[anchor, dict(VERIFIED)]))
+                self.assertEqual([('F1', 0, problem)], self.problems(result))
         # Literal pathspecs: a glob-shaped anchor path never matches src/paging.py.
-        result = self.check(finding(anchors=[{'path': 'src/*.py', 'quote': 'return (page - 1) * size'}]),
-                            changed=CHANGED + ['src/*.py'])
+        result = self.check(finding(anchors=[{'path': 'src/*.py', 'quote': 'return (page - 1) * size'},
+                                             dict(VERIFIED)]), changed=CHANGED + ['src/*.py'])
         self.assertEqual([('F1', 0, 'path absent at head')], self.problems(result))
         # A directory is not a file, even when the path is in the changed set.
-        result = self.check(finding(anchors=[{'path': 'src/pkg', 'line': 1}]), changed=CHANGED + ['src/pkg'])
+        result = self.check(finding(anchors=[{'path': 'src/pkg', 'quote': 'VALUE = 1'}, dict(VERIFIED)]),
+                            changed=CHANGED + ['src/pkg'])
         self.assertEqual([('F1', 0, 'not a regular file at head')], self.problems(result))
 
-    def test_change_finding_needs_object_anchor_in_changed_file(self):
+    def test_change_finding_needs_verified_quote_in_changed_file(self):
         unanchored = [
             [{'path': 'src/other.py', 'quote': 'return cache.get(key)'}],
             ['changed:src/paging.py:3'],
@@ -154,9 +224,8 @@ class VerifyAnchorsTests(unittest.TestCase):
         for anchors in unanchored:
             with self.subTest(anchors=anchors):
                 result = self.check(finding(anchors=anchors))
-                self.assertIn(('F1', None, 'no object anchor in a changed file'), self.problems(result))
-        # A deleted changed file still anchors a finding about its removal; only quotes need head.
-        self.assertTrue(self.check(finding(anchors=[{'path': 'src/removed.py'}]))['verified'])
+                self.assertEqual([('F1', None, 'no verified quote in a changed file')],
+                                 self.problems(result))
 
     def test_scope_rule_exempts_only_contract_routes_and_non_change_findings(self):
         outside = [{'path': 'src/other.py', 'quote': 'return cache.get(key)'}]
@@ -172,7 +241,8 @@ class VerifyAnchorsTests(unittest.TestCase):
         for reason in ('introduced_defect', 'introduced_gate_failure', 'aspirational_doc'):
             with self.subTest(reason=reason):
                 result = self.check(finding(reasons=[reason], anchors=outside))
-                self.assertEqual([('F1', None, 'no object anchor in a changed file')], self.problems(result))
+                self.assertEqual([('F1', None, 'no verified quote in a changed file')],
+                                 self.problems(result))
         # Exempt findings still get their quotes checked.
         result = self.check(finding(reasons=['unmet_requirement'],
                                     anchors=[{'path': 'src/other.py', 'quote': 'invented'}]))
@@ -184,16 +254,17 @@ class VerifyAnchorsTests(unittest.TestCase):
             'stale head': dict(record=self.record(finding(), head=self.base)),
             'malformed anchor': dict(record=self.record(finding(anchors=[{'path': 'src/paging.py',
                                                                           'qoute': 'x'}]))),
+            'line without quote': dict(record=self.record(finding(anchors=[{'path': 'src/paging.py',
+                                                                            'line': 3}]))),
             'missing findings': dict(record={'subject': {'head': self.head, 'patch_digest': None}}),
-            'bad changed path': dict(changed=['../escape.py']),
+            'bad changed path': dict(changed_files=['../escape.py']),
             'head not in repo': dict(expected_head='e' * 40, record=self.record(finding(), head='e' * 40)),
         }
         for label, override in cases.items():
             with self.subTest(label):
                 params = {'record': self.record(finding()), 'expected_head': self.head,
                           'changed_files': CHANGED, 'repo': self.repo}
-                params.update({('changed_files' if key == 'changed' else key): value
-                               for key, value in override.items()})
+                params.update(override)
                 record = params.pop('record')
                 with self.assertRaises(MODULE.InvalidRecord):
                     MODULE.check(record, **params)
@@ -210,7 +281,8 @@ class VerifyAnchorsTests(unittest.TestCase):
                     '--changed-files', str(changed), '--repo', str(self.repo)]
             cases = [
                 (self.record(finding()), 0),
-                (self.record(finding(anchors=[{'path': 'src/paging.py', 'quote': 'fake()'}])), 1),
+                (self.record(finding(anchors=[{'path': 'src/paging.py', 'quote': 'fake()'},
+                                              dict(VERIFIED)])), 1),
                 (self.record(finding(), digest='d' * 64), 2),
             ]
             for value, code in cases:
@@ -220,6 +292,9 @@ class VerifyAnchorsTests(unittest.TestCase):
                 output = json.loads(result.stdout)
                 self.assertEqual(code == 0, output['verified'])
                 self.assertEqual(code != 2, output['valid'])
+                if code == 0:
+                    self.assertEqual([{'finding': 'F1', 'anchor': 0, 'path': 'src/paging.py',
+                                       'line': 3}], output['resolved'])
                 if code == 1:
                     self.assertEqual([{'finding': 'F1', 'anchor': 0, 'path': 'src/paging.py',
                                        'problem': 'quote not found at head'}], output['mismatches'])
