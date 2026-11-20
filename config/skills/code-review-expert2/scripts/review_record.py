@@ -40,6 +40,11 @@ DELTA_STATES = ('same',) + DISCLOSED_DELTA
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 ANCHOR_KEYS = {'path', 'line', 'quote', 'commit'}
 LINE_BREAK = re.compile(r'[\n\r]')
+# Why an aura-peer Minor that the introduced-defect branch would block does not block:
+# no ordinary trigger or concrete consequence, a contrived bypass of a convenience guard,
+# churn on a later round's fix surface, or an author-opened follow-up issue the PR discloses.
+NON_BLOCKING_BASES = ('immaterial', 'guard_bypass', 'fix_surface', 'follow_up')
+NON_BLOCKING_KEYS = {'basis', 'evidence'}
 
 
 class InvalidRecord(ValueError):
@@ -405,7 +410,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                 incomplete('unresolved check: ' + check['id'], 'check:' + check['id'],
                            value, authority, check['evidence'])
 
-        self_findings = set()
+        self_findings, relaxed = set(), {basis: [] for basis in NON_BLOCKING_BASES}
         reasons = {'introduced_defect', 'unmet_requirement', 'contradicted_claim', 'introduced_gate_failure'}
         if profile != 'general':
             reasons |= {'aspirational_doc', 'missing_issue'}
@@ -437,7 +442,26 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             require('introduced_defect' not in declared or introduced_defect,
                     'unsupported introduced-defect claim')
             active = finding['status'] in ('open', 'deferred-with-rationale')
-            is_blocker = active and (introduced_defect or bool(declared))
+            non_blocking = 'non_blocking' in finding
+            if non_blocking:
+                # Only the aura-peer pipeline relaxes branch 1; self mode stays strict.
+                require(current, 'schema 2 field in schema 1 record: non_blocking')
+                require(profile == 'aura-peer', 'non_blocking applies only to the aura-peer profile')
+                relief = finding['non_blocking']
+                require(isinstance(relief, dict) and set(relief) == NON_BLOCKING_KEYS, 'non_blocking')
+                basis = relief['basis']
+                require(isinstance(basis, str) and basis in NON_BLOCKING_BASES, 'non_blocking basis')
+                references(relief['evidence'], 'non_blocking evidence')
+                require(finding['severity'] == 'Minor', 'non_blocking applies only to a Minor finding')
+                require(finding['route'] == 'finding' and introduced_defect and not declared,
+                        'non_blocking relaxes only the introduced-defect branch of a finding')
+                require(basis != 'fix_surface' or (rereview is not None and finding['id'] not in prior_ids),
+                        'fix_surface applies only to a new finding on a re-review')
+                require(basis != 'follow_up' or finding['status'] != 'open',
+                        'follow_up needs the finding moved out of open')
+                if active:
+                    relaxed[basis].append(finding['id'])
+            is_blocker = active and ((introduced_defect and not non_blocking) or bool(declared))
             require(not is_blocker or finding['route'] == 'finding', 'blocker hidden in routed observation')
             if is_blocker:
                 blockers.add('finding:' + finding['id'])
@@ -487,6 +511,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         result = {'valid': True, 'verdict': verdict, 'blockers': sorted(blockers),
                   'self_disqualifying': sorted(self_findings) if profile == 'aura-self' else [],
                   'incomplete_reasons': sorted(gaps), 'errors': [],
+                  'non_blocking': {basis: sorted(ids) for basis, ids in relaxed.items()},
                   'author_recorded_requirements': sorted(author_recorded),
                   'run_status': status, 'schema_version': record['schema_version'],
                   'subject': {key: subject[key] for key in ('base', 'head', 'patch_digest')}}

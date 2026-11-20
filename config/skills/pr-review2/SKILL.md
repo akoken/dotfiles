@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.10.0"
+  version: "2.11.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -106,6 +106,7 @@ available; a normal code review or green mutation score cannot stand in for it.
    it with a verbatim quote of the head line under the review record.
 3. Compute `Blocker? Yes` only through these six branches:
    1. A reachable correctness, security, or regression defect introduced by the change.
+      In peer mode a Minor one blocks only when it passes the materiality rules below.
    2. A failed linked-issue requirement/DoD.
    3. An undisclosed partial implementation or contradicted PR-body claim.
    4. Diff-added aspirational documentation lacking the annotation that the project's own
@@ -116,7 +117,8 @@ available; a normal code review or green mutation score cannot stand in for it.
       check at merge-base where feasible; unknown provenance remains an unresolved gate,
       not a proven regression or a pass.
 4. Classify severity separately. Project-check tables suggest impact; they do not add
-   blocking branches. A Minor can block and a Critical label alone does not block.
+   blocking branches. A Critical label alone does not block, and a Minor blocks through
+   branch 1 only when it passes the materiality rules; branches 2-6 are unchanged.
 5. Route useful unanchored concerns to Out-of-scope observations, capped at five with an
    overflow count. With a qualified first-pass baseline, route previously missed old
    non-critical concerns to Carried, independently capped at five, under the protocol.
@@ -141,15 +143,64 @@ Recurring defect classes follow one trigger rule:
   any scope the sweep did not cover; a partial sweep is reported as partial, not complete.
 - A third instance despite tests that already guard the class calls for a written design
   note (input contract plus redesign) as the remedy instead of another instance fix.
-- A known blocker, including one found by a class sweep, blocks in the PR where it was
-  found; never defer it to a follow-up issue. Only test infrastructure that widens scope
-  beyond the change, such as a shared generator or a new eval case, may be a linked follow-up.
+- A Critical blocker, including one found by a class sweep, is fixed in the PR where it was
+  found; never defer it to a follow-up issue. A Minor blocker may move to a follow-up issue
+  only under materiality rule 5. Only test infrastructure that widens scope beyond the
+  change, such as a shared generator or a new eval case, may otherwise be a linked follow-up.
+
+### Materiality rules (peer mode)
+
+These rules decide whether a branch-1 defect blocks a peer PR. They never relax branches
+2-6: a failed requirement, a contradicted PR-body claim, a missing issue reference, or an
+introduced required-gate failure blocks as before. Critical semantics do not change: the
+severity table stands, and a change-introduced Critical defect always blocks. Record a
+finding relaxed by rule 1, 2, 3 or 5 with its basis in the review record's non_blocking
+field; rule 4 records origin base instead.
+
+1. Materiality bar. A Minor branch-1 finding blocks only when both hold: a realistic
+   trigger in ordinary, non-adversarial use of the changed feature (an input or state a
+   normal user, operator or caller produces without crafting it), and a concrete
+   user-visible or data consequence (wrong output, a failed command, lost or corrupted
+   data, or a message that leads the user to a wrong action). Otherwise it is a non-blocking
+   should-fix (basis immaterial): list it with its remedy; it may land as a suggestion, a
+   small follow-up commit, or a follow-up issue the author opens.
+2. Guard versus boundary. Decide first what the changed check is, from evidence in this
+   order, and state the deciding evidence in the finding:
+   1. Project policy, security docs, the linked issue, or code comments name it a security
+      or trust boundary: it is a boundary.
+   2. The baseline security pass shows the bypassing input can come from an untrusted
+      source and reach an effect that source could not otherwise cause: it is a boundary;
+      route it under security routing.
+   3. The PR body, issue or changed docs claim it resists such inputs: the bypass
+      contradicts that claim (branch 3); the remedy may be to narrow the claim.
+   4. Otherwise it is a convenience or accident-prevention guard. Contrived or deliberately
+      obfuscated inputs that bypass it (renamed symlinks, odd path spellings, case tricks,
+      exotic launcher operands) are non-blocking Minor should-fixes (basis guard_bypass).
+   Bypasses of a boundary follow the ordinary rules.
+3. Fix-surface churn. From round two, a new non-Critical finding located in text or code the
+   author added only to address an earlier finding is non-blocking (basis fix_surface)
+   unless it reopens that earlier finding's own failure. Name the earlier finding ID.
+4. Pre-existing behavior. A risk whose root is unchanged behavior in untouched code that
+   the change builds on is a disclosed residual, not a blocker: record it with origin base
+   and ask the author to open a follow-up issue. When the change makes the risk materially
+   more likely or more severe, it is change-introduced and judged normally. A changed caller
+   that makes untouched code regress is still admitted as a regression, as stated above. A
+   Critical residual also gets a Maintainer decision item after the verdict.
+5. Deferral. Only Critical blockers must be fixed in the PR. A Minor that meets the bar may
+   move to a follow-up issue the PR author opens when the PR body discloses it with the
+   issue link (basis follow_up, status deferred-with-rationale). The reviewer never opens
+   the issue and never defers a finding on the author's behalf.
+
+Self mode applies none of rules 1-5: it is deliberately stricter, see the verdict table and
+[self mode](references/self-mode.md).
 
 Re-review follows the protocol: first round full; from round two, qualified Low/Medium-risk
 delta plus affected callers and old blockers. High risk, invalidated evidence, or a baseline
 from a different or unknown reviewer model family requires full review. Three rounds with
 unresolved blockers/churn require human reassessment with an approach reassessment under
-the protocol, never automatic approval.
+the protocol, never automatic approval. From round three that reassessment also tests each
+remaining blocker against the materiality rules and states whether it meets the bar; when
+none does, it recommends converging: approve with the remaining findings as suggestions.
 
 ## 4. Verdict and completeness
 
@@ -168,8 +219,12 @@ Apply the following order; completeness follows the protocol:
 | No disqualifying finding, review incomplete or required gate unresolved | Review incomplete / NEEDS_REVIEW | Review incomplete / NEEDS_REVIEW |
 | No disqualifying finding, complete coverage and resolved required gates | Ready to merge | Ready to open a PR |
 
-Peer non-blocking Critical/Minor findings do not independently change the merge verdict.
-Self is deliberately stricter. Routed observations/Carried never trigger the self gate.
+Peer non-blocking Critical/Minor findings do not independently change the merge verdict;
+that includes should-fixes relaxed by the materiality rules. Self is deliberately stricter:
+materiality rules 1-5 do not apply, so every admitted in-scope Critical/Minor, a contrived
+guard bypass, fix-surface churn or a residual rooted in untouched code included, blocks
+opening the PR. Before a PR exists, fixing is cheapest and no review rounds have churned.
+Routed observations/Carried never trigger the self gate.
 Report incomplete coverage even when a proven blocker already justifies a negative verdict.
 
 Run status is a separate axis: complete only when the run delivered full-PR assurance.
@@ -233,13 +288,15 @@ remains, say so first in one plain sentence, for example "Nothing to fix: 0 new 
 - Findings: ID, location, severity, Blocker?, trigger/path, expected/actual result, causal
   anchor, verification method, and remedy; for a recurring defect class, its class name,
   every instance as path:line, and a remedy covering every instance plus further copies.
-  Keep optional suggestions visibly separate.
+  For a peer finding the materiality rules relax, its basis and deciding evidence, under a
+  Should-fix heading separate from blockers. Keep optional suggestions visibly separate.
 - Out-of-scope and Carried sections, each empty/unavailable when appropriate, max five each.
 - Propagation sweep: per defect class, the search used, files covered and instances found;
   legacy left, debt introduced/closed, and net assessment when relevant.
 - Approach reassessment from round three with open blockers: recurring defect classes with
-  finding IDs, whether recent fixes patch symptoms of one design choice, and at least one
-  alternative approach with its trade-off.
+  finding IDs, whether recent fixes patch symptoms of one design choice, at least one
+  alternative approach with its trade-off, and for each remaining blocker whether it meets
+  the materiality bar, with a recommendation to converge when none does.
 
 A clean review names the changed implementation and test/other behavior inspected. An
 inspection row is not a finding and does not increase counts. For incomplete reviews state

@@ -124,6 +124,20 @@ shape without causes; the validator still accepts it and reads what it lacks as 
   quoted line, keep the original quote and set commit to the head it was reported at.
   Optional class (nonempty string) names a recurring defect class; instances then lists
   every verified instance as nonempty path:line anchors. Give both or neither.
+  Optional non_blocking, schema 2 and profile aura-peer only, records why a Minor finding
+  that the introduced-defect branch alone would block does not block under that skill's
+  decision pipeline: an object with basis and evidence (nonempty references naming the
+  facts the basis rests on). basis is immaterial (no realistic trigger in ordinary use or no
+  concrete user-visible or data consequence), guard_bypass (a contrived input that bypasses
+  a convenience or accident-prevention guard that is not a security or trust boundary),
+  fix_surface (a new finding on a re-review, located in text or code added only to address
+  an earlier finding, that does not reopen that finding's failure) or follow_up (a Minor
+  moved to an author-opened follow-up issue that the PR discloses; the finding is no longer
+  open). The validator rejects it on another profile, on a Critical or Style finding, on a
+  routed observation or carried item, beside a declared blocking reason, on a finding that
+  is not a reachable change-introduced defect, and fix_surface outside a new re-review
+  finding; any other blocking reason still blocks. It lists the active ones by basis in its
+  output. It checks shape and these constraints, not whether the basis is true.
   On a re-review, every finding whose ID is not in rereview.prior_finding_ids records
   present_at_previous_head: yes when evidence (code at previous_head, a probe there) shows
   the defect already existed at the previously reviewed head, no when evidence shows a later
@@ -272,7 +286,8 @@ required check outcomes, verdict and run-status consistency. Its output states t
 schema_version, the reviewed subject (base, head, patch_digest), skill (name, version and
 fingerprint, each unknown for a record without identity) with skill_identity verified (both
 expected values supplied and matched), self_reported or unknown, reviewer (host and
-model_family) with reviewer_identity read the same way, run_status (state, claimed,
+model_family) with reviewer_identity read the same way, non_blocking (active finding IDs
+grouped by basis, empty outside aura-peer), run_status (state, claimed,
 approved_scope_status, causes, authorities, stopped and one reason per incompleteness source)
 and, on a re-review, the new finding IDs grouped by present_at_previous_head and
 baseline_identity: state, delta_allowed, disclosure_required (a qualified delta the report

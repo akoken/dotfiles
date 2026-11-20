@@ -1227,3 +1227,130 @@ class AnchorShapeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def peer(*findings, **overrides):
+    """A schema 2 aura-peer record carrying the given findings."""
+    value = current(profile='aura-peer', findings=list(findings))
+    value.update(overrides)
+    return value
+
+
+def relief(basis='immaterial', evidence=('trigger: only a renamed launcher symlink reaches it',)):
+    return {'basis': basis, 'evidence': list(evidence)}
+
+
+class NonBlockingTests(unittest.TestCase):
+    """Peer materiality relaxes only branch 1 for a Minor; self and general stay strict."""
+
+    def evaluate(self, value, **options):
+        options.setdefault('expected_profile', value['profile'])
+        return ReviewRecordTests.evaluate(self, value, **options)
+
+    def test_relaxed_peer_minor_does_not_block_and_is_listed(self):
+        for basis in ('immaterial', 'guard_bypass'):
+            with self.subTest(basis=basis):
+                result = self.evaluate(peer(finding(non_blocking=relief(basis))))
+                self.assertEqual('APPROVE', result['verdict'])
+                self.assertEqual([], result['blockers'])
+                self.assertEqual(['F1'], result['non_blocking'][basis])
+
+    def test_realistic_peer_minor_still_blocks_without_relief(self):
+        result = self.evaluate(peer(finding(), claimed_verdict='REQUEST_CHANGES'))
+        self.assertEqual(['finding:F1'], result['blockers'])
+        self.assertEqual({'immaterial': [], 'guard_bypass': [], 'fix_surface': [], 'follow_up': []},
+                         result['non_blocking'])
+
+    def test_relief_is_rejected_outside_aura_peer(self):
+        for profile in ('general', 'aura-self'):
+            with self.subTest(profile=profile):
+                value = peer(finding(non_blocking=relief()), profile=profile)
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'only to the aura-peer profile'):
+                    self.evaluate(value)
+        value = peer(finding(), profile='aura-self', claimed_verdict='REQUEST_CHANGES')
+        self.assertEqual(['finding:F1'], self.evaluate(value)['blockers'])
+
+    def test_relief_is_rejected_in_a_schema1_record(self):
+        value = record()
+        value['profile'] = 'aura-peer'
+        value['findings'] = [finding(non_blocking=relief())]
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 2 field in schema 1 record'):
+            self.evaluate(value)
+
+    def test_relief_cannot_cover_critical_routed_or_other_branches(self):
+        cases = [
+            ({'severity': 'Critical'}, 'only to a Minor finding'),
+            ({'severity': 'Style'}, 'only to a Minor finding'),
+            ({'route': 'observation'}, 'introduced-defect branch'),
+            ({'origin': 'base'}, 'introduced-defect branch'),
+            ({'reachable': False}, 'introduced-defect branch'),
+            ({'defect': False}, 'introduced-defect branch'),
+            ({'blocking_reasons': ['contradicted_claim']}, 'introduced-defect branch'),
+            ({'blocking_reasons': ['introduced_defect']}, 'introduced-defect branch'),
+        ]
+        for changes, message in cases:
+            with self.subTest(changes=changes):
+                value = peer(finding(non_blocking=relief(), **changes))
+                with self.assertRaisesRegex(MODULE.InvalidRecord, message):
+                    self.evaluate(value)
+
+    def test_pre_existing_residual_uses_base_origin_without_relief(self):
+        value = peer(finding(origin='base'))
+        self.assertEqual('APPROVE', self.evaluate(value)['verdict'])
+
+    def test_malformed_relief_is_rejected(self):
+        for value in (None, 'immaterial', {}, {'basis': 'immaterial'},
+                      {'basis': 'immaterial', 'evidence': []},
+                      {'basis': 'immaterial', 'evidence': ['']},
+                      {'basis': 'immaterial', 'evidence': ['x'], 'note': 'y'},
+                      {'basis': 'cosmetic', 'evidence': ['x']},
+                      {'basis': ['immaterial'], 'evidence': ['x']}):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'non_blocking'):
+                    self.evaluate(peer(finding(non_blocking=value)))
+
+    def test_fix_surface_applies_only_to_a_new_rereview_finding(self):
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'new finding on a re-review'):
+            self.evaluate(peer(finding(non_blocking=relief('fix_surface'))))
+        value = peer(finding(id='F0', status='fixed-and-verified'),
+                     finding(non_blocking=relief('fix_surface', ['added only to fix F0']),
+                             present_at_previous_head='no'))
+        value['rereview'] = {'previous_head': PRIOR, 'prior_finding_ids': ['F0']}
+        result = self.evaluate(value)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(['F1'], result['non_blocking']['fix_surface'])
+        value['findings'][1].pop('present_at_previous_head')
+        value['rereview']['prior_finding_ids'] = ['F0', 'F1']
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'new finding on a re-review'):
+            self.evaluate(value)
+
+    def test_follow_up_needs_the_finding_moved_out_of_open(self):
+        evidence = ['issue: author-opened follow-up', 'PR body: discloses the follow-up issue']
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'moved out of open'):
+            self.evaluate(peer(finding(non_blocking=relief('follow_up', evidence))))
+        value = peer(finding(status='deferred-with-rationale',
+                             non_blocking=relief('follow_up', evidence)))
+        result = self.evaluate(value)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(['F1'], result['non_blocking']['follow_up'])
+        value = peer(finding(status='deferred-with-rationale'), claimed_verdict='REQUEST_CHANGES')
+        self.assertEqual(['finding:F1'], self.evaluate(value)['blockers'])
+
+    def test_closed_relieved_finding_is_not_listed_as_active(self):
+        value = peer(finding(status='fixed-and-verified', non_blocking=relief()))
+        result = self.evaluate(value)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual([], result['non_blocking']['immaterial'])
+
+    def test_cli_reports_relieved_findings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifact, changed = root / 'review.json', root / 'changed.json'
+            artifact.write_text(json.dumps(peer(finding(non_blocking=relief('guard_bypass')))))
+            changed.write_text(json.dumps(['src/paging.py']))
+            args = [sys.executable, str(SCRIPT), str(artifact), '--expected-profile', 'aura-peer',
+                    '--expected-base', BASE, '--expected-head', HEAD, '--changed-files', str(changed),
+                    '--require-check', 'tests', '--policy-known']
+            result = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertEqual(['F1'], json.loads(result.stdout)['non_blocking']['guard_bypass'])

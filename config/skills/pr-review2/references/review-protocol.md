@@ -97,7 +97,9 @@ States: open, fixed-and-verified, rejected-with-evidence, deferred-with-rational
 replies and check them against current code. A comment saying fixed is not verification;
 an author-recorded observation that a criterion asks the author to produce is accepted only
 under the review record's author-recorded rule, never as proof of current code behavior.
-Deferral does not clear a computed blocker. Reopen a resolved/rejected finding only with
+Deferral does not clear a computed blocker; a Minor that the skill's own pipeline lets
+move to a disclosed follow-up issue is not a computed blocker (review record:
+non_blocking). Reopen a resolved/rejected finding only with
 new code or counterevidence; cite the reason. Update an existing finding instead of posting
 a duplicate thread. Never auto-resolve a human's thread without authorized publication.
 

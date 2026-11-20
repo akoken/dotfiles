@@ -136,7 +136,11 @@ Does the PR follow project conventions?
 
 For every finding, use its blocker result from the decision pipeline in SKILL.md to decide scope:
 
-- `Blocker? Yes` → fix in this PR before merge; a follow-up issue cannot substitute for the fix.
+- `Blocker? Yes` → fix in this PR before merge. A follow-up issue cannot substitute for the fix,
+  except a peer Minor that the PR author moves to an issue they open and disclose in the PR body
+  (materiality rule 5 in SKILL.md).
+- Peer should-fix relaxed by the materiality rules in SKILL.md → `Blocker? No`; list it with its
+  basis and remedy so it can land as a suggestion, a small follow-up commit, or an author-opened issue.
 - `Blocker? No` → do not create an in-PR fix demand solely from severity; give optional guidance
   when useful. In self mode such a finding can still fail the stricter verdict mapping (the verdict rules in SKILL.md) - resolve or reclassify it with evidence before opening the PR.
 - Useful context with no admissibility anchor → route to **Out-of-scope observations**, not the
