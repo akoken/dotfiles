@@ -109,6 +109,16 @@ shape without causes; the validator still accepts it and reads what it lacks as 
   verified boolean, origin change/base/unknown, defect and reachable booleans; anchors,
   evidence, and blocking_reasons. Reasons are introduced_defect, unmet_requirement,
   contradicted_claim, introduced_gate_failure, plus aspirational_doc/missing_issue for AURA.
+  An anchor is a nonempty string or an object with path (repository-relative), optional
+  quote (one whole line copied verbatim from that file at the reviewed head, without a line
+  break), optional line (1-based, only together with a quote) and optional commit (a full
+  SHA, only together with a quote). Give every admitted finding an object anchor with a
+  quote; the quote, not the line number, locates the finding, so it survives line drift and
+  can be checked mechanically under anchor verification below. A line picks one occurrence
+  when the quote repeats in the file. commit binds the quote and line to the revision they
+  were verified at instead of the reviewed head. Only a closed finding (fixed-and-verified or
+  rejected-with-evidence) may carry an earlier commit: when its fix moved or removed the
+  quoted line, keep the original quote and set commit to the head it was reported at.
   Optional class (nonempty string) names a recurring defect class; instances then lists
   every verified instance as nonempty path:line anchors. Give both or neither.
   On a re-review, every finding whose ID is not in rereview.prior_finding_ids records
@@ -270,3 +280,42 @@ and approved scope status from this output, never from the run's own claim. It
 cannot authenticate evidence or replace source review. A changed head/config/test selection
 invalidates affected evidence under the protocol even when JSON syntax remains valid. Public review publication still requires
 the session's explicit authorization and final current-head check.
+
+## Verify anchors against the reviewed head
+
+The validator checks anchor shape only. Locating anchors reads the reviewed files, so it is
+a separate script, [verify_anchors.py](../scripts/verify_anchors.py), run after the
+validator and before reporting or publishing:
+
+```
+python3 scripts/verify_anchors.py review.json --expected-head <head> \
+  --changed-files changed.json --repo <checkout containing head>
+```
+
+Use the same trusted head and changed-file list as the validator. The script reads file
+content from the head commit through git, never from the working tree, and checks that:
+
+1. every quote resolves to exactly one line at its commit (the anchor's commit, else the
+   reviewed head): the path is a regular UTF-8 file, the quote matches a whole line once
+   each whitespace run is collapsed to one space and both ends are trimmed, and either the
+   anchor's line is one of the matches or, without a line, the quote matches a single line.
+   A quote of an open or deferred finding bound to another commit is a mismatch;
+2. every open or deferred finding with route finding and origin change has a verified quote
+   at head in a changed file, unless it was admitted through the contract or the PR body
+   (blocking reasons unmet_requirement, contradicted_claim or missing_issue). String and
+   path-only anchors prove no location. The one exception is a path-only anchor on a
+   changed file with no line to quote at head (deleted, not a regular file, not UTF-8, or
+   blank); the output lists it under file_level and the report must disclose it. Closed
+   findings are exempt: a fix that restores a file to its base state removes it from the
+   diff, and their quotes stay checked at their own commit under check 1.
+
+It exits 0 when every check passes, 1 when any anchor mismatches, with the finding ID,
+anchor index, path and problem of each, and 2 for invalid input or a git failure. Each
+resolved anchor names one line and the commit it was found at. A
+mismatch means the finding is not verified where the record says. Send it back to
+verification at the head; correct the anchor only from that re-verification, never by
+editing a quote until it matches, or move the concern to verification_gaps. Use the
+resolved line for the report and any published comment. A dirty-input record
+(patch_digest set) is refused because its reviewed content is not a commit; say in the
+report that its anchors were not mechanically verified. Keep the command line and output
+with validator-output.txt.

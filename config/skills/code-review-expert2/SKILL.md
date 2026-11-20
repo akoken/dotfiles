@@ -2,7 +2,7 @@
 name: code-review-expert2
 description: "Review a diff, branch, commit range, or PR using verified findings, explicit coverage, risk-based re-review, and an incomplete-review verdict. Use for general code reviews; use pr-review2 for AURA merge-readiness or pre-PR self-review."
 metadata:
-  version: "2.8.0"
+  version: "2.9.0"
   derived-from: code-review-expert
 ---
 
@@ -46,6 +46,8 @@ Admit a finding only through at least one anchor:
 1. A changed or added line.
 2. An unmet stated requirement, including an omission.
 3. A claim about the change contradicted by the actual diff.
+
+Record a changed-line anchor with a verbatim quote of the head line under the review record.
 
 Useful concerns with no anchor go to Out-of-scope observations, capped at five with an
 overflow count. An unchanged line can still be evidence for a regression caused by a
@@ -147,8 +149,10 @@ acceptance criterion to implementation and verification evidence against its exa
 record unresolved items, accept an author-recorded run under the record's rule without
 adding evidence requirements the contract does not contain, and validate the revision-bound
 review.json before a positive verdict. The validator checks
-consistency, not source-code truth. Fixture-only or target-resolution exercises must report
-missing metadata honestly; never invent a record just to satisfy the schema.
+consistency, not source-code truth. Then run the record's anchor verifier against the
+reviewed head and resolve every mismatch under the review record before reporting.
+Fixture-only or target-resolution exercises must report missing metadata honestly; never
+invent a record just to satisfy the schema.
 
 ## Report
 

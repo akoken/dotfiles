@@ -34,6 +34,8 @@ BASELINE_STATES = ('same', 'skill_differs', 'skill_unknown', 'model_family_diffe
 DISCLOSED_DELTA = ('skill_differs', 'skill_unknown')
 DELTA_STATES = ('same',) + DISCLOSED_DELTA
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
+ANCHOR_KEYS = {'path', 'line', 'quote', 'commit'}
+LINE_BREAK = re.compile(r'[\n\r]')
 
 
 class InvalidRecord(ValueError):
@@ -52,6 +54,26 @@ def text(value):
 def references(value, label, required=True):
     require(isinstance(value, list) and all(text(item) for item in value), label)
     require(not required or bool(value), label)
+
+
+def anchors(value, label, required=True):
+    """Check anchor shape only: a nonempty string or a {path, quote, line, commit} object."""
+    require(isinstance(value, list) and (not required or bool(value)), label)
+    for item in value:
+        if not isinstance(item, dict):
+            require(text(item), label)
+            continue
+        require('path' in item and set(item) <= ANCHOR_KEYS, label + ': anchor keys')
+        paths([item['path']], label + ': anchor path')
+        # A line number alone cannot be checked against the head; it only picks among quote matches.
+        require('line' not in item or ('quote' in item and type(item['line']) is int
+                                       and item['line'] >= 1), label + ': anchor line')
+        # A quote is one line of the reviewed head, so it cannot contain a line break.
+        require('quote' not in item or (text(item['quote']) and not LINE_BREAK.search(item['quote'])),
+                label + ': anchor quote')
+        # commit binds a quote to the revision it was verified at, such as an earlier round's head.
+        require('commit' not in item or ('quote' in item and isinstance(item['commit'], str)
+                                         and SHA.fullmatch(item['commit'])), label + ': anchor commit')
 
 
 def object_list(record, key):
@@ -395,7 +417,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             else:
                 require('present_at_previous_head' not in finding,
                         'present_at_previous_head applies only to new re-review findings')
-            references(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
+            anchors(finding['anchors'], 'finding anchors', finding['route'] == 'finding')
             if 'class' in finding or 'instances' in finding:
                 require(text(finding.get('class')), 'finding class')
                 references(finding.get('instances'), 'finding class instances')
