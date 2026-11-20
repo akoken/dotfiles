@@ -29,7 +29,7 @@ Changed paths: src/gate.py, tests/test_gate.py. Complete current src/gate.py:
 2 MARKER = "TOOL_GATE_ROOT"
 3 def early_diagnostic(argv):
 4     if os.path.basename(argv[0]) == "tool" and argv[1:2] == ["gate"]:
-5         return "refusing nested gate: the command starts tool gate again"
+5         return "refusing nested gate: the command starts tool gate again; run it directly"
 6     return None
 7 def run_gate(root, argv, spawn):
 8     if os.environ.get(MARKER) == root:
@@ -39,7 +39,9 @@ Changed paths: src/gate.py, tests/test_gate.py. Complete current src/gate.py:
 12        sys.exit(message)
 13    return spawn(argv, env=dict(os.environ, **{MARKER: root}))
 Tests prove a same-root nested gate exits with "refusing nested gate on". Verified: in both
-F-03 and F-04 the child still reaches line 8 and is refused; nothing loops. Every same-root
-nesting prints line 9's message, and a user who unsets TOOL_GATE as told sees the same
-refusal again. Project docs call the gate a local convenience running the user's own
+F-03 and F-04 the child still reaches line 8 and is refused; nothing loops. A direct
+`tool gate -- tool gate ...` stops at line 12 with line 5's message. Every other same-root
+nesting, such as the project's documented build script that itself runs `tool gate`,
+reaches the child and prints line 9's message, and a user who unsets TOOL_GATE as told
+sees the same refusal again. Project docs call the gate a local convenience running the user's own
 commands; nothing calls it a security boundary or claims it catches indirect launchers.

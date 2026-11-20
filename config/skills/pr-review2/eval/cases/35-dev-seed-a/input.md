@@ -16,13 +16,17 @@ Trusted policy: required checks are lint and tests; both passed at head. Round o
 Linked issue: `tool dev --seed` loads local fixtures into the dev service after it starts.
 DoD: fixtures are posted only after `wait_ready` returns; a test proves the order.
 PR body: Closes the linked issue. Adds --seed to `tool dev`; seeding waits for readiness.
-Changed paths: src/dev.py, tests/test_dev.py. The test asserts load_fixtures runs after
-wait_ready. Complete new src/dev.py:
+Changed paths: src/cli.py, src/dev.py, tests/test_dev.py. The test asserts load_fixtures
+runs after wait_ready, and that plain `tool dev` and `tool dev --seed` both start the
+service. src/cli.py is the only caller of dev(); its changed lines are:
+21 dev_parser.add_argument("--seed", action="store_true")
+34     return dev(seed=args.seed)
+(line 34 was `return dev()` at base). Complete new src/dev.py:
 1 from runtime import start_service, wait_ready
 2 from seed import load_fixtures
 3 from config import post_dev_config
 4 PORT = 8080
-5 def dev(seed):
+5 def dev(seed=False):
 6     proc = start_service(port=PORT)
 7     wait_ready(port=PORT)
 8     post_dev_config("http://127.0.0.1:%d" % PORT)

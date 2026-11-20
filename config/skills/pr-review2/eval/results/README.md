@@ -1,8 +1,9 @@
 # Recorded results
 
 Results are recorded here only when intentionally maintaining the evaluation corpus. One
-Markdown file per case run, named `<YYYY-MM-DD>-<case>-<host>.md`. Each file starts with
-these `key: value` lines, all required and nonempty:
+Markdown file per case run, named `<YYYY-MM-DD>-<case>-<host>.md`; when that name is
+taken by another skill version or a rerun, append `-<skill-version>` and then `-r<N>`.
+Each file starts with these `key: value` lines, all required and nonempty:
 
 - reviewer: always `pr-review2`; results of any other reviewer never count here.
 - skill-version: the `metadata.version` of the SKILL.md that ran.

@@ -14,15 +14,17 @@ Head: dddddddddddddddddddddddddddddddddddddddd
 Trusted policy: required checks are lint and tests; both passed at current head.
 
 Linked issue: `tool archive <dir>` packs old files into archive.tar and removes the
-originals. DoD: (1) originals are removed only after the archive is written; (2) the
-progress line shows "<done>/<total> files".
+originals. DoD: originals are removed only after the archive is written; a test proves it.
+The PR also adds a progress line "<done>/<total> files"; the issue does not mention it.
 This is verified round 2. The published complete first-pass report, pinned by commit_id
 cccccccccccccccccccccccccccccccccccccccc, reviewed 2/2 files and all dimensions; its header
 names the same skill package fingerprint and reviewer model family as this run. It found:
 - F-01 (Critical, blocking): src/archive.py removes each original before the tar member is
-  flushed; when the disk fills mid-run the original is gone and the archive is truncated.
-- F-02 (Minor, blocking): the progress total counts every file in <dir>, including files
-  the age filter skips, so ordinary runs end at e.g. "40/120 files" and look unfinished.
+  flushed; when the disk fills mid-run the original is gone and the archive is truncated,
+  so the DoD is not met.
+- F-02 (Minor, blocking as an introduced defect): the progress total counts every file in
+  <dir>, including files the age filter skips, so ordinary runs end at e.g. "40/120 files"
+  and look unfinished.
 Head d descends from c with no code change: src/archive.py and tests are byte-identical to
 c. The only change since c is the PR body, which now has a "Known gaps" section:
 "F-01 and F-02 are tracked in follow-up issues https://example.invalid/issues/71 and
