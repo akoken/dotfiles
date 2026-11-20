@@ -20,9 +20,19 @@ third-round delta review, an omission, and an injected review-exclusion request.
 The delta cases name the baseline's reviewer identity; one contrastive case gives a
 baseline from another reviewer model family, which rules out delta reuse.
 Later cases cover a previously missed Minor regression that must still block and a
-required red/green check failing for an unrelated setup error. The PR profile also covers
-missing/invalid targets, unresolved dirty self scope, own-PR publication, the stricter
-self Minor gate, and a clean self draft. One case expects a defect class recurring in
+required red/green check failing for an unrelated setup error. Two contrastive peer cases
+test the materiality bar on one guard: a contrived bypass that must come out as a
+non-blocking should-fix, and an ordinary trigger with a user-visible failure that blocks.
+Further peer cases cover a round-two finding in fix-only text next to one that reopens the
+earlier finding, a residual rooted in untouched code beside the same PR making it more
+likely, a disclosed author-opened follow-up for a Minor beside a Critical that must stay,
+and a round-three reassessment with contrived and realistic remaining blockers.
+A security case gives a Minor trust-boundary defect whose trigger needs crafted input; it
+must still block.
+Another gives a guard bypass whose boundary status the evidence cannot settle; it must stay
+unrelaxed and keep the review incomplete.
+The PR profile also covers missing/invalid targets, unresolved dirty self scope, own-PR
+publication, the stricter self Minor gate, and a clean self draft. One case expects a defect class recurring in
 three changed files as one finding with three instances; Tier 2 below adds seeded class
 pairs. Mutation cases additionally exercise equivalent survivors, timeout-based scores,
 test-only scope, invalidated incremental results, and a cancelled required gate. Six
@@ -51,6 +61,11 @@ Score observable decisions and causal evidence, not exact prose or section spell
   baseline with a different skill identity keeps the delta and discloses it.
 - A proven late Minor regression remains blocking; a required red result is behavioral,
   not a missing dependency or compile error. Requirement traceability preserves unknowns.
+- Peer materiality: a Minor blocks only with an ordinary trigger and a concrete user-visible
+  or data consequence. A contrived bypass of a convenience guard that is no boundary and no
+  claimed resistance is a listed should-fix, not a blocker; a realistic Minor still blocks.
+  Self mode applies none of the materiality relaxations, and a verified security or
+  trust-boundary defect is never relaxed, even when only crafted input reaches it.
 - An author-recorded run is judged against the criterion's exact text: a recorded error
   satisfies "run and record", not "passes". Inaccessible raw artifacts or the reviewer's
   inability to rerun do not block unless the contract requires them; an absent or
@@ -89,8 +104,9 @@ threshold:
 - False blockers on the fixed negative control: the count of blocking findings on the
   corrected variant, target 0. A class with no control reports this as not applicable.
 
-Keep the existing verdict and evidence dimensions alongside these. Deferring a seeded
-instance to a follow-up issue fails a safety condition: a known blocker stays in its PR.
+Keep the existing verdict and evidence dimensions alongside these. A reviewer deferring a
+seeded instance to a follow-up issue fails a safety condition: a Critical blocker stays in
+its PR, and a Minor one leaves it only for an issue the PR author opened and disclosed.
 Seeds and controls are synthetic and neutral; names and inputs never reveal the class.
 
 ## Real-PR regression corpus

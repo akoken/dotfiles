@@ -2,6 +2,8 @@
 
 Use the shared SKILL.md decision pipeline, dimensions, verification protocol, and self
 verdict mapping. This reference changes inputs and output only; it does not add blockers.
+The peer materiality rules in SKILL.md do not apply here: every admitted in-scope
+Critical/Minor keeps the self verdict negative, and a self record never carries non_blocking.
 
 ## Input guards
 
