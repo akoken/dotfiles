@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.11.2"
+  version: "2.11.3"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -167,8 +167,10 @@ it is fixed in the PR rather than deferred. The record marks every relaxed findi
 security_boundary false, which needs the boundary question resolved. When the evidence
 leaves it unresolved (for example the baseline security pass cannot tell whether an
 untrusted source reaches the check or path), the finding is never relaxed and is not a
-guard: record the open boundary question as a material verification gap under security
-routing, so the review stays incomplete (NEEDS_REVIEW) unless another verified blocker
+guard. A Minor one is not a proven blocker either (a Critical defect blocks regardless):
+record the open boundary question as a material verification gap under security routing
+and link the finding to it (review record: boundary_gap). The finding then does not block,
+and the gap keeps the review incomplete (NEEDS_REVIEW) unless another verified blocker
 already makes it Not ready to merge.
 
 1. Materiality bar. Outside the security exemption, a Minor branch-1 finding blocks only

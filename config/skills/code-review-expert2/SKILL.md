@@ -2,7 +2,7 @@
 name: code-review-expert2
 description: "Review a diff, branch, commit range, or PR using verified findings, explicit coverage, risk-based re-review, and an incomplete-review verdict. Use for general code reviews; use pr-review2 for AURA merge-readiness or pre-PR self-review."
 metadata:
-  version: "2.9.3"
+  version: "2.9.4"
   derived-from: code-review-expert
 ---
 

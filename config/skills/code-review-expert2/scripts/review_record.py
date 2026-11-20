@@ -411,6 +411,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                            value, authority, check['evidence'])
 
         self_findings, relaxed = set(), {basis: [] for basis in NON_BLOCKING_BASES}
+        unresolved_boundaries = []
         reasons = {'introduced_defect', 'unmet_requirement', 'contradicted_claim', 'introduced_gate_failure'}
         if profile != 'general':
             reasons |= {'aspirational_doc', 'missing_issue'}
@@ -471,7 +472,23 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                         'follow_up needs the finding moved out of open')
                 if active:
                     relaxed[basis].append(finding['id'])
-            is_blocker = active and ((introduced_defect and not non_blocking) or bool(declared))
+            boundary_gap = 'boundary_gap' in finding
+            if boundary_gap:
+                # A proven defect whose boundary status is unknown is neither a proven blocker
+                # nor relaxable: it rests on a material gap, so the review stays incomplete.
+                require(current, 'schema 2 field in schema 1 record: boundary_gap')
+                require(profile == 'aura-peer', 'boundary_gap applies only to the aura-peer profile')
+                require(finding['severity'] == 'Minor', 'boundary_gap applies only to a Minor finding')
+                require(active, 'boundary_gap applies only to an active finding')
+                require(finding['route'] == 'finding' and introduced_defect and not declared,
+                        'boundary_gap applies only to a change-introduced defect with no other blocking reason')
+                require('security_boundary' not in finding and not non_blocking,
+                        'boundary_gap excludes security_boundary and non_blocking')
+                linked(finding, 'unresolved boundary: ' + finding['id'], 'finding:' + finding['id'],
+                       True, finding['evidence'], key='boundary_gap')
+                unresolved_boundaries.append(finding['id'])
+            is_blocker = active and ((introduced_defect and not non_blocking and not boundary_gap)
+                                     or bool(declared))
             require(not is_blocker or finding['route'] == 'finding', 'blocker hidden in routed observation')
             if is_blocker:
                 blockers.add('finding:' + finding['id'])
@@ -522,6 +539,7 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
                   'self_disqualifying': sorted(self_findings) if profile == 'aura-self' else [],
                   'incomplete_reasons': sorted(gaps), 'errors': [],
                   'non_blocking': {basis: sorted(ids) for basis, ids in relaxed.items()},
+                  'unresolved_boundaries': sorted(unresolved_boundaries),
                   'author_recorded_requirements': sorted(author_recorded),
                   'run_status': status, 'schema_version': record['schema_version'],
                   'subject': {key: subject[key] for key in ('base', 'head', 'patch_digest')}}

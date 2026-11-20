@@ -1405,3 +1405,143 @@ class NonBlockingTests(unittest.TestCase):
             result = subprocess.run(args, capture_output=True, text=True)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertEqual(['F1'], json.loads(result.stdout)['non_blocking']['guard_bypass'])
+
+
+PEER_SCRIPT = ROOT / 'config/skills/pr-review2/scripts/review_record.py'
+PEER_SPEC = importlib.util.spec_from_file_location('review_record_peer', PEER_SCRIPT)
+PEER_MODULE = importlib.util.module_from_spec(PEER_SPEC)
+PEER_SPEC.loader.exec_module(PEER_MODULE)
+COPIES = {'code-review-expert2': MODULE, 'pr-review2': PEER_MODULE}
+
+
+def open_boundary(value, gap_id='G1', material=True):
+    """Add the verification gap that holds an unresolved boundary question."""
+    value['verification_gaps'].append({'id': gap_id, 'material': material, 'cause': 'environment',
+                                       'evidence': ['CI config not supplied; boundary question open']})
+    return value
+
+
+class BoundaryGapTests(unittest.TestCase):
+    """A proven Minor defect with an unresolved boundary is neither blocker nor relief: NEEDS_REVIEW."""
+
+    def evaluate(self, module, value, **options):
+        params = {'expected_profile': value['profile'], 'expected_base': BASE, 'expected_head': HEAD,
+                  'changed_files': ['src/paging.py'], 'required_checks': ['tests'], 'policy_known': True}
+        params.update(options)
+        return module.evaluate(value, **params)
+
+    def each_copy(self, check):
+        for name, module in COPIES.items():
+            with self.subTest(copy=name):
+                check(module)
+
+    def test_unresolved_boundary_reads_needs_review_not_a_blocker(self):
+        def check(module):
+            value = open_boundary(peer(finding(boundary_gap='G1'), claimed_verdict='NEEDS_REVIEW',
+                                       claimed_run_status='incomplete'))
+            result = self.evaluate(module, value)
+            self.assertEqual('NEEDS_REVIEW', result['verdict'])
+            self.assertEqual([], result['blockers'])
+            self.assertEqual(['F1'], result['unresolved_boundaries'])
+            reason = [item for item in result['run_status']['reasons'] if item['ref'] == 'finding:F1']
+            self.assertEqual([('environment', 'G1')], [(item['cause'], item['gap']) for item in reason])
+        self.each_copy(check)
+
+    def test_the_three_boundary_states_decide_the_verdict(self):
+        def check(module):
+            proven = peer(finding(security_boundary=True), claimed_verdict='REQUEST_CHANGES')
+            self.assertEqual('REQUEST_CHANGES', self.evaluate(module, proven)['verdict'])
+            cleared = peer(finding(security_boundary=False, non_blocking=relief('guard_bypass')))
+            self.assertEqual('APPROVE', self.evaluate(module, cleared)['verdict'])
+            unresolved = open_boundary(peer(finding(boundary_gap='G1'), claimed_verdict='NEEDS_REVIEW',
+                                            claimed_run_status='incomplete'))
+            self.assertEqual('NEEDS_REVIEW', self.evaluate(module, unresolved)['verdict'])
+        self.each_copy(check)
+
+    def test_another_blocker_still_decides_the_verdict(self):
+        def check(module):
+            value = open_boundary(peer(finding(boundary_gap='G1'), finding(id='F2'),
+                                       claimed_verdict='REQUEST_CHANGES', claimed_run_status='incomplete'))
+            result = self.evaluate(module, value)
+            self.assertEqual(['finding:F2'], result['blockers'])
+            self.assertEqual(['F1'], result['unresolved_boundaries'])
+        self.each_copy(check)
+
+    def test_gap_link_must_name_a_material_gap(self):
+        def check(module):
+            for value, message in (
+                    (peer(finding(boundary_gap='G1')), 'material verification gap'),
+                    (open_boundary(peer(finding(boundary_gap='G1')), material=False),
+                     'material verification gap'),
+                    (open_boundary(peer(finding(boundary_gap='G9'))), 'material verification gap'),
+                    (open_boundary(peer(finding(boundary_gap=''))), 'material verification gap'),
+                    (open_boundary(peer(finding(boundary_gap=['G1']))), 'material verification gap')):
+                with self.assertRaisesRegex(module.InvalidRecord, message):
+                    self.evaluate(module, value)
+        self.each_copy(check)
+
+    def test_boundary_gap_needs_an_active_change_origin_minor_defect(self):
+        cases = [
+            ({'severity': 'Critical'}, 'only to a Minor finding'),
+            ({'severity': 'Style'}, 'only to a Minor finding'),
+            ({'status': 'fixed-and-verified'}, 'only to an active finding'),
+            ({'status': 'rejected-with-evidence'}, 'only to an active finding'),
+            ({'origin': 'base'}, 'change-introduced defect'),
+            ({'origin': 'unknown'}, 'change-introduced defect'),
+            ({'reachable': False}, 'change-introduced defect'),
+            ({'defect': False}, 'change-introduced defect'),
+            ({'route': 'observation'}, 'change-introduced defect'),
+            ({'route': 'carried'}, 'change-introduced defect'),
+        ]
+
+        def check(module):
+            for changes, message in cases:
+                with self.subTest(changes=changes):
+                    value = open_boundary(peer(finding(boundary_gap='G1', **changes)))
+                    with self.assertRaisesRegex(module.InvalidRecord, message):
+                        self.evaluate(module, value)
+        self.each_copy(check)
+
+    def test_boundary_gap_excludes_every_other_decision_field(self):
+        cases = [
+            {'security_boundary': True}, {'security_boundary': False},
+            {'security_boundary': False, 'non_blocking': relief('guard_bypass')},
+            {'blocking_reasons': ['contradicted_claim']}, {'blocking_reasons': ['unmet_requirement']},
+            {'blocking_reasons': ['introduced_defect']}, {'blocking_reasons': ['introduced_gate_failure']},
+            {'blocking_reasons': ['aspirational_doc']}, {'blocking_reasons': ['missing_issue']},
+        ]
+
+        def check(module):
+            for changes in cases:
+                with self.subTest(changes=changes):
+                    value = open_boundary(peer(finding(boundary_gap='G1', **changes)))
+                    with self.assertRaisesRegex(module.InvalidRecord, 'boundary_gap'):
+                        self.evaluate(module, value)
+        self.each_copy(check)
+
+    def test_boundary_gap_is_bound_to_aura_peer_schema2(self):
+        def check(module):
+            for profile in ('general', 'aura-self'):
+                with self.subTest(profile=profile):
+                    value = open_boundary(peer(finding(boundary_gap='G1'), profile=profile))
+                    with self.assertRaisesRegex(module.InvalidRecord, 'only to the aura-peer profile'):
+                        self.evaluate(module, value)
+            value = record()
+            value['profile'] = 'aura-peer'
+            value['findings'] = [finding(boundary_gap='G1')]
+            value['verification_gaps'] = [{'id': 'G1', 'material': True, 'evidence': ['open']}]
+            value['claimed_verdict'] = 'NEEDS_REVIEW'
+            with self.assertRaisesRegex(module.InvalidRecord, 'schema 2 field in schema 1 record'):
+                self.evaluate(module, value)
+        self.each_copy(check)
+
+    def test_unresolved_boundary_cannot_claim_approval_or_completion(self):
+        def check(module):
+            value = open_boundary(peer(finding(boundary_gap='G1'), claimed_verdict='APPROVE',
+                                       claimed_run_status='incomplete'))
+            with self.assertRaisesRegex(module.InvalidRecord, 'claimed verdict inconsistent'):
+                self.evaluate(module, value)
+            value = open_boundary(peer(finding(boundary_gap='G1'), claimed_verdict='NEEDS_REVIEW'))
+            with self.assertRaisesRegex(module.InvalidRecord, 'claimed run status inconsistent'):
+                self.evaluate(module, value)
+        self.each_copy(check)
