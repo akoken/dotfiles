@@ -135,10 +135,17 @@ which real defects the review can report.
    Inspect the full delta, affected callers and unchanged defenses relevant to it; verify
    every prior open blocker and account for every new path. Reuse prior coverage explicitly,
    never claim it as current-pass reading. No delta does not waive open findings or gates.
+   Compare the reviewer identity of the baseline report with this run (review record:
+   rereview). The same model family with a different or unrecorded skill fingerprint allows
+   only a qualified delta: state in the report that the reused baseline came from a
+   different or unknown reviewer skill identity and name both identities, since it may not
+   have checked what this skill now checks.
 3. High risk, changed contract/base, rewritten history, changed shared assumptions, or
-   edits invalidating prior coverage/invariants require a full pass. If independence of the
-   affected surface or completeness of the baseline is uncertain, use a full pass. Missing
-   baseline, coverage or round evidence also requires full review; never guess history from
+   edits invalidating prior coverage/invariants require a full pass. So does a baseline
+   produced by a different reviewer model family, or one whose model family is unrecorded:
+   unknown identity never counts as the same. If independence of the affected surface or
+   completeness of the baseline is uncertain, use a full pass. Missing baseline, coverage,
+   round or model family evidence also requires full review; never guess history from
    comment/commit counts. Refresh affected test/config/security evidence at the current head;
    delta eligibility does not transfer an old required-check result to a new revision.
 4. After three review/fix rounds, if blockers remain or further automated churn would be

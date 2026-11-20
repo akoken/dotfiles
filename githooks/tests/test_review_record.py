@@ -232,13 +232,11 @@ class ReviewRecordTests(unittest.TestCase):
                 self.assertEqual(verdict, self.evaluate(value, expected_profile=profile)['verdict'])
 
     def test_delta_cannot_hide_current_changes_as_prior_coverage(self):
-        value = record()
-        value['coverage'].update(mode='delta', baseline_head=PRIOR, delta_files=['src/paging.py'])
-        self.assertEqual('APPROVE', self.evaluate(value, baseline_head=PRIOR,
-                                                delta_files=['src/paging.py'])['verdict'])
+        value = delta_record()
+        self.assertEqual('APPROVE', self.evaluate(value, **DELTA)['verdict'])
         value['coverage']['files'][0]['state'] = 'baseline'
-        with self.assertRaises(MODULE.InvalidRecord):
-            self.evaluate(value, baseline_head=PRIOR, delta_files=['src/paging.py'])
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'delta change hidden by baseline'):
+            self.evaluate(value, **DELTA)
 
     def test_dirty_digest_and_file_identity_are_bound(self):
         value = record()
@@ -596,19 +594,19 @@ class PreviousHeadPresenceTests(unittest.TestCase):
                 with self.assertRaises(MODULE.InvalidRecord):
                     self.evaluate(value)
 
-    def test_delta_rereview_needs_previous_head_once_identity_is_recorded(self):
-        value = record()
-        value['coverage'].update(mode='delta', baseline_head=PRIOR, delta_files=['src/paging.py'])
-        delta = {'baseline_head': PRIOR, 'delta_files': ['src/paging.py']}
-        self.assertEqual('APPROVE', self.evaluate(value, **delta)['verdict'])
-        value['skill'] = identity()
-        with self.assertRaisesRegex(MODULE.InvalidRecord, 'must record the previously reviewed head'):
-            self.evaluate(value, **delta)
-        value['rereview'] = {'previous_head': 'd' * 40, 'prior_finding_ids': []}
+    def test_delta_rereview_needs_previous_head(self):
+        for value in (record(), dict(record(), skill=identity()), delta_record()):
+            with self.subTest(schema=value['schema_version'], skill='skill' in value):
+                value['coverage'].update(mode='delta', baseline_head=PRIOR, delta_files=['src/paging.py'])
+                value.pop('rereview', None)
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'must record the previously reviewed head'):
+                    self.evaluate(value, **DELTA)
+        value = delta_record()
+        value['rereview']['previous_head'] = 'd' * 40
         with self.assertRaisesRegex(MODULE.InvalidRecord, 'differs from delta baseline'):
-            self.evaluate(value, **delta)
+            self.evaluate(value, **DELTA)
         value['rereview']['previous_head'] = PRIOR
-        result = self.evaluate(value, **delta)
+        result = self.evaluate(value, **DELTA)
         self.assertEqual('APPROVE', result['verdict'])
         self.assertTrue(result['previous_head_verified'])
 
@@ -629,6 +627,31 @@ def scoped(value, authority='brief: review src/paging.py only'):
                                        'evidence': ['src/other.py excluded by the approved scope'],
                                        'cause': 'scope_limit', 'authority': authority})
     value['claimed_verdict'], value['claimed_run_status'] = 'NEEDS_REVIEW', 'incomplete'
+    return value
+
+
+
+def reviewer(model_family='claude', host='claude-code'):
+    return {'host': host, 'model_family': model_family}
+
+
+DELTA = {'baseline_head': PRIOR, 'delta_files': ['src/paging.py']}
+
+
+def delta_record(**rereview):
+    """A schema 2 delta re-review whose baseline came from this run's reviewer identity."""
+    value = current(reviewer=reviewer())
+    value['coverage'].update(mode='delta', baseline_head=PRIOR, delta_files=['src/paging.py'])
+    value['rereview'] = {'previous_head': PRIOR, 'prior_finding_ids': [],
+                         'previous_skill': identity(), 'previous_reviewer': reviewer(),
+                         'baseline_identity': 'same'}
+    value['rereview'].update(rereview)
+    return value
+
+
+def as_full_pass(value):
+    """The same re-review performed as a full pass: nothing is reused from the baseline."""
+    value['coverage'].update(mode='full', baseline_head=None, delta_files=[])
     return value
 
 
@@ -891,6 +914,260 @@ class RunStatusTests(unittest.TestCase):
             self.assertFalse(output['valid'])
             self.assertEqual(('incomplete', ['unknown']),
                              (output['run_status']['state'], output['run_status']['causes']))
+
+
+class BaselineIdentityTests(unittest.TestCase):
+    """The delta gate compares the previous review's reviewer identity with this run's."""
+    evaluate = ReviewRecordTests.evaluate
+    TRUSTED = {'expected_skill_version': '2.7.0', 'expected_skill_fingerprint': 'e' * 64,
+               'expected_model_family': 'claude', 'expected_previous_skill_version': '2.7.0',
+               'expected_previous_skill_fingerprint': 'e' * 64,
+               'expected_previous_model_family': 'claude'}
+
+    def test_same_identity_allows_a_plain_delta(self):
+        result = self.evaluate(delta_record(), **DELTA)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(reviewer(), result['reviewer'])
+        self.assertEqual('self_reported', result['reviewer_identity'])
+        self.assertEqual({'state': 'same', 'delta_allowed': True, 'disclosure_required': False,
+                          'previous_skill': identity(), 'previous_reviewer': reviewer(),
+                          'verified': False}, result['baseline_identity'])
+        result = self.evaluate(delta_record(), **DELTA, **self.TRUSTED)
+        self.assertTrue(result['baseline_identity']['verified'])
+        self.assertEqual('verified', result['reviewer_identity'])
+
+    def test_skill_difference_allows_a_delta_only_when_disclosed(self):
+        earlier = identity(version='2.6.0', fingerprint='f' * 64)
+        result = self.evaluate(delta_record(previous_skill=earlier, baseline_identity='skill_differs'),
+                               **DELTA)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(('skill_differs', True, True),
+                         tuple(result['baseline_identity'][key]
+                               for key in ('state', 'delta_allowed', 'disclosure_required')))
+        self.assertEqual(earlier, result['baseline_identity']['previous_skill'])
+        # A full pass reuses nothing from the baseline, so nothing needs disclosure.
+        result = self.evaluate(as_full_pass(delta_record(previous_skill=earlier,
+                                                         baseline_identity='skill_differs')))
+        self.assertEqual(('skill_differs', True, False),
+                         tuple(result['baseline_identity'][key]
+                               for key in ('state', 'delta_allowed', 'disclosure_required')))
+        for claimed, message in (('same', 'claimed baseline identity inconsistent'),
+                                 (None, 'must state rereview.baseline_identity'),
+                                 ('different', 'baseline identity state')):
+            with self.subTest(claimed=claimed):
+                value = delta_record(previous_skill=earlier, baseline_identity=claimed)
+                with self.assertRaisesRegex(MODULE.InvalidRecord, message):
+                    self.evaluate(value, **DELTA)
+        # A same-version label cannot hide a changed package: the fingerprint decides.
+        relabelled = identity(fingerprint='f' * 64)
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'claimed baseline identity inconsistent'):
+            self.evaluate(delta_record(previous_skill=relabelled), **DELTA)
+
+    def test_model_family_difference_requires_a_full_pass(self):
+        for claimed in ('model_family_differs', 'same', None):
+            with self.subTest(claimed=claimed):
+                value = delta_record(previous_reviewer=reviewer('gpt', 'codex'),
+                                     baseline_identity=claimed)
+                with self.assertRaisesRegex(MODULE.InvalidRecord,
+                                            'different reviewer model family; perform a full review'):
+                    self.evaluate(value, **DELTA)
+        # Same family on another host is not a family change.
+        result = self.evaluate(delta_record(previous_reviewer=reviewer(host='opencode')), **DELTA)
+        self.assertEqual('same', result['baseline_identity']['state'])
+        value = as_full_pass(delta_record(previous_reviewer=reviewer('gpt', 'codex'),
+                                          baseline_identity='model_family_differs'))
+        result = self.evaluate(value)
+        self.assertEqual('APPROVE', result['verdict'])
+        self.assertEqual(('model_family_differs', False, False),
+                         tuple(result['baseline_identity'][key]
+                               for key in ('state', 'delta_allowed', 'disclosure_required')))
+
+    def test_placeholder_model_family_is_missing_identity_not_a_family(self):
+        # A run whose model was not recorded may write a placeholder such as unknown. Two
+        # placeholders are not the same family: the delta must fall back to a full pass.
+        for placeholder in MODULE.PLACEHOLDER_FAMILIES:
+            for sides in (('record', 'rereview'), ('record',), ('rereview',)):
+                with self.subTest(placeholder=placeholder, sides=sides):
+                    value = delta_record()
+                    if 'record' in sides:
+                        value['reviewer'] = reviewer(placeholder, MODULE.UNKNOWN)
+                    if 'rereview' in sides:
+                        value['rereview']['previous_reviewer'] = reviewer(placeholder, MODULE.UNKNOWN)
+                    for claimed in ('same', 'model_family_unknown'):
+                        value['rereview']['baseline_identity'] = claimed
+                        with self.assertRaisesRegex(MODULE.InvalidRecord,
+                                                    'model family is unknown; perform a full review'):
+                            self.evaluate(value, **DELTA)
+                    full = as_full_pass(value)
+                    result = self.evaluate(full)
+                    self.assertEqual('model_family_unknown', result['baseline_identity']['state'])
+                    self.assertFalse(result['baseline_identity']['delta_allowed'])
+        value = as_full_pass(delta_record(previous_reviewer=reviewer('unknown'),
+                                          baseline_identity='model_family_unknown'))
+        value['reviewer'] = reviewer('unknown')
+        result = self.evaluate(value)
+        self.assertEqual(MODULE.UNKNOWN_REVIEWER, result['reviewer'])
+        self.assertEqual('unknown', result['reviewer_identity'])
+        self.assertEqual(MODULE.UNKNOWN_REVIEWER, result['baseline_identity']['previous_reviewer'])
+        # A placeholder can neither satisfy nor stand in for a trusted expectation.
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'reviewer identity absent'):
+            self.evaluate(value, expected_model_family='claude')
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'previous reviewer identity absent'):
+            self.evaluate(value, expected_previous_model_family='claude')
+        for option in ('expected_model_family', 'expected_previous_model_family'):
+            with self.subTest(option=option):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, option.replace('_', ' ')):
+                    self.evaluate(delta_record(), **DELTA, **{option: 'unknown'})
+
+    def test_missing_previous_identity_reads_unknown_never_same(self):
+        for holder, key in (('rereview', 'previous_reviewer'), ('record', 'reviewer')):
+            for absent in ('omitted', 'null'):
+                with self.subTest(missing=key, absent=absent):
+                    value = delta_record(baseline_identity='model_family_unknown')
+                    target = value['rereview'] if holder == 'rereview' else value
+                    if absent == 'omitted':
+                        del target[key]
+                    else:
+                        target[key] = None
+                    with self.assertRaisesRegex(MODULE.InvalidRecord,
+                                                'model family is unknown; perform a full review'):
+                        self.evaluate(value, **DELTA)
+                    result = self.evaluate(as_full_pass(value))
+                    self.assertEqual('model_family_unknown', result['baseline_identity']['state'])
+                    self.assertFalse(result['baseline_identity']['delta_allowed'])
+        for absent in ('omitted', 'null'):
+            with self.subTest(missing='previous_skill', absent=absent):
+                value = delta_record(baseline_identity='skill_unknown')
+                if absent == 'omitted':
+                    del value['rereview']['previous_skill']
+                else:
+                    value['rereview']['previous_skill'] = None
+                result = self.evaluate(value, **DELTA)
+                self.assertEqual(('skill_unknown', True, True),
+                                 tuple(result['baseline_identity'][key]
+                                       for key in ('state', 'delta_allowed', 'disclosure_required')))
+                self.assertEqual(MODULE.UNKNOWN_SKILL, result['baseline_identity']['previous_skill'])
+                value['rereview']['baseline_identity'] = 'same'
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'claimed baseline identity inconsistent'):
+                    self.evaluate(value, **DELTA)
+        # A baseline record that predates the fields: a full-pass re-review still validates.
+        value = rereview_record('no')
+        value.update(schema_version=2, skill=identity(), stopped=None, claimed_run_status='complete')
+        result = self.evaluate(value)
+        self.assertEqual(MODULE.UNKNOWN_REVIEWER, result['reviewer'])
+        self.assertEqual('unknown', result['reviewer_identity'])
+        self.assertEqual({'state': 'model_family_unknown', 'delta_allowed': False,
+                          'disclosure_required': False, 'previous_skill': MODULE.UNKNOWN_SKILL,
+                          'previous_reviewer': MODULE.UNKNOWN_REVIEWER, 'verified': False},
+                         result['baseline_identity'])
+        self.assertNotIn('baseline_identity', self.evaluate(current()))
+
+    def test_schema1_cannot_carry_identity_or_qualify_a_delta(self):
+        legacy = rereview_record('no')
+        self.assertEqual('model_family_unknown', self.evaluate(legacy)['baseline_identity']['state'])
+        legacy['coverage'].update(mode='delta', baseline_head=PRIOR, delta_files=['src/paging.py'])
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'model family is unknown'):
+            self.evaluate(legacy, **DELTA)
+        for key in ('previous_skill', 'previous_reviewer', 'baseline_identity'):
+            with self.subTest(key=key):
+                value = rereview_record('no')
+                value['rereview'][key] = None
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 1 record: rereview.' + key):
+                    self.evaluate(value)
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'schema 1 record: reviewer'):
+            self.evaluate(dict(record(), reviewer=None))
+
+    def test_expected_identities_bind_the_record(self):
+        cases = [
+            ({'expected_model_family': 'gpt'}, 'reviewer model family differs from expected'),
+            ({'expected_previous_model_family': 'gpt'},
+             'previous reviewer model family differs from expected'),
+            ({'expected_previous_skill_fingerprint': 'f' * 64},
+             'previous skill fingerprint differs from expected'),
+            ({'expected_previous_skill_version': '2.6.0'}, 'previous skill version differs from expected'),
+            ({'expected_previous_model_family': 'Claude'}, 'expected previous model family'),
+            ({'expected_model_family': ''}, 'expected model family'),
+            ({'expected_previous_skill_fingerprint': 'abc'}, 'expected previous skill fingerprint'),
+            ({'expected_previous_skill_version': 'latest'}, 'expected previous skill version'),
+        ]
+        for options, message in cases:
+            with self.subTest(options=options):
+                with self.assertRaisesRegex(MODULE.InvalidRecord, message):
+                    self.evaluate(delta_record(), **DELTA, **options)
+        for key, options in (('previous_reviewer', {'expected_previous_model_family': 'claude'}),
+                             ('previous_skill', {'expected_previous_skill_fingerprint': 'e' * 64})):
+            with self.subTest(absent=key):
+                value = as_full_pass(delta_record(**{key: None}))
+                value['rereview'].pop('baseline_identity')
+                with self.assertRaisesRegex(MODULE.InvalidRecord, 'identity absent'):
+                    self.evaluate(value, **options)
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'reviewer identity absent'):
+            self.evaluate(current(), expected_model_family='claude')
+        for options in ({'expected_previous_model_family': 'claude'},
+                        {'expected_previous_skill_version': '2.7.0'},
+                        {'expected_previous_skill_fingerprint': 'e' * 64}):
+            with self.subTest(without_rereview=options):
+                with self.assertRaisesRegex(MODULE.InvalidRecord,
+                                            'previous reviewer identity expected but not recorded'):
+                    self.evaluate(current(reviewer=reviewer()), **options)
+
+    def test_malformed_reviewer_identity_is_rejected(self):
+        for bad, message in ((reviewer('Claude'), 'reviewer model family'),
+                             (reviewer('claude opus'), 'reviewer model family'),
+                             (reviewer(''), 'reviewer model family'),
+                             (reviewer(host=' '), 'reviewer host'),
+                             ({'host': 'claude-code'}, 'malformed record field'),
+                             ('claude', 'reviewer host')):
+            for holder in ('record', 'rereview'):
+                with self.subTest(bad=bad, holder=holder):
+                    value = as_full_pass(delta_record())
+                    value['rereview'].pop('baseline_identity')
+                    if holder == 'record':
+                        value['reviewer'] = bad
+                    else:
+                        value['rereview']['previous_reviewer'] = bad
+                    with self.assertRaisesRegex(MODULE.InvalidRecord, message):
+                        self.evaluate(value)
+        value = delta_record(previous_skill=identity(fingerprint='E' * 64))
+        with self.assertRaisesRegex(MODULE.InvalidRecord, 'previous skill fingerprint'):
+            self.evaluate(value, **DELTA)
+
+    def test_cli_reports_baseline_identity_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            artifact, changed, delta = (folder / name for name in ('review.json', 'changed.json',
+                                                                    'delta.json'))
+            changed.write_text(json.dumps(['src/paging.py']))
+            delta.write_text(json.dumps(['src/paging.py']))
+            args = [sys.executable, str(SCRIPT), str(artifact), '--expected-profile', 'general',
+                    '--expected-base', BASE, '--expected-head', HEAD, '--changed-files', str(changed),
+                    '--require-check', 'tests', '--policy-known', '--baseline-head', PRIOR,
+                    '--delta-files', str(delta), '--expected-previous-head', PRIOR]
+            trusted = ['--expected-skill-version', '2.7.0', '--expected-skill-fingerprint', 'e' * 64,
+                       '--expected-model-family', 'claude', '--expected-previous-skill-version', '2.6.0',
+                       '--expected-previous-skill-fingerprint', 'f' * 64,
+                       '--expected-previous-model-family', 'claude']
+            earlier = identity(version='2.6.0', fingerprint='f' * 64)
+            artifact.write_text(json.dumps(delta_record(previous_skill=earlier,
+                                                        baseline_identity='skill_differs')))
+            result = subprocess.run(args + trusted, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            output = json.loads(result.stdout)
+            self.assertEqual(('skill_differs', True, True),
+                             tuple(output['baseline_identity'][key]
+                                   for key in ('state', 'disclosure_required', 'verified')))
+            self.assertEqual(reviewer(), output['reviewer'])
+            mismatch = trusted[:-1] + ['gpt']
+            result = subprocess.run(args + mismatch, capture_output=True, text=True)
+            self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+            artifact.write_text(json.dumps(delta_record(previous_reviewer=reviewer('gpt', 'codex'),
+                                                        baseline_identity='model_family_differs')))
+            result = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+            output = json.loads(result.stdout)
+            self.assertFalse(output['valid'])
+            self.assertIn('perform a full review', output['errors'][0])
+            self.assertEqual('incomplete', output['run_status']['state'])
 
 
 class AnchorShapeTests(unittest.TestCase):

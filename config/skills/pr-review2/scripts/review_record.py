@@ -23,6 +23,20 @@ RUN_STATES = ('complete', 'incomplete')
 CAUSES = ('platform_refusal', 'quota', 'tool_failure', 'environment', 'missing_specialist',
           'pending', 'scope_limit', 'other', UNKNOWN)
 UNKNOWN_SKILL = {'name': UNKNOWN, 'version': UNKNOWN, 'fingerprint': UNKNOWN}
+UNKNOWN_REVIEWER = {'host': UNKNOWN, 'model_family': UNKNOWN}
+# A lowercase vendor family label such as claude or gpt, not a model version or size.
+MODEL_FAMILY = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*\Z')
+# Labels that stand for a missing family rather than naming one. Two of them never match:
+# a record carrying one reads as identity unknown, exactly like an absent reviewer.
+PLACEHOLDER_FAMILIES = ('unknown', 'none', 'null', 'unset', 'unspecified', 'missing', 'na', 'n-a',
+                        'tbd', 'other')
+# How the baseline's reviewer identity compares with this run's. Missing data is unknown,
+# never same. A delta may reuse the baseline only when the model family is known and the
+# same; a differing or unknown skill identity then needs disclosure in record and report.
+BASELINE_STATES = ('same', 'skill_differs', 'skill_unknown', 'model_family_differs',
+                   'model_family_unknown')
+DISCLOSED_DELTA = ('skill_differs', 'skill_unknown')
+DELTA_STATES = ('same',) + DISCLOSED_DELTA
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 ANCHOR_KEYS = {'path', 'line', 'quote', 'commit'}
 LINE_BREAK = re.compile(r'[\n\r]')
@@ -131,21 +145,49 @@ def skill_fingerprint(directory):
     return hashlib.sha256(lines).hexdigest()
 
 
-def validate_skill(skill, expected_version, expected_fingerprint):
-    """Check the self-reported skill identity; absent identity is a legacy record."""
+def validate_skill(skill, expected_version, expected_fingerprint, label='skill'):
+    """Check a self-reported skill identity; absent identity reads unknown."""
     if skill is None:
         require(expected_version is None and expected_fingerprint is None,
-                'skill identity absent; expected identity cannot be confirmed')
+                label + ' identity absent; expected identity cannot be confirmed')
         return None
-    require(isinstance(skill, dict) and text(skill['name']), 'skill name')
-    require(isinstance(skill['version'], str) and VERSION.fullmatch(skill['version']), 'skill version')
+    require(isinstance(skill, dict) and text(skill['name']), label + ' name')
+    require(isinstance(skill['version'], str) and VERSION.fullmatch(skill['version']),
+            label + ' version')
     require(isinstance(skill['fingerprint'], str) and DIGEST.fullmatch(skill['fingerprint']),
-            'skill fingerprint')
+            label + ' fingerprint')
     require(expected_version is None or skill['version'] == expected_version,
-            'skill version differs from expected')
+            label + ' version differs from expected')
     require(expected_fingerprint is None or skill['fingerprint'] == expected_fingerprint,
-            'skill fingerprint differs from expected')
+            label + ' fingerprint differs from expected')
     return {key: skill[key] for key in ('name', 'version', 'fingerprint')}
+
+
+def validate_reviewer(reviewer, expected_family, label):
+    """Check a self-reported reviewer host and model family; absent identity reads unknown."""
+    if reviewer is None:
+        require(expected_family is None,
+                label + ' identity absent; expected model family cannot be confirmed')
+        return None
+    require(isinstance(reviewer, dict) and text(reviewer['host']), label + ' host')
+    require(isinstance(reviewer['model_family'], str)
+            and MODEL_FAMILY.fullmatch(reviewer['model_family']), label + ' model family')
+    if reviewer['model_family'] in PLACEHOLDER_FAMILIES:
+        return validate_reviewer(None, expected_family, label)
+    require(expected_family is None or reviewer['model_family'] == expected_family,
+            label + ' model family differs from expected')
+    return {key: reviewer[key] for key in ('host', 'model_family')}
+
+
+def baseline_identity(skill, reviewer, previous_skill, previous_reviewer):
+    """Compare the previous review's reviewer identity with this run's; unknown is never same."""
+    if reviewer is None or previous_reviewer is None:
+        return 'model_family_unknown'
+    if reviewer['model_family'] != previous_reviewer['model_family']:
+        return 'model_family_differs'
+    if skill is None or previous_skill is None:
+        return 'skill_unknown'
+    return 'same' if skill['fingerprint'] == previous_skill['fingerprint'] else 'skill_differs'
 
 
 def run_status(reasons, current, claimed, stopped):
@@ -173,7 +215,9 @@ def invalid_run_status(error):
 def evaluate(record, *, expected_profile, expected_base, expected_head, changed_files, required_checks=(),
              policy_known=False, expected_patch_digest=None, baseline_head=None,
              delta_files=None, expected_skill_version=None, expected_skill_fingerprint=None,
-             expected_previous_head=None):
+             expected_previous_head=None, expected_model_family=None,
+             expected_previous_skill_version=None, expected_previous_skill_fingerprint=None,
+             expected_previous_model_family=None):
     """Return canonical verdict, run status and reasons, or reject malformed/inconsistent evidence."""
     try:
         require(isinstance(record, dict) and type(record['schema_version']) is int
@@ -182,14 +226,21 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         current = record['schema_version'] == 2
         if 'timing' in record:
             validate_timing(record['timing'])
-        require(expected_skill_version is None or (isinstance(expected_skill_version, str)
-                and VERSION.fullmatch(expected_skill_version)), 'expected skill version')
-        require(expected_skill_fingerprint is None or (isinstance(expected_skill_fingerprint, str)
-                and DIGEST.fullmatch(expected_skill_fingerprint)), 'expected skill fingerprint')
+        for value, pattern, label in (
+                (expected_skill_version, VERSION, 'expected skill version'),
+                (expected_skill_fingerprint, DIGEST, 'expected skill fingerprint'),
+                (expected_model_family, MODEL_FAMILY, 'expected model family'),
+                (expected_previous_skill_version, VERSION, 'expected previous skill version'),
+                (expected_previous_skill_fingerprint, DIGEST, 'expected previous skill fingerprint'),
+                (expected_previous_model_family, MODEL_FAMILY, 'expected previous model family')):
+            require(value is None or (isinstance(value, str) and pattern.fullmatch(value)
+                                      and value not in PLACEHOLDER_FAMILIES), label)
         require(expected_previous_head is None or (isinstance(expected_previous_head, str)
                 and SHA.fullmatch(expected_previous_head)), 'expected previous head')
         skill = validate_skill(record.get('skill'), expected_skill_version, expected_skill_fingerprint)
         require(not current or skill is not None, 'schema 2 record needs skill identity')
+        require(current or 'reviewer' not in record, 'schema 2 field in schema 1 record: reviewer')
+        reviewer = validate_reviewer(record.get('reviewer'), expected_model_family, 'reviewer')
         profile = record['profile']
         require(expected_profile in ('general', 'aura-peer', 'aura-self')
                 and profile == expected_profile, 'profile differs from trusted review mode')
@@ -293,8 +344,10 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         rereview, prior_ids = record.get('rereview'), set()
         if rereview is None:
             require(expected_previous_head is None, 'previous reviewed head expected but not recorded')
-            require(skill is None or coverage['mode'] != 'delta',
-                    'delta re-review must record the previously reviewed head')
+            require(expected_previous_skill_version is None and expected_previous_skill_fingerprint is None
+                    and expected_previous_model_family is None,
+                    'previous reviewer identity expected but not recorded')
+            require(coverage['mode'] != 'delta', 'delta re-review must record the previously reviewed head')
         else:
             require(isinstance(rereview, dict) and isinstance(rereview['previous_head'], str)
                     and SHA.fullmatch(rereview['previous_head']), 'previous reviewed head')
@@ -308,6 +361,25 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
             prior_ids = set(prior)
             recorded = {item.get('id') for item in record['findings'] if isinstance(item, dict)}
             require(prior_ids <= recorded, 'prior finding missing from findings; record its current state')
+            for key in ('previous_skill', 'previous_reviewer', 'baseline_identity'):
+                require(current or key not in rereview, 'schema 2 field in schema 1 record: rereview.' + key)
+            previous_skill = validate_skill(rereview.get('previous_skill'), expected_previous_skill_version,
+                                            expected_previous_skill_fingerprint, 'previous skill')
+            previous_reviewer = validate_reviewer(rereview.get('previous_reviewer'),
+                                                  expected_previous_model_family, 'previous reviewer')
+            identity = baseline_identity(skill, reviewer, previous_skill, previous_reviewer)
+            is_delta = coverage['mode'] == 'delta'
+            require(not is_delta or identity != 'model_family_differs',
+                    'delta baseline came from a different reviewer model family; perform a full review')
+            require(not is_delta or identity != 'model_family_unknown',
+                    'delta baseline reviewer model family is unknown; perform a full review')
+            claimed_identity = rereview.get('baseline_identity')
+            require(claimed_identity is not None or not is_delta,
+                    'delta re-review must state rereview.baseline_identity')
+            require(claimed_identity is None or claimed_identity in BASELINE_STATES,
+                    'baseline identity state')
+            require(claimed_identity is None or claimed_identity == identity,
+                    'claimed baseline identity inconsistent with recorded identities')
         presence = {value: [] for value in PRESENCE}
 
         required = paths(list(required_checks), 'required check identities')
@@ -424,10 +496,21 @@ def evaluate(record, *, expected_profile, expected_base, expected_head, changed_
         result['skill_identity'] = (UNKNOWN if skill is None else 'verified'
                                     if expected_skill_version and expected_skill_fingerprint
                                     else 'self_reported')
+        result['reviewer'] = dict(reviewer or UNKNOWN_REVIEWER)
+        result['reviewer_identity'] = (UNKNOWN if reviewer is None else 'verified'
+                                       if expected_model_family else 'self_reported')
         if rereview is not None:
             result['previous_head'] = rereview['previous_head']
             result['previous_head_verified'] = (expected_previous_head is not None
                                                 or coverage['mode'] == 'delta')
+            result['baseline_identity'] = {
+                'state': identity, 'delta_allowed': identity in DELTA_STATES,
+                'disclosure_required': coverage['mode'] == 'delta' and identity in DISCLOSED_DELTA,
+                'previous_skill': dict(previous_skill or UNKNOWN_SKILL),
+                'previous_reviewer': dict(previous_reviewer or UNKNOWN_REVIEWER),
+                'verified': None not in (expected_skill_fingerprint, expected_model_family,
+                                         expected_previous_skill_fingerprint,
+                                         expected_previous_model_family)}
             result['new_findings_present_at_previous_head'] = {
                 key: sorted(value) for key, value in presence.items()}
         return result
@@ -472,6 +555,10 @@ def main():
     parser.add_argument('--expected-skill-version')
     parser.add_argument('--expected-skill-fingerprint')
     parser.add_argument('--expected-previous-head')
+    parser.add_argument('--expected-model-family')
+    parser.add_argument('--expected-previous-skill-version')
+    parser.add_argument('--expected-previous-skill-fingerprint')
+    parser.add_argument('--expected-previous-model-family')
     args = parser.parse_args()
     if args.skill_fingerprint is not None:
         if args.record is not None:
@@ -495,7 +582,11 @@ def main():
                           delta_files=read_json(args.delta_files) if args.delta_files else None,
                           expected_skill_version=args.expected_skill_version,
                           expected_skill_fingerprint=args.expected_skill_fingerprint,
-                          expected_previous_head=args.expected_previous_head)
+                          expected_previous_head=args.expected_previous_head,
+                          expected_model_family=args.expected_model_family,
+                          expected_previous_skill_version=args.expected_previous_skill_version,
+                          expected_previous_skill_fingerprint=args.expected_previous_skill_fingerprint,
+                          expected_previous_model_family=args.expected_previous_model_family)
         print(json.dumps(result, sort_keys=True))
         return 0 if result['verdict'] == 'APPROVE' else 1
     except (InvalidRecord, OSError, ValueError, RecursionError) as error:

@@ -17,6 +17,8 @@ live work; these inputs are explicitly offline synthetic review exercises.
 
 Cases exercise reachable defects, upstream guards, head drift, pending required CI,
 third-round delta review, an omission, and an injected review-exclusion request.
+The delta cases name the baseline's reviewer identity; one contrastive case gives a
+baseline from another reviewer model family, which rules out delta reuse.
 Later cases cover a previously missed Minor regression that must still block and a
 required red/green check failing for an unrelated setup error. The PR profile also covers
 missing/invalid targets, unresolved dirty self scope, own-PR publication, the stricter
@@ -45,6 +47,8 @@ Score observable decisions and causal evidence, not exact prose or section spell
 - Clean/intentional behavior retained; no harmful suggested removal of a valid guard.
 - Required unknown/pending checks and head changes never become approval.
 - Re-review preserves IDs, checks old blockers, attributes fixes, and reports real coverage.
+  A baseline from another or unknown reviewer model family forces a full pass; a same-family
+  baseline with a different skill identity keeps the delta and discloses it.
 - A proven late Minor regression remains blocking; a required red result is behavioral,
   not a missing dependency or compile error. Requirement traceability preserves unknowns.
 - An author-recorded run is judged against the criterion's exact text: a recorded error
@@ -115,7 +119,9 @@ After changing focused lenses, delta eligibility or timing, use affected fresh-c
 rather than rerunning the entire corpus automatically. Include a reachable swallowed failure,
 a legitimate outer catch, mutation/deserialization invariant bypass, a stale unchanged comment,
 a valid interaction-contract test, a qualified second-round delta and an invalid/High-risk
-baseline requiring full review. Preserve core defect/gate cases affected by the change.
+baseline requiring full review. After changing the delta gate, also include a baseline from
+another reviewer model family that requires a full pass and a same-family baseline with a
+different skill identity that keeps the delta but must disclose it. Preserve core defect/gate cases affected by the change.
 Evaluate whether extra agents or unrelated full passes were demanded without justification.
 Timing is measured evidence or unknown, never a fabricated speedup or a reason to approve.
 

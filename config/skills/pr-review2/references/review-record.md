@@ -57,12 +57,34 @@ shape without causes; the validator still accepts it and reads what it lacks as 
   sort | xargs shasum -a 256 | shasum -a 256`. Write the same three values in the report
   header. Schema 2 requires it. A schema 1 record without skill (or with null) stays valid
   and reads as identity unknown, never as the current version.
+- reviewer: who ran the review, as host (the runner, for example the agent CLI) and
+  model_family, a lowercase vendor family label such as claude or gpt, never a model
+  version or size. Use one label per family; another spelling reads as another family.
+  Write both in the report header next to the skill identity. Optional in schema 2 and
+  absent from schema 1; absent or null reads unknown, which rules out a delta re-review.
+  A placeholder family (unknown, none, null, unset, unspecified, missing, na, n-a, tbd or
+  other) names no family: it reads as a missing identity, so two placeholders never match,
+  and it cannot satisfy or be passed as an expected model family.
 - rereview: include it on every re-review (any round after the first, full or delta) and
   omit it on a first review. previous_head is the full SHA of the previously reviewed head
   (in delta mode it equals coverage.baseline_head); prior_finding_ids lists the IDs already
   reported before this round, and each of them stays in findings with its current state.
-  The validator can enforce presence only in delta mode for a record with skill identity
-  or when --expected-previous-head is supplied; elsewhere it is the reviewer's duty.
+  The validator requires it in delta mode and when --expected-previous-head is supplied;
+  elsewhere it is the reviewer's duty.
+  previous_skill (name, version, fingerprint) and previous_reviewer (host, model_family)
+  copy the previous review's identity from its pinned report header or record. Write null
+  when that report predates these fields or does not name them: a missing identity reads
+  unknown, never as this run's identity. baseline_identity states how the baseline compares
+  with this run, deciding on model family first and skill fingerprint second: same;
+  skill_differs or skill_unknown (same family, a different or unrecorded skill fingerprint);
+  model_family_differs or model_family_unknown. The host is reported but does not decide.
+  A delta needs a known, unchanged model family: the validator rejects a delta record in
+  either model_family state, so that re-review must be a full pass. skill_differs and
+  skill_unknown allow a qualified delta; the report then says that the reused baseline
+  came from a different or unknown reviewer skill identity and names both identities. A
+  delta record must state baseline_identity; a full-pass re-review may omit it. When
+  present it must equal the state the validator computes. These three fields exist only in
+  schema 2, so a schema 1 re-review reads model_family_unknown and cannot reuse a delta.
 - subject: base and head full commit IDs; patch_digest is null or the SHA-256 of the full
   reviewed dirty input, including included untracked files.
 - contract: state resolved, none, missing_reference or unavailable; evidence references.
@@ -213,8 +235,9 @@ validator checks its shape, not timing authenticity. Older records may omit timi
 Compare matched review mode, risk, scope and tool configuration before claiming a speedup.
 Separate active work from test and CI delays. A time budget can stop optional work with an
 honest partial/skipped status; it never clears a required gate or hides an unresolved defect.
-The delta qualification and coverage reuse are reviewed outside the JSON validator; the
-validator checks revision/file accounting, not the truth of a qualifying prior review.
+Apart from the reviewer identity comparison, the delta qualification and coverage reuse are
+reviewed outside the JSON validator; the validator checks revision/file accounting and the
+recorded identities, not the truth of a qualifying prior review.
 
 ## Validate independently supplied identity and policy
 
@@ -229,11 +252,14 @@ do not trust the record to define its own policy. Pass --policy-known only after
 An unknown required-check policy produces NEEDS_REVIEW. To bind the record to the skill
 that should have run, pass --expected-skill-version and --expected-skill-fingerprint taken
 from a trusted source, such as the pinned release commit hashed with a script copy outside
-the installed package; a package's own script cannot vouch for that package. On a re-review
-pass --expected-previous-head from the pinned prior report. Each supplied expectation must
-match the record, and a legacy record lacking the field is rejected rather than assumed
-current. Without them the identity is self-reported, and the previous head is verified only
-through the delta baseline; the output says which (previous_head_verified).
+the installed package; a package's own script cannot vouch for that package. Pass
+--expected-model-family from the trusted invocation that ran the review. On a re-review
+pass --expected-previous-head, --expected-previous-skill-version,
+--expected-previous-skill-fingerprint and --expected-previous-model-family from the pinned
+prior report. Each supplied expectation must match the record, and a record lacking the
+field is rejected rather than assumed current. Without them the identities are
+self-reported, and the previous head is verified only through the delta baseline; the
+output says which (previous_head_verified, reviewer_identity, baseline_identity.verified).
 
 The tool reads JSON and emits a decision; it never runs commands from records or reads
 evidence targets. Its exit codes are 0 for a consistent positive review, 1 for a consistent
@@ -245,9 +271,13 @@ The validator checks identity, coverage accounting, requirement states, finding 
 required check outcomes, verdict and run-status consistency. Its output states the
 schema_version, the reviewed subject (base, head, patch_digest), skill (name, version and
 fingerprint, each unknown for a record without identity) with skill_identity verified (both
-expected values supplied and matched), self_reported or unknown, run_status (state, claimed,
+expected values supplied and matched), self_reported or unknown, reviewer (host and
+model_family) with reviewer_identity read the same way, run_status (state, claimed,
 approved_scope_status, causes, authorities, stopped and one reason per incompleteness source)
-and, on a re-review, the new finding IDs grouped by present_at_previous_head. An invalid
+and, on a re-review, the new finding IDs grouped by present_at_previous_head and
+baseline_identity: state, delta_allowed, disclosure_required (a qualified delta the report
+must disclose), previous_skill, previous_reviewer, and verified (expected current and
+previous skill fingerprints and model families all supplied and matched). An invalid
 record prints valid false with run_status incomplete and cause unknown. Report run status
 and approved scope status from this output, never from the run's own claim. It
 cannot authenticate evidence or replace source review. A changed head/config/test selection

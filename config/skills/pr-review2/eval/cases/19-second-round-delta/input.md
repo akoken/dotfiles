@@ -20,6 +20,8 @@ boundary or new architecture. This is verified round 2 with a published complete
 report pinned by commit_id cccccccccccccccccccccccccccccccccccccccc. The first report
 reviewed 4/4 current PR files and every applicable dimension, including all callers.
 It found F-offset, a Minor but blocking first-page regression. It had no coverage gaps.
+Its header names the same skill package fingerprint as the skill you are running and the
+same reviewer model family as this run.
 
 Base is unchanged aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa. Current d head descends from
 c with exactly one small fix, src/paging.py. Contract and all shared assumptions are unchanged;

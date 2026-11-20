@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.9.0"
+  version: "2.10.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -146,9 +146,10 @@ Recurring defect classes follow one trigger rule:
   beyond the change, such as a shared generator or a new eval case, may be a linked follow-up.
 
 Re-review follows the protocol: first round full; from round two, qualified Low/Medium-risk
-delta plus affected callers and old blockers. High risk or invalidated evidence requires full
-review. Three rounds with unresolved blockers/churn require human reassessment with an
-approach reassessment under the protocol, never automatic approval.
+delta plus affected callers and old blockers. High risk, invalidated evidence, or a baseline
+from a different or unknown reviewer model family requires full review. Three rounds with
+unresolved blockers/churn require human reassessment with an approach reassessment under
+the protocol, never automatic approval.
 
 ## 4. Verdict and completeness
 
@@ -203,7 +204,8 @@ remains, say so first in one plain sentence, for example "Nothing to fix: 0 new 
 2 prior findings verified fixed." Include:
 
 - Skill identity: name, metadata.version and package fingerprint of the skill that ran,
-  computed under the review record from the directory actually read, never copied.
+  computed under the review record from the directory actually read, never copied; and the
+  reviewer host and model family that ran it.
 - Run status from the validator output: state, approved_scope_status, each reason's cause
   with its authority or evidence, and whether the run stopped; plus the paths of the kept
   review.json and validator-output.txt.
@@ -220,7 +222,10 @@ remains, say so first in one plain sentence, for example "Nothing to fix: 0 new 
 - Risk with blast radius/reversibility reasons, required human scrutiny, rollback evidence,
   and unresolved limits. Do not invent project infrastructure or approval counts.
 - Review round/mode; first-pass published baseline and latest reviewed SHA/round or explicitly
-  unavailable; local self baselines are never labeled published.
+  unavailable; local self baselines are never labeled published. On re-review, the baseline
+  identity state from the validator output with the previous skill and reviewer identity;
+  for a qualified delta, a plain statement that the reused baseline came from a different
+  or unknown reviewer skill identity.
 - Published blocker status on re-review: stable ID, state, current evidence, author reply
   disposition, and cause for reopening if any. No repeated finding without new evidence.
 - On re-review, for each new finding: was the defect present at the previously reviewed
