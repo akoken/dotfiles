@@ -23,6 +23,10 @@ Later cases cover a previously missed Minor regression that must still block and
 required red/green check failing for an unrelated setup error. Two contrastive peer cases
 test the materiality bar on one guard: a contrived bypass that must come out as a
 non-blocking should-fix, and an ordinary trigger with a user-visible failure that blocks.
+Further peer cases cover a round-two finding in fix-only text next to one that reopens the
+earlier finding, a residual rooted in untouched code beside the same PR making it more
+likely, a disclosed author-opened follow-up for a Minor beside a Critical that must stay,
+and a round-three reassessment with contrived and realistic remaining blockers.
 The PR profile also covers missing/invalid targets, unresolved dirty self scope, own-PR
 publication, the stricter self Minor gate, and a clean self draft. One case expects a defect class recurring in
 three changed files as one finding with three instances; Tier 2 below adds seeded class
