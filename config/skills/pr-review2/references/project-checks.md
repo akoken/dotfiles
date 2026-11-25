@@ -225,12 +225,17 @@ tests that predate the change do. Build an inventory of every change the PR make
 
 1. Scope. Compute the merge-base of the reviewed base and head and diff it against the
    exact reviewed input. Peer mode lists
-   `git diff --name-status --find-renames <merge-base> <head>`. Self mode reviews the input
-   its scope defines: when uncommitted or untracked files are in scope, list
-   `git diff --name-status --find-renames <merge-base>` (working tree and index, not only
-   committed head) and check each in-scope untracked file as a possible move target of a
-   deleted pre-existing test; a commit-only diff can report an empty inventory while the
-   working tree weakens a test. A pre-existing test is a
+   `git diff --name-status --find-renames <merge-base> <head>`. Self mode picks the diff
+   from the exact scope it reviews, because each single diff misses changes the others see:
+   - committed head only: the peer command above;
+   - index only: `git diff --cached --name-status --find-renames <merge-base>`;
+   - index and working tree: the union of that command and
+     `git diff --name-status --find-renames <merge-base>`, so a change present in either
+     is listed. A file whose index and working-tree contents differ is one entry that
+     classifies both versions against the merge-base and names which one carries each
+     change; a weakening in either version counts, even when the other restores it.
+   When untracked files are in scope, also check each one as a possible move target of a
+   deleted pre-existing test. A pre-existing test is a
    test file, snapshot, golden or expected-output fixture that exists at the merge-base,
    classified by the project's own test conventions (runner config, test globs, CI test
    registration), not by file name alone. Include every one the PR modifies, deletes or
