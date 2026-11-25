@@ -54,6 +54,8 @@ an existing body. Include:
 - Scope: account for every changed file, grouping by responsibility when useful. Disclose
   unintended files and planned removal instead of concealing the current diff.
 - Testing: exact commands actually observed and results, plus skipped checks and gaps.
+- Pre-existing test changes: the inventory from the tests dimension with each entry's
+  justification, or "No pre-existing test changes" against the named merge-base.
 - Risk: affected boundaries, human review needs, and uncertainty.
 - How to revert: concrete rollback method, state consequences, or justified not applicable.
 - Known gaps: all current blockers, self-disqualifying findings, and completeness limits.
