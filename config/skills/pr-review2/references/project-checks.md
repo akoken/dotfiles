@@ -223,8 +223,14 @@ branch, and a high score does not establish that a test validates the right requ
 agent rewrote alongside the code no longer count as independent evidence for that code;
 tests that predate the change do. Build an inventory of every change the PR makes to them:
 
-1. Scope. Compute the merge-base of the reviewed base and head and list
-   `git diff --name-status --find-renames <merge-base> <head>`. A pre-existing test is a
+1. Scope. Compute the merge-base of the reviewed base and head and diff it against the
+   exact reviewed input. Peer mode lists
+   `git diff --name-status --find-renames <merge-base> <head>`. Self mode reviews the input
+   its scope defines: when uncommitted or untracked files are in scope, list
+   `git diff --name-status --find-renames <merge-base>` (working tree and index, not only
+   committed head) and check each in-scope untracked file as a possible move target of a
+   deleted pre-existing test; a commit-only diff can report an empty inventory while the
+   working tree weakens a test. A pre-existing test is a
    test file, snapshot, golden or expected-output fixture that exists at the merge-base,
    classified by the project's own test conventions (runner config, test globs, CI test
    registration), not by file name alone. Include every one the PR modifies, deletes or
@@ -246,10 +252,15 @@ tests that predate the change do. Build an inventory of every change the PR make
    checked, in the direction the new assertion expects. A PR-body statement alone is not a
    justification. Otherwise write "no justification found".
 4. Verification. Where the protocol's execution safety rules allow a targeted run, run the
-   merge-base version of a weakened, deleted, skipped or re-expected test against the head
-   code. A pass shows the change was not needed to go green; a failure shows the behavior
-   moved and must match the justification, or it is the failure the change silenced. Record
-   the command and outcome; an infeasible run is stated, not assumed.
+   merge-base version of a weakened, deleted, skipped or re-expected test against the
+   reviewed code. Interpret the result only when the old assertion actually executed: a
+   setup, import, path or fixture error raised before it (a moved fixture file, a renamed
+   helper) says nothing about behavior. Adapt only that setup, keeping the old assertion and
+   inputs, and rerun; if it cannot be adapted, the run is inconclusive. A pass of the
+   executed assertion shows the change was not needed to go green; a failure of it, traced
+   to the behavior under test, shows the behavior moved and must match the justification,
+   or it is the failure the change silenced. Record the commands, any setup adaptation and
+   the outcome; an infeasible or inconclusive run is stated, not assumed.
 
 Severity and blocker status come from the rows above and the decision pipeline in SKILL.md,
 never from the inventory itself. An unjustified weakening, deletion, skip or re-expectation
