@@ -2,7 +2,7 @@
 name: pr-review2
 description: "Review AURA pull requests for merge readiness, or run pre-PR self-review, with verified findings, safe isolated checkouts, bounded re-review, and explicit incomplete status. Use for AURA PR numbers or self mode; use code-review-expert2 for general repository reviews."
 metadata:
-  version: "2.11.3"
+  version: "2.12.0"
   derived-from: "pr-review 1.10.0"
   tags: [pr-review, merge-readiness, quality-gate, github, aura]
 ---
@@ -72,6 +72,11 @@ issue scope, structural integrity, stale code, debt, docs, conventions, follow-u
 correctness, security, tests, skill quality, and PR-description truthfulness. Context and
 governance checks do not replace tracing real changed code and its callers. State each
 non-applicable dimension. Run only inspected, targeted commands appropriate to the change.
+
+The tests dimension always includes the pre-existing test change inventory in Check 10, in
+peer and self mode: every change the PR makes to tests that exist at the merge-base, with
+its class and its verified justification or "no justification found". Only Check 10 rows
+and the decision pipeline turn an entry into a finding.
 
 For changed decision logic or tests exercising it, first look for a project-pinned mutation
 runner: a StrykerJS or Stryker.NET dependency, tool manifest entry or committed config in
@@ -290,6 +295,11 @@ remains, say so first in one plain sentence, for example "Nothing to fix: 0 new 
   unknown stays unknown and overlapping phases are not added into elapsed time.
 - Mutation applicability/status, production/test scope, tool/config/revision identity,
   outcome counts and incomplete scope; evidence and classification for material survivors.
+- Pre-existing test changes: its own short section before the findings, one row per
+  inventory entry (path and test, class, justification or "no justification found",
+  verification, and the finding ID when one was admitted), or the explicit line "No
+  pre-existing test changes" with the merge-base it was computed against. An incomplete
+  inventory says so and names its gap; it never reads as no changes.
 - Coverage: reviewed N of M changed files, prioritized/deprioritized groups, and partial
   inspection. For delta mode add N of M delta files and prior full-pass coverage separately.
 - Risk with blast radius/reversibility reasons, required human scrutiny, rollback evidence,

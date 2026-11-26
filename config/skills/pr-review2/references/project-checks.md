@@ -217,7 +217,66 @@ branch, and a high score does not establish that a test validates the right requ
 | Assertions are meaningful - not `expect(true).toBe(true)`, not asserting the mock, not tautological | Tautological/vacuous test → Minor |
 | Tests would actually fail if the code broke (no over-mocking the unit under test) | Test mocks away the thing it claims to test → Minor |
 | No flakiness introduced: real timers/sleeps, order-dependence, network reliance | New flaky test → Minor |
-| Deleted/changed behavior - corresponding tests updated, not just deleted to go green | Test deleted to silence failure → Critical |
+| Deleted/changed behavior - corresponding tests updated, not just deleted to go green | Test deleted, skipped or weakened to silence a failure → Critical; other unjustified weakening of a pre-existing test → Minor (concrete test weakness) |
+
+**Pre-existing test change inventory (required, peer and self).** Tests the PR author or
+agent rewrote alongside the code no longer count as independent evidence for that code;
+tests that predate the change do. Build an inventory of every change the PR makes to them:
+
+1. Scope. Compute the merge-base of the reviewed base and head and diff it against the
+   exact reviewed input. Peer mode lists
+   `git diff --name-status --find-renames <merge-base> <head>`. Self mode picks the diff
+   from the exact scope it reviews, because each single diff misses changes the others see:
+   - committed head only: the peer command above;
+   - index only: `git diff --cached --name-status --find-renames <merge-base>`;
+   - index and working tree: the union of that command and
+     `git diff --name-status --find-renames <merge-base>`, so a change present in either
+     is listed. A file whose index and working-tree contents differ is one entry that
+     classifies both versions against the merge-base and names which one carries each
+     change; a weakening in either version counts, even when the other restores it.
+   When untracked files are in scope, also check each one as a possible move target of a
+   deleted pre-existing test. A pre-existing test is a
+   test file, snapshot, golden or expected-output fixture that exists at the merge-base,
+   classified by the project's own test conventions (runner config, test globs, CI test
+   registration), not by file name alone. Include every one the PR modifies, deletes or
+   renames, and every pre-existing test the PR disables from outside its file (a runner
+   config exclude, a removed CI registration, a skip list). New test files the PR adds are
+   out of the inventory; a new file that is a rename or move target of a pre-existing test
+   is in it, compared with its merge-base content.
+2. Classification. Give each change, per test case where a file holds several, one class:
+   assertion weakened or removed; expected value, snapshot or golden output changed; test
+   deleted; test skipped or excluded; timeout, retry or tolerance loosened; mock or stub
+   widened over the behavior under test; input or fixture data changed; assertion
+   strengthened; mechanical (rename, move, import, formatting, helper extraction with
+   unchanged assertions). A file with only added test cases is listed as additions only, so
+   every touched pre-existing test file is accounted for. Mechanical needs the evidence that
+   the assertions and inputs are unchanged, not the author's label.
+3. Justification. Link each non-mechanical change to the issue requirement/DoD ID or the
+   intended behavior change that requires it, verified under the protocol: the cited
+   requirement or the production diff actually changes the behavior the old assertion
+   checked, in the direction the new assertion expects. A PR-body statement alone is not a
+   justification. Otherwise write "no justification found".
+4. Verification. Where the protocol's execution safety rules allow a targeted run, run the
+   merge-base version of a weakened, deleted, skipped or re-expected test against the
+   reviewed code. Interpret the result only when the old assertion actually executed: a
+   setup, import, path or fixture error raised before it (a moved fixture file, a renamed
+   helper) says nothing about behavior. Adapt only that setup, keeping the old assertion and
+   inputs, and rerun; if it cannot be adapted, the run is inconclusive. A pass of the
+   executed assertion shows the change was not needed to go green; a failure of it, traced
+   to the behavior under test, shows the behavior moved and must match the justification,
+   or it is the failure the change silenced. Record the commands, any setup adaptation and
+   the outcome; an infeasible or inconclusive run is stated, not assumed.
+
+Severity and blocker status come from the rows above and the decision pipeline in SKILL.md,
+never from the inventory itself. An unjustified weakening, deletion, skip or re-expectation
+of a pre-existing test is a candidate for those rows: admit and anchor it like any finding
+(the changed head line, or the path-only file-level anchor for a deleted file), and compute
+`Blocker?` through branches 1-3 (for example a regression the weakened test hid, a DoD the
+old test guarded, a PR body claiming tests are unchanged). A justified, mechanical,
+strengthening or additions-only entry is listed with its evidence and is not a finding by
+itself. When the merge-base or the project's test classification cannot be established,
+the inventory is incomplete: record a material verification gap and keep the tests
+dimension incomplete instead of reporting no pre-existing test changes.
 
 ---
 
